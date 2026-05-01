@@ -7,6 +7,9 @@ import ChannelsPage from './pages/channels/ChannelsPage'
 import ClientsPage from './pages/clients/ClientsPage'
 import ClipTypesPage from './pages/clip-types/ClipTypesPage'
 import ClipsPage from './pages/clips/ClipsPage'
+import PlayoutPage from './pages/playout/PlayoutPage'
+import PlaylistsListPage from './pages/playlists/PlaylistsListPage'
+import PlaylistEditorPage from './pages/playlists/PlaylistEditorPage'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token)
@@ -27,11 +30,14 @@ export default function App() {
           }
         >
           <Route index element={<Navigate to="/dashboard" replace />} />
-          <Route path="dashboard" element={<DashboardPage />} />
-          <Route path="channels" element={<ChannelsPage />} />
-          <Route path="clients" element={<ClientsPage />} />
-          <Route path="clip-types" element={<ClipTypesPage />} />
-          <Route path="clips" element={<ClipsPage />} />
+          <Route path="dashboard"        element={<DashboardPage />} />
+          <Route path="playout"          element={<PlayoutPage />} />
+          <Route path="playlists"        element={<PlaylistsListPage />} />
+          <Route path="playlists/:id"    element={<PlaylistEditorPage />} />
+          <Route path="channels"         element={<ChannelsPage />} />
+          <Route path="clients"          element={<ClientsPage />} />
+          <Route path="clip-types"       element={<ClipTypesPage />} />
+          <Route path="clips"            element={<ClipsPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

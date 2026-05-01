@@ -1,14 +1,16 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Tv2, Users, Tag, Film, LogOut, Radio } from 'lucide-react'
+import { LayoutDashboard, Tv2, Users, Tag, Film, LogOut, Radio, ListVideo } from 'lucide-react'
 import { useAuthStore } from '../../stores/auth.store'
 import { clsx } from 'clsx'
 
 const nav = [
-  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/channels', icon: Tv2, label: 'Canais' },
-  { to: '/clips', icon: Film, label: 'Clipes' },
-  { to: '/clients', icon: Users, label: 'Clientes' },
-  { to: '/clip-types', icon: Tag, label: 'Tipos' },
+  { to: '/dashboard',  icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/playout',    icon: Radio,            label: 'Playout' },
+  { to: '/playlists',  icon: ListVideo,        label: 'Playlists' },
+  { to: '/channels',   icon: Tv2,              label: 'Canais' },
+  { to: '/clips',      icon: Film,             label: 'Clipes' },
+  { to: '/clients',    icon: Users,            label: 'Clientes' },
+  { to: '/clip-types', icon: Tag,              label: 'Tipos' },
 ]
 
 export default function Sidebar() {
