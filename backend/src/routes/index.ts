@@ -7,6 +7,7 @@ import clipRoutes from './clips.route'
 import ingestRoutes from './ingest.route'
 import playlistRoutes from './playlists.route'
 import playoutRoutes from './playout.route'
+import mediaRoutes from './media.route'
 
 export async function registerRoutes(app: FastifyInstance) {
   await app.register(authRoutes,    { prefix: '/api/auth' })
@@ -17,4 +18,5 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(ingestRoutes,  { prefix: '/api/ingest' })
   await app.register(playlistRoutes,{ prefix: '/api/playlists' })
   await app.register(playoutRoutes, { prefix: '/api/playout' })
+  await app.register(mediaRoutes,   { prefix: '/api/media' })
 }

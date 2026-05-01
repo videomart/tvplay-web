@@ -54,6 +54,27 @@ class StorageService {
       return false
     }
   }
+
+  async getObjectStream(objectName: string) {
+    return this.client.getObject(config.minio.bucket, objectName)
+  }
+
+  async getObjectStat(objectName: string) {
+    return this.client.statObject(config.minio.bucket, objectName)
+  }
+
+  async setBucketPublic() {
+    const policy = JSON.stringify({
+      Version: '2012-10-17',
+      Statement: [{
+        Effect: 'Allow',
+        Principal: { AWS: ['*'] },
+        Action: ['s3:GetObject'],
+        Resource: [`arn:aws:s3:::${config.minio.bucket}/*`],
+      }],
+    })
+    await this.client.setBucketPolicy(config.minio.bucket, policy)
+  }
 }
 
 export const storageService = new StorageService()

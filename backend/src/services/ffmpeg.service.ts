@@ -66,7 +66,7 @@ export async function transcodeToHLS(
   fs.mkdirSync(hlsDir, { recursive: true })
   const playlistPath = path.join(hlsDir, 'index.m3u8')
 
-  return new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     ffmpeg(inputPath)
       .videoCodec('libx264')
       .audioCodec('aac')
@@ -80,13 +80,22 @@ export async function transcodeToHLS(
         '-keyint_min 48',
         '-hls_time 6',
         '-hls_playlist_type vod',
+        // Caminho absoluto para gravar os segmentos no diretório certo
         '-hls_segment_filename', path.join(hlsDir, 'seg%03d.ts'),
       ])
       .output(playlistPath)
-      .on('end', () => resolve(playlistPath))
+      .on('end', () => resolve())
       .on('error', reject)
       .run()
   })
+
+  // FFmpeg embute o caminho absoluto no .m3u8 — reescreve para usar só basename
+  const m3u8 = fs.readFileSync(playlistPath, 'utf-8')
+  const fixed = m3u8.replace(new RegExp(hlsDir.replace(/\\/g, '/') + '/', 'g'), '')
+               .replace(new RegExp(hlsDir + '/', 'g'), '')
+  fs.writeFileSync(playlistPath, fixed)
+
+  return playlistPath
 }
 
 export async function transcodeToMP4(

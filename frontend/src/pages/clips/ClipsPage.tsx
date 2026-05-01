@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Search, Upload, CheckCircle2, Clock, XCircle } from 'lucide-react'
+import { Plus, Pencil, Trash2, Search, Upload, CheckCircle2, Clock, XCircle, Play } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { clipsApi, type Clip, MODALITY_LABELS, type ClipModality } from '../../api/clips.api'
 import { clientsApi } from '../../api/clients.api'
@@ -10,8 +10,16 @@ import { Input, Select } from '../../components/ui/Input'
 import { Modal } from '../../components/ui/Modal'
 import { Table, Thead, Th, Tbody, Tr, Td } from '../../components/ui/Table'
 import { Badge, StatusBadge } from '../../components/ui/Badge'
+import { VideoPlayer } from '../../components/ui/VideoPlayer'
 
 const emptyForm = { code: '', title: '', modality: 'CP' as ClipModality, cueIn: '0', cueOut: '', clientId: '', typeId: '', notes: '' }
+
+function hlsStreamUrl(hlsPath: string) {
+  // hlsPath = "hls/{mediaId}/index.m3u8"
+  // Extrai o mediaId e monta a URL do proxy
+  const mediaId = hlsPath.split('/')[1]
+  return `/api/media/stream/${mediaId}/index.m3u8`
+}
 
 function IngestBadge({ status }: { status: string }) {
   if (status === 'READY') return <span className="flex items-center gap-1 text-emerald-400 text-xs"><CheckCircle2 className="h-3.5 w-3.5" />Pronto</span>
@@ -29,6 +37,7 @@ function formatDur(sec?: number) {
 export default function ClipsPage() {
   const qc = useQueryClient()
   const [open, setOpen] = useState(false)
+  const [previewClip, setPreviewClip] = useState<Clip | null>(null)
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
   const [editing, setEditing] = useState<Clip | null>(null)
   const [search, setSearch] = useState('')
@@ -151,6 +160,14 @@ export default function ClipsPage() {
                   <Td><StatusBadge active={c.active} /></Td>
                   <Td className="text-right">
                     <div className="flex items-center justify-end gap-1">
+                      {c.media?.hlsPath && c.media.ingestStatus === 'READY' && (
+                        <Button
+                          size="sm" variant="ghost"
+                          icon={<Play className="h-3.5 w-3.5 text-emerald-400" />}
+                          onClick={() => setPreviewClip(c)}
+                          title="Pré-visualizar"
+                        />
+                      )}
                       <Button size="sm" variant="ghost" icon={<Pencil className="h-3.5 w-3.5" />} onClick={() => openEdit(c)} />
                       <Button size="sm" variant="danger" icon={<Trash2 className="h-3.5 w-3.5" />} onClick={() => remove.mutate(c.id)} />
                     </div>
@@ -200,6 +217,34 @@ export default function ClipsPage() {
             <Button loading={save.isPending} onClick={() => save.mutate()}>Salvar</Button>
           </div>
         </div>
+      </Modal>
+
+      {/* Modal: preview de vídeo */}
+      <Modal
+        open={!!previewClip}
+        onClose={() => setPreviewClip(null)}
+        title={previewClip?.title ?? 'Preview'}
+        size="lg"
+      >
+        {previewClip?.media?.hlsPath && (
+          <div className="space-y-3">
+            <VideoPlayer
+              src={hlsStreamUrl(previewClip.media.hlsPath)}
+              className="w-full aspect-video"
+              autoPlay
+            />
+            <div className="flex items-center gap-4 text-xs text-gray-500 pt-1">
+              <span>Código: <span className="font-mono text-gray-300">{previewClip.code}</span></span>
+              {previewClip.media.duration && (
+                <span>Duração: <span className="font-mono text-gray-300">{formatDur(previewClip.media.duration)}</span></span>
+              )}
+              <span>Cue-In: <span className="font-mono text-gray-300">{previewClip.cueIn}s</span></span>
+              {previewClip.cueOut && (
+                <span>Cue-Out: <span className="font-mono text-gray-300">{previewClip.cueOut}s</span></span>
+              )}
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   )
