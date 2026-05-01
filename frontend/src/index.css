@@ -1,0 +1,26 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { @apply border-gray-700; }
+  body { @apply bg-gray-950 text-gray-100 antialiased; }
+  ::-webkit-scrollbar { @apply w-1.5 h-1.5; }
+  ::-webkit-scrollbar-track { @apply bg-gray-900; }
+  ::-webkit-scrollbar-thumb { @apply bg-gray-600 rounded-full; }
+}
+
+@layer components {
+  .sidebar-item {
+    @apply flex items-center gap-3 px-3 py-2 rounded-lg text-gray-400
+           hover:text-white hover:bg-white/5 transition-colors cursor-pointer text-sm font-medium;
+  }
+  .sidebar-item.active {
+    @apply text-white bg-brand-600/20 text-brand-300;
+  }
+  .card {
+    @apply bg-gray-900 border border-gray-800 rounded-xl;
+  }
+}

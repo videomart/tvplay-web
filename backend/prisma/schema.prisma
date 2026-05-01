@@ -1,0 +1,236 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserLevel {
+  ADMIN
+  OPERATOR
+  VIEWER
+}
+
+enum ClipModality {
+  BK // Bloco de Programa
+  AR // Arquivo/Reprisa
+  PT // Vinheta Promocional
+  VH // VT Humorístico
+  CP // Comercial/Publicidade
+  CA // Campanha
+  LV // Ao Vivo (Live)
+  ID // ID de Canal
+  MT // Material Teaser
+}
+
+enum PlayoutStatus {
+  IDLE
+  PLAYING
+  PAUSED
+  STOPPED
+  ERROR
+}
+
+enum IngestStatus {
+  PENDING
+  PROCESSING
+  READY
+  ERROR
+}
+
+// ─── Usuários ────────────────────────────────────────────────────────────────
+
+model User {
+  id        String    @id @default(cuid())
+  name      String
+  username  String    @unique
+  password  String
+  level     UserLevel @default(OPERATOR)
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  logs Log[]
+
+  @@map("users")
+}
+
+// ─── Canais ───────────────────────────────────────────────────────────────────
+
+model Channel {
+  id          String        @id @default(cuid())
+  name        String
+  description String?
+  number      Int           @unique
+  logoUrl     String?
+  active      Boolean       @default(true)
+  status      PlayoutStatus @default(IDLE)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  playlists Playlist[]
+
+  @@map("channels")
+}
+
+// ─── Clientes / Anunciantes ───────────────────────────────────────────────────
+
+model Client {
+  id        String   @id @default(cuid())
+  name      String
+  document  String?
+  contact   String?
+  email     String?
+  phone     String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  clips Clip[]
+
+  @@map("clients")
+}
+
+// ─── Tipos de Clipe ───────────────────────────────────────────────────────────
+
+model ClipType {
+  id            String   @id @default(cuid())
+  name          String
+  code          String   @unique
+  fontColor     String   @default("#FFFFFF")
+  fontBackColor String   @default("#1A1A2E")
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  clips Clip[]
+
+  @@map("clip_types")
+}
+
+// ─── Arquivos de Mídia ────────────────────────────────────────────────────────
+
+model MediaFile {
+  id           String      @id @default(cuid())
+  originalName String
+  storagePath  String
+  hlsPath      String?
+  mimeType     String
+  sizeBytes    BigInt
+  duration     Float?
+  width        Int?
+  height       Int?
+  fps          Float?
+  bitrate      Int?
+  videoCodec   String?
+  audioCodec   String?
+  thumbnail    String?
+  ingestStatus IngestStatus @default(PENDING)
+  errorMsg     String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  clips Clip[]
+
+  @@map("media_files")
+}
+
+// ─── Clipes ───────────────────────────────────────────────────────────────────
+
+model Clip {
+  id         String       @id @default(cuid())
+  code       String       @unique
+  title      String
+  modality   ClipModality @default(CP)
+  cueIn      Float        @default(0)
+  cueOut     Float?
+  duration   Float?
+  validUntil DateTime?
+  isLive     Boolean      @default(false)
+  active     Boolean      @default(true)
+  notes      String?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  clientId String?
+  client   Client?   @relation(fields: [clientId], references: [id])
+
+  typeId String?
+  type   ClipType? @relation(fields: [typeId], references: [id])
+
+  mediaId String?
+  media   MediaFile? @relation(fields: [mediaId], references: [id])
+
+  playlistItems PlaylistItem[]
+
+  @@map("clips")
+}
+
+// ─── Playlists ────────────────────────────────────────────────────────────────
+
+model Playlist {
+  id          String   @id @default(cuid())
+  date        DateTime @db.Date
+  programName String
+  locked      Boolean  @default(false)
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  channelId String
+  channel   Channel @relation(fields: [channelId], references: [id])
+
+  items PlaylistItem[]
+  logs  Log[]
+
+  @@unique([channelId, date, programName])
+  @@map("playlists")
+}
+
+// ─── Itens da Playlist ────────────────────────────────────────────────────────
+
+model PlaylistItem {
+  id           String    @id @default(cuid())
+  order        Int
+  breakNum     Int       @default(1)
+  blockOrder   Int       @default(1)
+  scheduledAt  DateTime?
+  overrideCueIn  Float?
+  overrideCueOut Float?
+  createdAt    DateTime  @default(now())
+
+  playlistId String
+  playlist   Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+
+  clipId String
+  clip   Clip   @relation(fields: [clipId], references: [id])
+
+  @@index([playlistId, order])
+  @@map("playlist_items")
+}
+
+// ─── Log de Exibição ──────────────────────────────────────────────────────────
+
+model Log {
+  id          String    @id @default(cuid())
+  program     String
+  title       String
+  duration    Float
+  exhibited   Boolean   @default(false)
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  scheduledAt DateTime?
+  client      String?
+  notes       String?
+  createdAt   DateTime  @default(now())
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
+  playlistId String?
+  playlist   Playlist? @relation(fields: [playlistId], references: [id])
+
+  @@map("logs")
+}

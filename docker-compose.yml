@@ -1,0 +1,95 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: tvplay_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: tvplay
+      POSTGRES_USER: tvplay
+      POSTGRES_PASSWORD: tvplay123
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - '5432:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U tvplay']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: tvplay_redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: tvplay_minio
+    restart: unless-stopped
+    command: server /data --console-address ':9001'
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    volumes:
+      - miniodata:/data
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: tvplay_api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://tvplay:tvplay123@postgres:5432/tvplay
+      REDIS_URL: redis://redis:6379
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: '9000'
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin123
+      MINIO_USE_SSL: 'false'
+      MINIO_BUCKET: tvplay-media
+    ports:
+      - '3001:3001'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    volumes:
+      - media_storage:/app/storage
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: tvplay_web
+    restart: unless-stopped
+    ports:
+      - '3000:80'
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  miniodata:
+  media_storage:
