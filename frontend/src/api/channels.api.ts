@@ -1,5 +1,7 @@
 import { api } from './client'
 
+export type FallbackType = 'BLACK' | 'COLORBARS' | 'INPUT_SOURCE'
+
 export interface Channel {
   id: string
   name: string
@@ -8,6 +10,9 @@ export interface Channel {
   logoUrl?: string
   active: boolean
   status: string
+  fallbackType: FallbackType
+  fallbackSourceId?: string
+  fallbackSource?: { id: string; name: string; type: string; url?: string }
   createdAt: string
 }
 

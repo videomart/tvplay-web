@@ -11,12 +11,13 @@ const playlistSchema = z.object({
 
 const itemSchema = z.object({
   clipId: z.string().min(1),
-  order: z.number().int().min(0),
+  order: z.number().int().min(0).optional(),
   breakNum: z.number().int().min(1).optional(),
   blockOrder: z.number().int().min(1).optional(),
   scheduledAt: z.string().datetime().optional().nullable(),
   overrideCueIn: z.number().min(0).optional().nullable(),
   overrideCueOut: z.number().min(0).optional().nullable(),
+  loop: z.boolean().optional(),
 })
 
 const reorderSchema = z.array(z.object({ id: z.string(), order: z.number().int() }))

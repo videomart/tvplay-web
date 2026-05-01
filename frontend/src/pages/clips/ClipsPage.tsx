@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Search, Upload, CheckCircle2, Clock, XCircle, Play } from 'lucide-react'
+import { Plus, Pencil, Trash2, Search, Upload, CheckCircle2, Clock, XCircle, Play, Scissors } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { clipsApi, type Clip, MODALITY_LABELS, type ClipModality } from '../../api/clips.api'
 import { clientsApi } from '../../api/clients.api'
@@ -15,10 +15,14 @@ import { VideoPlayer } from '../../components/ui/VideoPlayer'
 const emptyForm = { code: '', title: '', modality: 'CP' as ClipModality, cueIn: '0', cueOut: '', clientId: '', typeId: '', notes: '' }
 
 function hlsStreamUrl(hlsPath: string) {
-  // hlsPath = "hls/{mediaId}/index.m3u8"
-  // Extrai o mediaId e monta a URL do proxy
   const mediaId = hlsPath.split('/')[1]
   return `/api/media/stream/${mediaId}/index.m3u8`
+}
+
+function fmtTime(sec: number) {
+  const m = Math.floor(sec / 60)
+  const s = (sec % 60).toFixed(3)
+  return `${String(m).padStart(2, '0')}:${s.padStart(6, '0')}`
 }
 
 function IngestBadge({ status }: { status: string }) {
@@ -38,8 +42,10 @@ export default function ClipsPage() {
   const qc = useQueryClient()
   const [open, setOpen] = useState(false)
   const [previewClip, setPreviewClip] = useState<Clip | null>(null)
-  const [uploadProgress, setUploadProgress] = useState<number | null>(null)
+  const [uploadingClipId, setUploadingClipId] = useState<string | null>(null)
+  const [uploadProgress, setUploadProgress] = useState<number>(0)
   const [editing, setEditing] = useState<Clip | null>(null)
+  const [playerTime, setPlayerTime] = useState(0)
   const [search, setSearch] = useState('')
   const [modalityFilter, setModalityFilter] = useState('')
   const [page, setPage] = useState(1)
@@ -49,6 +55,8 @@ export default function ClipsPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['clips', search, modalityFilter, page],
     queryFn: () => clipsApi.list({ search: search || undefined, modality: modalityFilter || undefined, page }),
+    refetchInterval: (query) =>
+      query.state.data?.items.some((c) => c.media?.ingestStatus === 'PROCESSING') ? 3000 : false,
   })
 
   const { data: clients = [] } = useQuery({ queryKey: ['clients'], queryFn: () => clientsApi.list() })
@@ -56,7 +64,14 @@ export default function ClipsPage() {
 
   const save = useMutation({
     mutationFn: () => {
-      const payload = { ...form, cueIn: parseFloat(form.cueIn) || 0, cueOut: form.cueOut ? parseFloat(form.cueOut) : undefined }
+      const payload = {
+        ...form,
+        cueIn:    parseFloat(form.cueIn) || 0,
+        cueOut:   form.cueOut   ? parseFloat(form.cueOut)   : undefined,
+        clientId: form.clientId || undefined,
+        typeId:   form.typeId   || undefined,
+        notes:    form.notes    || undefined,
+      }
       return editing ? clipsApi.update(editing.id, payload) : clipsApi.create(payload)
     },
     onSuccess: () => {
@@ -80,18 +95,28 @@ export default function ClipsPage() {
     setOpen(true)
   }
 
+  const uploadClipIdRef = useRef<string | null>(null)
+
+  function startUpload(clipId: string) {
+    uploadClipIdRef.current = clipId
+    fileRef.current?.click()
+  }
+
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
-    if (!file) return
+    const clipId = uploadClipIdRef.current
+    if (!file || !clipId) return
+    setUploadingClipId(clipId)
     setUploadProgress(0)
     try {
-      const { mediaId } = await clipsApi.uploadMedia(file, setUploadProgress)
-      toast.success(`Upload concluído — ID: ${mediaId}. Transcodificação em andamento.`)
+      await clipsApi.uploadMedia(file, clipId, setUploadProgress)
+      toast.success('Upload concluído. Transcodificação em andamento.')
       qc.invalidateQueries({ queryKey: ['clips'] })
     } catch {
       toast.error('Erro no upload')
     } finally {
-      setUploadProgress(null)
+      setUploadingClipId(null)
+      uploadClipIdRef.current = null
       if (fileRef.current) fileRef.current.value = ''
     }
   }
@@ -107,9 +132,6 @@ export default function ClipsPage() {
         </div>
         <div className="flex gap-2">
           <input ref={fileRef} type="file" accept="video/*" className="hidden" onChange={handleFileUpload} />
-          <Button variant="secondary" icon={<Upload className="h-4 w-4" />} onClick={() => fileRef.current?.click()} loading={uploadProgress !== null}>
-            {uploadProgress !== null ? `${uploadProgress}%` : 'Upload Mídia'}
-          </Button>
           <Button onClick={openNew} icon={<Plus className="h-4 w-4" />}>Novo Clipe</Button>
         </div>
       </div>
@@ -168,6 +190,16 @@ export default function ClipsPage() {
                           title="Pré-visualizar"
                         />
                       )}
+                      {(!c.media || c.media.ingestStatus === 'ERROR') && (
+                        <Button
+                          size="sm" variant="ghost"
+                          icon={<Upload className="h-3.5 w-3.5 text-blue-400" />}
+                          loading={uploadingClipId === c.id}
+                          onClick={() => startUpload(c.id)}
+                          disabled={uploadingClipId !== null && uploadingClipId !== c.id}
+                          title={uploadingClipId === c.id ? `${uploadProgress}%` : 'Enviar mídia'}
+                        />
+                      )}
                       <Button size="sm" variant="ghost" icon={<Pencil className="h-3.5 w-3.5" />} onClick={() => openEdit(c)} />
                       <Button size="sm" variant="danger" icon={<Trash2 className="h-3.5 w-3.5" />} onClick={() => remove.mutate(c.id)} />
                     </div>
@@ -192,30 +224,116 @@ export default function ClipsPage() {
         )}
       </div>
 
-      <Modal open={open} onClose={() => setOpen(false)} title={editing ? 'Editar Clipe' : 'Novo Clipe'} size="lg">
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <Input label="Código *" value={form.code} onChange={f('code')} placeholder="0000001" />
-            <Select label="Modalidade" value={form.modality} onChange={f('modality')}>
-              {Object.entries(MODALITY_LABELS).map(([k, v]) => <option key={k} value={k}>{k} — {v}</option>)}
-            </Select>
-            <Input label="Título *" value={form.title} onChange={f('title')} placeholder="Nome do clipe" className="col-span-2" />
-            <Select label="Cliente" value={form.clientId} onChange={f('clientId')}>
-              <option value="">Sem cliente</option>
-              {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </Select>
-            <Select label="Tipo" value={form.typeId} onChange={f('typeId')}>
-              <option value="">Sem tipo</option>
-              {types.map((t) => <option key={t.id} value={t.id}>{t.code} — {t.name}</option>)}
-            </Select>
-            <Input label="Cue-In (s)" type="number" step="0.001" value={form.cueIn} onChange={f('cueIn')} placeholder="0.000" />
-            <Input label="Cue-Out (s)" type="number" step="0.001" value={form.cueOut} onChange={f('cueOut')} placeholder="Fim do arquivo" />
-            <Input label="Observações" value={form.notes} onChange={f('notes')} placeholder="Opcional" className="col-span-2" />
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title={editing ? 'Editar Clipe' : 'Novo Clipe'}
+        size={editing?.media?.ingestStatus === 'READY' ? 'xl' : 'lg'}
+      >
+        <div className={editing?.media?.ingestStatus === 'READY' ? 'grid grid-cols-2 gap-6' : ''}>
+
+          {/* Player de edição — só aparece quando o clipe tem mídia READY */}
+          {editing?.media?.ingestStatus === 'READY' && editing.media.hlsPath && (
+            <div className="space-y-3">
+              <VideoPlayer
+                src={hlsStreamUrl(editing.media.hlsPath)}
+                className="w-full aspect-video"
+                onTimeUpdate={setPlayerTime}
+              />
+
+              {/* Tempo atual */}
+              <div className="flex items-center justify-between px-0.5">
+                <span className="font-mono text-sm text-brand-400">{fmtTime(playerTime)}</span>
+                {editing.media.duration && (
+                  <span className="font-mono text-xs text-gray-500">/ {fmtTime(editing.media.duration)}</span>
+                )}
+              </div>
+
+              {/* Botões de marcação */}
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon={<Scissors className="h-3.5 w-3.5 text-cyan-400" />}
+                  onClick={() => setForm((v) => ({ ...v, cueIn: playerTime.toFixed(3) }))}
+                >
+                  Marcar Cue-In
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon={<Scissors className="h-3.5 w-3.5 text-amber-400" />}
+                  onClick={() => setForm((v) => ({ ...v, cueOut: playerTime.toFixed(3) }))}
+                >
+                  Marcar Cue-Out
+                </Button>
+              </div>
+
+              {/* Barra de range visual */}
+              {editing.media.duration && (
+                <div className="space-y-1">
+                  <div className="relative h-2 bg-gray-800 rounded-full overflow-hidden">
+                    {/* Região ativa */}
+                    <div
+                      className="absolute h-full bg-brand-500/25"
+                      style={{
+                        left: `${((parseFloat(form.cueIn) || 0) / editing.media.duration) * 100}%`,
+                        width: `${(((parseFloat(form.cueOut) || editing.media.duration) - (parseFloat(form.cueIn) || 0)) / editing.media.duration) * 100}%`,
+                      }}
+                    />
+                    {/* Marcador Cue-In */}
+                    <div
+                      className="absolute top-0 h-full w-0.5 bg-cyan-400"
+                      style={{ left: `${((parseFloat(form.cueIn) || 0) / editing.media.duration) * 100}%` }}
+                    />
+                    {/* Marcador Cue-Out */}
+                    {form.cueOut && (
+                      <div
+                        className="absolute top-0 h-full w-0.5 bg-amber-400"
+                        style={{ left: `${(parseFloat(form.cueOut) / editing.media.duration) * 100}%` }}
+                      />
+                    )}
+                    {/* Posição atual */}
+                    <div
+                      className="absolute top-0 h-full w-0.5 bg-white/50"
+                      style={{ left: `${(playerTime / editing.media.duration) * 100}%` }}
+                    />
+                  </div>
+                  <div className="flex justify-between text-[10px] font-mono">
+                    <span className="text-cyan-500">IN {fmtTime(parseFloat(form.cueIn) || 0)}</span>
+                    <span className="text-amber-500">OUT {fmtTime(parseFloat(form.cueOut) || editing.media.duration)}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Formulário */}
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <Input label="Código *" value={form.code} onChange={f('code')} placeholder="0000001" />
+              <Select label="Modalidade" value={form.modality} onChange={f('modality')}>
+                {Object.entries(MODALITY_LABELS).map(([k, v]) => <option key={k} value={k}>{k} — {v}</option>)}
+              </Select>
+              <Input label="Título *" value={form.title} onChange={f('title')} placeholder="Nome do clipe" className="col-span-2" />
+              <Select label="Cliente" value={form.clientId} onChange={f('clientId')}>
+                <option value="">Sem cliente</option>
+                {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </Select>
+              <Select label="Tipo" value={form.typeId} onChange={f('typeId')}>
+                <option value="">Sem tipo</option>
+                {types.map((t) => <option key={t.id} value={t.id}>{t.code} — {t.name}</option>)}
+              </Select>
+              <Input label="Cue-In (s)" type="number" step="0.001" value={form.cueIn} onChange={f('cueIn')} placeholder="0.000" />
+              <Input label="Cue-Out (s)" type="number" step="0.001" value={form.cueOut} onChange={f('cueOut')} placeholder="Fim do arquivo" />
+              <Input label="Observações" value={form.notes} onChange={f('notes')} placeholder="Opcional" className="col-span-2" />
+            </div>
+            <div className="flex gap-3 justify-end pt-2">
+              <Button variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button>
+              <Button loading={save.isPending} onClick={() => save.mutate()}>Salvar</Button>
+            </div>
           </div>
-          <div className="flex gap-3 justify-end pt-2">
-            <Button variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button>
-            <Button loading={save.isPending} onClick={() => save.mutate()}>Salvar</Button>
-          </div>
+
         </div>
       </Modal>
 

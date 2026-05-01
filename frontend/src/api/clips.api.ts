@@ -39,10 +39,10 @@ export const clipsApi = {
   create: (data: Partial<Clip>) => api.post<Clip>('/clips', data).then((r) => r.data),
   update: (id: string, data: Partial<Clip>) => api.put<Clip>(`/clips/${id}`, data).then((r) => r.data),
   delete: (id: string) => api.delete(`/clips/${id}`),
-  uploadMedia: (file: File, onProgress?: (pct: number) => void) => {
+  uploadMedia: (file: File, clipId: string, onProgress?: (pct: number) => void) => {
     const form = new FormData()
     form.append('file', file)
-    return api.post<{ mediaId: string; message: string }>('/ingest/upload', form, {
+    return api.post<{ mediaId: string; message: string }>(`/ingest/upload?clipId=${clipId}`, form, {
       onUploadProgress: (e) => onProgress?.(Math.round((e.loaded * 100) / (e.total ?? 1))),
     }).then((r) => r.data)
   },

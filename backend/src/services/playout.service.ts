@@ -31,6 +31,7 @@ export interface CurrentItem {
   hlsPath: string | null
   order: number
   breakNum: number
+  loop: boolean
 }
 
 // Clients WebSocket por canal
@@ -118,6 +119,7 @@ async function loadItem(playlistId: string, index: number): Promise<CurrentItem 
     hlsPath: clip.media?.hlsPath ?? null,
     order: item.order,
     breakNum: item.breakNum,
+    loop: item.loop,
   }
 }
 
@@ -142,6 +144,12 @@ function startTimer(channelId: string) {
 
     const dur = state.currentItem?.duration ?? Infinity
     if (state.position >= dur) {
+      // Loop: reinicia o clip atual
+      if (state.currentItem?.loop) {
+        state.position = 0
+        broadcast(channelId, state)
+        return
+      }
       // Avança para o próximo clip
       const total = state.playlistId ? await countItems(state.playlistId) : 0
       const nextIndex = state.currentIndex + 1

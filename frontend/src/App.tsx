@@ -10,6 +10,8 @@ import ClipsPage from './pages/clips/ClipsPage'
 import PlayoutPage from './pages/playout/PlayoutPage'
 import PlaylistsListPage from './pages/playlists/PlaylistsListPage'
 import PlaylistEditorPage from './pages/playlists/PlaylistEditorPage'
+import StreamOutputsPage from './pages/stream-outputs/StreamOutputsPage'
+import InputSourcesPage from './pages/input-sources/InputSourcesPage'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token)
@@ -38,6 +40,8 @@ export default function App() {
           <Route path="clients"          element={<ClientsPage />} />
           <Route path="clip-types"       element={<ClipTypesPage />} />
           <Route path="clips"            element={<ClipsPage />} />
+          <Route path="stream-outputs"   element={<StreamOutputsPage />} />
+          <Route path="input-sources"    element={<InputSourcesPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

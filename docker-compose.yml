@@ -78,6 +78,7 @@ services:
         condition: service_started
     volumes:
       - media_storage:/app/storage
+    privileged: true
 
   web:
     build:

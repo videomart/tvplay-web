@@ -9,6 +9,7 @@ export interface PlaylistItem {
   scheduledAt?: string
   overrideCueIn?: number
   overrideCueOut?: number
+  loop?: boolean
   playlistId: string
   clipId: string
   clip: Clip & {

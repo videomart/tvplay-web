@@ -8,11 +8,14 @@ interface VideoPlayerProps {
   poster?: string
   className?: string
   autoPlay?: boolean
+  startAt?: number     // segundos para seek após carregar
+  muted?: boolean
+  onTimeUpdate?: (time: number) => void
 }
 
 type State = 'loading' | 'ready' | 'error'
 
-export function VideoPlayer({ src, poster, className, autoPlay = false }: VideoPlayerProps) {
+export function VideoPlayer({ src, poster, className, autoPlay = false, startAt, muted = false, onTimeUpdate }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<Hls | null>(null)
   const [state, setState] = useState<State>('loading')
@@ -25,15 +28,19 @@ export function VideoPlayer({ src, poster, className, autoPlay = false }: VideoP
     setState('loading')
     setErrorMsg('')
 
-    // Limpa instância anterior
     hlsRef.current?.destroy()
+
+    const onReady = () => {
+      setState('ready')
+      if (startAt && startAt > 0) video.currentTime = startAt
+      if (autoPlay) video.play().catch(() => {})
+    }
 
     if (Hls.isSupported()) {
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: false,
         xhrSetup: (xhr) => {
-          // Passa o token JWT para as requisições dos segmentos HLS (opcional)
           const token = localStorage.getItem('tvplay-auth')
           if (token) {
             try {
@@ -46,10 +53,7 @@ export function VideoPlayer({ src, poster, className, autoPlay = false }: VideoP
       })
       hls.loadSource(src)
       hls.attachMedia(video)
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        setState('ready')
-        if (autoPlay) video.play().catch(() => {})
-      })
+      hls.on(Hls.Events.MANIFEST_PARSED, onReady)
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (data.fatal) {
           setState('error')
@@ -58,12 +62,8 @@ export function VideoPlayer({ src, poster, className, autoPlay = false }: VideoP
       })
       hlsRef.current = hls
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      // Safari tem suporte nativo a HLS
       video.src = src
-      video.addEventListener('loadedmetadata', () => {
-        setState('ready')
-        if (autoPlay) video.play().catch(() => {})
-      }, { once: true })
+      video.addEventListener('loadedmetadata', onReady, { once: true })
       video.addEventListener('error', () => {
         setState('error')
         setErrorMsg('Erro ao carregar vídeo')
@@ -74,7 +74,7 @@ export function VideoPlayer({ src, poster, className, autoPlay = false }: VideoP
     }
 
     return () => { hlsRef.current?.destroy(); hlsRef.current = null }
-  }, [src, autoPlay])
+  }, [src, autoPlay, startAt])
 
   return (
     <div className={clsx('relative bg-black rounded-lg overflow-hidden', className)}>
@@ -82,8 +82,10 @@ export function VideoPlayer({ src, poster, className, autoPlay = false }: VideoP
         ref={videoRef}
         poster={poster}
         controls
+        muted={muted}
         className="w-full h-full"
         style={{ display: state === 'error' ? 'none' : 'block' }}
+        onTimeUpdate={() => onTimeUpdate?.(videoRef.current?.currentTime ?? 0)}
       />
 
       {state === 'loading' && (

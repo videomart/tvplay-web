@@ -40,6 +40,26 @@ enum IngestStatus {
   ERROR
 }
 
+enum FallbackType {
+  BLACK
+  COLORBARS
+  INPUT_SOURCE
+}
+
+enum StreamOutputType {
+  RTMP
+  HLS_PUSH
+  SDI
+}
+
+enum InputSourceType {
+  IP
+  YOUTUBE
+  SRT
+  SDI
+  USB
+}
+
 // ─── Usuários ────────────────────────────────────────────────────────────────
 
 model User {
@@ -70,7 +90,13 @@ model Channel {
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
-  playlists Playlist[]
+  fallbackType     FallbackType @default(BLACK)
+  fallbackSourceId String?
+  fallbackSource   InputSource? @relation("ChannelFallback", fields: [fallbackSourceId], references: [id])
+
+  playlists     Playlist[]
+  streamOutputs StreamOutput[]
+  inputSources  InputSource[]  @relation("ChannelSources")
 
   @@map("channels")
 }
@@ -199,6 +225,7 @@ model PlaylistItem {
   scheduledAt  DateTime?
   overrideCueIn  Float?
   overrideCueOut Float?
+  loop         Boolean   @default(false)
   createdAt    DateTime  @default(now())
 
   playlistId String
@@ -209,6 +236,45 @@ model PlaylistItem {
 
   @@index([playlistId, order])
   @@map("playlist_items")
+}
+
+// ─── Saídas de Streaming ─────────────────────────────────────────────────────
+
+model StreamOutput {
+  id        String           @id @default(cuid())
+  name      String
+  type      StreamOutputType
+  url       String?
+  streamKey String?
+  device    String?
+  active    Boolean          @default(true)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  channelId String?
+  channel   Channel? @relation(fields: [channelId], references: [id])
+
+  @@map("stream_outputs")
+}
+
+// ─── Fontes de Entrada ────────────────────────────────────────────────────────
+
+model InputSource {
+  id        String          @id @default(cuid())
+  name      String
+  type      InputSourceType
+  url       String?
+  device    String?
+  active    Boolean         @default(true)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  channelId String?
+  channel   Channel? @relation("ChannelSources", fields: [channelId], references: [id])
+
+  fallbackForChannels Channel[] @relation("ChannelFallback")
+
+  @@map("input_sources")
 }
 
 // ─── Log de Exibição ──────────────────────────────────────────────────────────

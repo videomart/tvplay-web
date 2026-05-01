@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, Plus, Trash2, Search, GripVertical,
-  Clock, ListVideo, ChevronRight
+  Clock, ListVideo, ChevronRight, Repeat2
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
@@ -70,6 +70,11 @@ export default function PlaylistEditorPage() {
 
   const reorderMut = useMutation({
     mutationFn: (items: { id: string; order: number }[]) => playlistsApi.reorder(id!, items),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['playlist', id] }),
+  })
+
+  const toggleLoop = useMutation({
+    mutationFn: (item: PlaylistItem) => playlistsApi.updateItem(id!, item.id, { loop: !item.loop }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['playlist', id] }),
   })
 
@@ -208,6 +213,21 @@ export default function PlaylistEditorPage() {
                       {media.ingestStatus === 'READY' ? '✓' : '⏳'}
                     </span>
                   )}
+
+                  {/* Loop */}
+                  <button
+                    onClick={() => toggleLoop.mutate(item)}
+                    title={item.loop ? 'Desativar loop' : 'Ativar loop'}
+                    className={clsx(
+                      'flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors',
+                      item.loop
+                        ? 'bg-brand-500/20 text-brand-300 ring-1 ring-brand-500/40'
+                        : 'bg-gray-800 text-gray-400 hover:text-gray-200'
+                    )}
+                  >
+                    <Repeat2 className="h-3 w-3" />
+                    {item.loop ? 'Loop ON' : 'Loop'}
+                  </button>
 
                   {/* Remover */}
                   <Button

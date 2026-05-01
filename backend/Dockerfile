@@ -1,6 +1,7 @@
 FROM node:20-alpine
 
-RUN apk add --no-cache ffmpeg python3 make g++ openssl openssl-dev libc6-compat
+RUN apk add --no-cache ffmpeg python3 py3-pip make g++ openssl openssl-dev libc6-compat v4l-utils && \
+    pip3 install --no-cache-dir --break-system-packages yt-dlp
 
 WORKDIR /app
 

@@ -10,7 +10,14 @@ export default async function ingestRoutes(app: FastifyInstance) {
   const auth = { preHandler: [app.authenticate] }
 
   // Upload de arquivo de mídia
-  app.post('/upload', auth, async (request, reply) => {
+  app.post('/upload', auth, async (request: any, reply) => {
+    const { clipId } = request.query as { clipId?: string }
+
+    if (clipId) {
+      const clip = await prisma.clip.findUnique({ where: { id: clipId } })
+      if (!clip) return reply.status(404).send({ error: 'Clipe não encontrado' })
+    }
+
     const data = await request.file()
     if (!data) return reply.status(400).send({ error: 'Nenhum arquivo enviado' })
 
@@ -19,7 +26,6 @@ export default async function ingestRoutes(app: FastifyInstance) {
       return reply.status(415).send({ error: 'Formato de arquivo não suportado' })
     }
 
-    // Salva temporariamente no disco
     const tmpDir = path.join(config.storage.transcodeOutputPath, 'tmp')
     fs.mkdirSync(tmpDir, { recursive: true })
     const tmpPath = path.join(tmpDir, `${Date.now()}-${data.filename}`)
@@ -33,7 +39,6 @@ export default async function ingestRoutes(app: FastifyInstance) {
 
     const stat = fs.statSync(tmpPath)
 
-    // Cria registro no banco
     const mediaFile = await prisma.mediaFile.create({
       data: {
         originalName: data.filename,
@@ -44,7 +49,10 @@ export default async function ingestRoutes(app: FastifyInstance) {
       },
     })
 
-    // Enfileira transcodificação
+    if (clipId) {
+      await prisma.clip.update({ where: { id: clipId }, data: { mediaId: mediaFile.id } })
+    }
+
     await transcodeQueue.add('transcode', { mediaId: mediaFile.id, tmpPath })
 
     return reply.status(202).send({
