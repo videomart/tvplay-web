@@ -66,6 +66,7 @@ services:
       MINIO_SECRET_KEY: minioadmin123
       MINIO_USE_SSL: 'false'
       MINIO_BUCKET: tvplay-media
+      NODE_ENV: production
     ports:
       - '3001:3001'
     depends_on:

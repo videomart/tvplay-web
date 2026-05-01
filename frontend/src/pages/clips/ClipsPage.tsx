@@ -47,7 +47,7 @@ export default function ClipsPage() {
 
   const save = useMutation({
     mutationFn: () => {
-      const payload = { ...form, cueIn: parseFloat(form.cueIn) || 0, cueOut: form.cueOut ? parseFloat(form.cueOut) : null }
+      const payload = { ...form, cueIn: parseFloat(form.cueIn) || 0, cueOut: form.cueOut ? parseFloat(form.cueOut) : undefined }
       return editing ? clipsApi.update(editing.id, payload) : clipsApi.create(payload)
     },
     onSuccess: () => {
@@ -134,7 +134,7 @@ export default function ClipsPage() {
           </Thead>
           <Tbody>
             {isLoading ? (
-              <Tr><Td colSpan={8 as any} className="text-center text-gray-500 py-8">Carregando...</Td></Tr>
+              <Tr><Td colSpan={8} className="text-center text-gray-500 py-8">Carregando...</Td></Tr>
             ) : data?.items.map((c) => {
               const t = c.typeId ? typeMap[c.typeId] : null
               return (

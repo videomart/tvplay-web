@@ -62,7 +62,7 @@ export default function ChannelsPage() {
           </Thead>
           <Tbody>
             {isLoading ? (
-              <Tr><Td colSpan={6 as any} className="text-center text-gray-500 py-8">Carregando...</Td></Tr>
+              <Tr><Td colSpan={6} className="text-center text-gray-500 py-8">Carregando...</Td></Tr>
             ) : data.map((ch) => (
               <Tr key={ch.id}>
                 <Td><span className="font-mono font-bold text-brand-300">{ch.number}</span></Td>

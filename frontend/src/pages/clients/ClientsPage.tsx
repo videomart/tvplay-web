@@ -71,7 +71,7 @@ export default function ClientsPage() {
           </Thead>
           <Tbody>
             {isLoading ? (
-              <Tr><Td colSpan={7 as any} className="text-center text-gray-500 py-8">Carregando...</Td></Tr>
+              <Tr><Td colSpan={7} className="text-center text-gray-500 py-8">Carregando...</Td></Tr>
             ) : data.map((c) => (
               <Tr key={c.id}>
                 <Td><span className="font-medium text-white">{c.name}</span></Td>
