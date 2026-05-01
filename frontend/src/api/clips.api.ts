@@ -43,7 +43,6 @@ export const clipsApi = {
     const form = new FormData()
     form.append('file', file)
     return api.post<{ mediaId: string; message: string }>('/ingest/upload', form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
       onUploadProgress: (e) => onProgress?.(Math.round((e.loaded * 100) / (e.total ?? 1))),
     }).then((r) => r.data)
   },
