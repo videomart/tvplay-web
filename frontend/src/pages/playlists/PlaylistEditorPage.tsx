@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, Plus, Trash2, Search, GripVertical,
-  Clock, ListVideo, ChevronRight, Repeat2
+  Clock, ListVideo, ChevronRight, Repeat2, Lock
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
@@ -79,9 +79,10 @@ export default function PlaylistEditorPage() {
   })
 
   const items: PlaylistItem[] = playlist?.items ?? []
+  const isLocked = !!playlist?.locked
 
   // ─── Drag and drop ────────────────────────────────────────────────────────
-  function handleDragStart(idx: number) { setDragIdx(idx) }
+  function handleDragStart(idx: number) { if (isLocked) return; setDragIdx(idx) }
   function handleDragOver(e: React.DragEvent, idx: number) { e.preventDefault(); setOverIdx(idx) }
   function handleDrop(targetIdx: number) {
     if (dragIdx == null || dragIdx === targetIdx) { setDragIdx(null); setOverIdx(null); return }
@@ -131,9 +132,16 @@ export default function PlaylistEditorPage() {
             <ListVideo className="h-4 w-4" />
             <span>{items.length} clipes</span>
           </div>
-          <Button size="sm" icon={<Plus className="h-4 w-4" />} onClick={() => setAddOpen(true)}>
-            Adicionar Clipe
-          </Button>
+          {isLocked ? (
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-amber-500/10 text-amber-400 text-xs font-medium">
+              <Lock className="h-3.5 w-3.5" />
+              Bloqueada
+            </div>
+          ) : (
+            <Button size="sm" icon={<Plus className="h-4 w-4" />} onClick={() => setAddOpen(true)}>
+              Adicionar Clipe
+            </Button>
+          )}
         </div>
       </div>
 
@@ -161,7 +169,7 @@ export default function PlaylistEditorPage() {
               return (
                 <div
                   key={item.id}
-                  draggable
+                  draggable={!isLocked}
                   onDragStart={() => handleDragStart(idx)}
                   onDragOver={(e) => handleDragOver(e, idx)}
                   onDrop={() => handleDrop(idx)}
@@ -173,7 +181,7 @@ export default function PlaylistEditorPage() {
                   )}
                 >
                   {/* Drag handle */}
-                  <GripVertical className="h-4 w-4 text-gray-600 cursor-grab shrink-0" />
+                  <GripVertical className={clsx('h-4 w-4 shrink-0', isLocked ? 'text-gray-700 cursor-not-allowed' : 'text-gray-600 cursor-grab')} />
 
                   {/* Número */}
                   <span className="text-[11px] font-mono text-gray-600 w-6 text-right shrink-0">{idx + 1}</span>
@@ -216,13 +224,16 @@ export default function PlaylistEditorPage() {
 
                   {/* Loop */}
                   <button
-                    onClick={() => toggleLoop.mutate(item)}
-                    title={item.loop ? 'Desativar loop' : 'Ativar loop'}
+                    onClick={() => !isLocked && toggleLoop.mutate(item)}
+                    disabled={isLocked}
+                    title={isLocked ? 'Playlist bloqueada' : item.loop ? 'Desativar loop' : 'Ativar loop'}
                     className={clsx(
                       'flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors',
-                      item.loop
-                        ? 'bg-brand-500/20 text-brand-300 ring-1 ring-brand-500/40'
-                        : 'bg-gray-800 text-gray-400 hover:text-gray-200'
+                      isLocked
+                        ? 'bg-gray-800 text-gray-600 cursor-not-allowed'
+                        : item.loop
+                          ? 'bg-brand-500/20 text-brand-300 ring-1 ring-brand-500/40'
+                          : 'bg-gray-800 text-gray-400 hover:text-gray-200'
                     )}
                   >
                     <Repeat2 className="h-3 w-3" />
@@ -232,7 +243,8 @@ export default function PlaylistEditorPage() {
                   {/* Remover */}
                   <Button
                     size="sm" variant="ghost"
-                    icon={<Trash2 className="h-3.5 w-3.5 text-red-500" />}
+                    disabled={isLocked}
+                    icon={<Trash2 className={clsx('h-3.5 w-3.5', isLocked ? 'text-gray-600' : 'text-red-500')} />}
                     onClick={() => removeItem.mutate(item.id)}
                   />
                 </div>

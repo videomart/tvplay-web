@@ -1,12 +1,13 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Play, Pause, Square, SkipForward, SkipBack,
-  Radio, Wifi, WifiOff, ListVideo, Clock, MonitorPlay, MonitorOff, Antenna
+  Radio, Wifi, WifiOff, ListVideo, MonitorPlay, MonitorOff, Antenna,
+  ChevronDown, ChevronUp, RefreshCw, RotateCcw, GripVertical, ArrowLeftRight,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
-import { playoutApi } from '../../api/playout.api'
+import { playoutApi, type ChannelOutput, type PlaylistItemRow } from '../../api/playout.api'
 import { playlistsApi } from '../../api/playlists.api'
 import { channelsApi, type Channel, type FallbackType } from '../../api/channels.api'
 import { inputSourcesApi } from '../../api/input-sources.api'
@@ -21,8 +22,50 @@ function hlsStreamUrl(hlsPath: string) {
   return `/api/media/stream/${mediaId}/index.m3u8`
 }
 
+const OUTPUT_TYPE_SHORT: Record<string, string> = {
+  RTMP: 'RTMP', HLS_PUSH: 'HLS', SDI: 'SDI', SRT: 'SRT', UDP: 'UDP', RTP: 'RTP',
+}
+
+// Extrai host:porta (e modo) de uma URL de saída para exibição compacta
+function formatOutputEndpoint(type: string, url: string | null, streamKey: string | null): string | null {
+  if (!url) return null
+  try {
+    if (type === 'SRT') {
+      const u = new URL(url)
+      const mode = u.searchParams.get('mode')
+      if (mode === 'listener') return `listener :${u.port}`
+      return u.hostname ? `${u.hostname}:${u.port} (caller)` : `:${u.port}`
+    }
+    if (type === 'UDP' || type === 'RTP') {
+      // udp://host:port?... → host:port
+      const u = new URL(url)
+      return `${u.hostname}:${u.port}`
+    }
+    if (type === 'RTMP') {
+      // rtmp://server/app + streamKey → server/app/key (truncado)
+      const dest = streamKey ? `${url}/${streamKey}` : url
+      return dest.replace(/^rtmps?:\/\//, '').slice(0, 40) + (dest.length > 47 ? '…' : '')
+    }
+    if (type === 'HLS_PUSH') {
+      return url.replace(/^https?:\/\//, '').slice(0, 40) + (url.length > 47 ? '…' : '')
+    }
+  } catch {}
+  return null
+}
+
+function formatTime(sec: number) {
+  const abs = Math.abs(Math.floor(sec))
+  const h = Math.floor(abs / 3600)
+  const m = Math.floor((abs % 3600) / 60)
+  const s = abs % 60
+  const sign = sec < 0 ? '-' : ''
+  return h > 0
+    ? `${sign}${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+    : `${sign}${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
 function ColorBars() {
-  const bars = ['#FFFFFF','#FFFF00','#00FFFF','#00FF00','#FF00FF','#FF0000','#0000FF','#000000']
+  const bars = ['#FFFFFF', '#FFFF00', '#00FFFF', '#00FF00', '#FF00FF', '#FF0000', '#0000FF', '#000000']
   return (
     <div className="w-full h-full flex rounded-lg overflow-hidden">
       {bars.map((c) => <div key={c} style={{ backgroundColor: c, flex: 1 }} />)}
@@ -30,18 +73,11 @@ function ColorBars() {
   )
 }
 
-function formatTime(sec: number) {
-  const h = Math.floor(sec / 3600)
-  const m = Math.floor((sec % 3600) / 60)
-  const s = Math.floor(sec % 60)
-  return h > 0
-    ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-    : `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-}
+// ─── Barra de progresso do clipe ─────────────────────────────────────────────
 
-function ProgressBar({ value, max }: { value: number; max: number }) {
-  const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0
-  const remaining = Math.max(0, max - value)
+function ClipProgressBar({ position, duration }: { position: number; duration: number }) {
+  const pct = duration > 0 ? Math.min((position / duration) * 100, 100) : 0
+  const remaining = Math.max(0, duration - position)
   return (
     <div className="space-y-1">
       <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
@@ -51,12 +87,272 @@ function ProgressBar({ value, max }: { value: number; max: number }) {
         />
       </div>
       <div className="flex justify-between text-[11px] font-mono text-gray-500">
-        <span>{formatTime(value)}</span>
-        <span>-{formatTime(remaining)}</span>
+        <span>{formatTime(position)}</span>
+        <span className="text-gray-600">clipe</span>
+        <span className="text-red-400/80">-{formatTime(remaining)}</span>
       </div>
     </div>
   )
 }
+
+// ─── Barra de progresso do playlist ──────────────────────────────────────────
+
+function PlaylistProgressBar({
+  elapsed, total,
+}: { elapsed: number; total: number }) {
+  const pct = total > 0 ? Math.min((elapsed / total) * 100, 100) : 0
+  const remaining = Math.max(0, total - elapsed)
+  return (
+    <div className="space-y-1">
+      <div className="h-1 bg-gray-800/60 rounded-full overflow-hidden">
+        <div
+          className="h-full bg-emerald-600/50 rounded-full transition-all duration-1000 ease-linear"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <div className="flex justify-between text-[10px] font-mono text-gray-600">
+        <span>{formatTime(elapsed)} decorrido</span>
+        <span>total {formatTime(total)}</span>
+        <span className="text-amber-500/70">-{formatTime(remaining)} fim</span>
+      </div>
+    </div>
+  )
+}
+
+// ─── Linha de output ──────────────────────────────────────────────────────────
+
+function OutputRow({
+  output, channelId, isPlaying,
+  onToggle, onReconnect, toggling, reconnecting,
+}: {
+  output: ChannelOutput
+  channelId: string
+  isPlaying: boolean
+  onToggle: () => void
+  onReconnect: () => void
+  toggling: boolean
+  reconnecting: boolean
+}) {
+  const isOn = output.streaming
+  const isActive = output.active
+
+  return (
+    <div className={clsx(
+      'flex items-center gap-2 px-2 py-1 rounded transition-colors',
+      isOn ? 'bg-emerald-950/30' : 'bg-transparent'
+    )}>
+      <span className={clsx(
+        'h-1.5 w-1.5 rounded-full flex-shrink-0',
+        isOn ? 'bg-emerald-400 animate-pulse' : isActive ? 'bg-gray-600' : 'bg-gray-700'
+      )} />
+      <span className={clsx(
+        'text-[10px] font-mono font-bold flex-shrink-0 w-8',
+        isOn ? 'text-emerald-300' : 'text-gray-600'
+      )}>
+        {OUTPUT_TYPE_SHORT[output.type] ?? output.type}
+      </span>
+      <div className="flex-1 min-w-0">
+        <p className={clsx('text-xs truncate', isActive ? 'text-gray-400' : 'text-gray-600 line-through')}>
+          {output.name}
+          {output.description && <span className="text-gray-600 ml-1">· {output.description}</span>}
+        </p>
+        {(() => {
+          const ep = formatOutputEndpoint(output.type, output.url, output.streamKey)
+          return ep ? (
+            <p className="text-[10px] font-mono text-gray-600 truncate">{ep}</p>
+          ) : null
+        })()}
+      </div>
+      <span className={clsx(
+        'text-[10px] flex-shrink-0 font-semibold w-12 text-right',
+        isOn ? 'text-emerald-400' : isActive ? 'text-gray-600' : 'text-gray-700'
+      )}>
+        {isOn ? 'ON AIR' : isActive ? 'idle' : 'off'}
+      </span>
+      {isPlaying && isActive && (
+        <button
+          onClick={onReconnect}
+          disabled={reconnecting}
+          title="Reconectar"
+          className="flex-shrink-0 text-gray-600 hover:text-amber-400 transition-colors disabled:opacity-40"
+        >
+          {reconnecting
+            ? <span className="text-[10px] text-amber-400">...</span>
+            : <RefreshCw className="h-3 w-3" />}
+        </button>
+      )}
+      <button
+        onClick={onToggle}
+        disabled={toggling}
+        title={isActive ? 'Desativar' : 'Ativar'}
+        className={clsx(
+          'flex-shrink-0 relative inline-flex h-4 w-7 items-center rounded-full transition-colors disabled:opacity-40',
+          isActive ? 'bg-emerald-600' : 'bg-gray-700'
+        )}
+      >
+        <span className={clsx(
+          'inline-block h-3 w-3 rounded-full bg-white shadow transition-transform',
+          isActive ? 'translate-x-3.5' : 'translate-x-0.5'
+        )} />
+      </button>
+    </div>
+  )
+}
+
+// ─── Linha de item do playlist (com drag-and-drop) ───────────────────────────
+
+function PlaylistItemRow({
+  item, isCurrent, isPlayed, isDragging, isDragOver,
+  playoutStatus,
+  onJump, onClipPlay, onClipStop, onToggleLoop,
+  loopPending, clipPlayPending, clipStopPending,
+  onDragStart, onDragOver, onDragEnd, onDrop,
+}: {
+  item: PlaylistItemRow
+  isCurrent: boolean
+  isPlayed: boolean
+  isDragging: boolean
+  isDragOver: boolean
+  playoutStatus: string
+  onJump: () => void
+  onClipPlay: () => void
+  onClipStop: () => void
+  onToggleLoop: () => void
+  loopPending: boolean
+  clipPlayPending: boolean
+  clipStopPending: boolean
+  onDragStart: () => void
+  onDragOver: (e: React.DragEvent) => void
+  onDragEnd: () => void
+  onDrop: () => void
+}) {
+  // Drag só começa a partir do grip handle — evita interceptar clicks em botões
+  const fromHandle = useRef(false)
+
+  return (
+    <div
+      draggable
+      onDragStart={(e) => {
+        if (!fromHandle.current) { e.preventDefault(); return }
+        fromHandle.current = false
+        onDragStart()
+      }}
+      onDragOver={onDragOver}
+      onDragEnd={() => { fromHandle.current = false; onDragEnd() }}
+      onDrop={(e) => { e.preventDefault(); onDrop() }}
+      className={clsx(
+        'flex items-center gap-1.5 px-2 py-1.5 rounded transition-all',
+        isCurrent  ? 'bg-emerald-950/50 ring-1 ring-emerald-500/30' : '',
+        isPlayed   ? 'opacity-40' : '',
+        !isCurrent && !isPlayed ? 'hover:bg-gray-800/40' : '',
+        isDragging ? 'opacity-30' : '',
+        isDragOver ? 'border-t-2 border-brand-400' : '',
+      )}
+    >
+      {/* Drag handle — único ponto de início do drag */}
+      <GripVertical
+        onMouseDown={() => { fromHandle.current = true }}
+        onMouseUp={() => { fromHandle.current = false }}
+        className="h-3.5 w-3.5 text-gray-700 flex-shrink-0 cursor-grab active:cursor-grabbing"
+      />
+
+      {/* Indicador de posição */}
+      <span className={clsx(
+        'text-[10px] font-mono w-5 text-right flex-shrink-0',
+        isCurrent ? 'text-emerald-400 font-bold' : 'text-gray-600'
+      )}>
+        {isCurrent ? '▶' : item.index + 1}
+      </span>
+
+      {/* Badge de tipo */}
+      {item.typeCode ? (
+        <Badge bg={item.typeBg ?? '#374151'} color={item.typeColor ?? '#fff'} className="text-[9px] flex-shrink-0">
+          {item.typeCode}
+        </Badge>
+      ) : (
+        <span className="w-6 flex-shrink-0" />
+      )}
+
+      {/* Título — clicável para pular */}
+      <button
+        onClick={onJump}
+        title="Ir para este clipe"
+        className={clsx(
+          'flex-1 text-left text-xs truncate transition-colors min-w-0',
+          isCurrent ? 'text-white font-medium' : isPlayed ? 'text-gray-500' : 'text-gray-300 hover:text-white'
+        )}
+      >
+        {item.title}
+      </button>
+
+      {/* Duração */}
+      <span className="text-[10px] font-mono text-gray-600 flex-shrink-0 w-10 text-right">
+        {formatTime(item.duration)}
+      </span>
+
+      {/* Controles por clipe */}
+      <div className="flex items-center gap-0.5 flex-shrink-0">
+        {isCurrent ? (
+          <>
+            {/* Clipe atual: play/pause toggle */}
+            <button
+              onClick={onClipPlay}
+              disabled={clipPlayPending}
+              title={playoutStatus === 'PLAYING' ? 'Pausar' : 'Reproduzir'}
+              className={clsx(
+                'p-0.5 rounded transition-colors disabled:opacity-40',
+                playoutStatus === 'PLAYING'
+                  ? 'text-amber-400 hover:text-amber-300'
+                  : 'text-emerald-400 hover:text-emerald-300'
+              )}
+            >
+              {playoutStatus === 'PLAYING'
+                ? <Pause className="h-3 w-3" />
+                : <Play className="h-3 w-3" />}
+            </button>
+            {/* Clipe atual: stop → passthrough */}
+            <button
+              onClick={onClipStop}
+              disabled={clipStopPending}
+              title="Stop — comuta para sinal passthrough"
+              className="p-0.5 rounded text-red-500 hover:text-red-400 transition-colors disabled:opacity-40"
+            >
+              <Square className="h-3 w-3" />
+            </button>
+          </>
+        ) : (
+          <>
+            {/* Outro clipe: play para pular e reproduzir */}
+            <button
+              onClick={onClipPlay}
+              disabled={clipPlayPending || playoutStatus === 'STOPPED' || playoutStatus === 'IDLE'}
+              title="Ir para este clipe e reproduzir"
+              className="p-0.5 rounded text-gray-600 hover:text-emerald-400 transition-colors disabled:opacity-30"
+            >
+              <Play className="h-3 w-3" />
+            </button>
+            <span className="w-3.5" />
+          </>
+        )}
+      </div>
+
+      {/* Loop toggle */}
+      <button
+        onClick={onToggleLoop}
+        disabled={loopPending}
+        title={item.loop ? 'Desativar loop' : 'Ativar loop'}
+        className={clsx(
+          'flex-shrink-0 p-0.5 rounded transition-colors disabled:opacity-40',
+          item.loop ? 'text-amber-400 hover:text-amber-300' : 'text-gray-700 hover:text-gray-400'
+        )}
+      >
+        <RotateCcw className="h-3 w-3" />
+      </button>
+    </div>
+  )
+}
+
+// ─── Painel principal ─────────────────────────────────────────────────────────
 
 interface ChannelPanelProps {
   channel: Channel
@@ -67,17 +363,27 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
   const { state, connected } = usePlayoutSocket(channel.id)
   const [selectPlaylistOpen, setSelectPlaylistOpen] = useState(false)
   const [selectedPlaylistId, setSelectedPlaylistId] = useState('')
-  const [monitorOpen, setMonitorOpen] = useState(false)
+  const [monitorOpen, setMonitorOpen] = useState(true)
+  const [signalSelectorOpen, setSignalSelectorOpen] = useState(false)
+  const [playlistOpen, setPlaylistOpen] = useState(true)
+  const [dragIdx, setDragIdx] = useState<number | null>(null)
+  const [overIdx, setOverIdx] = useState<number | null>(null)
   const [monitorSrc, setMonitorSrc] = useState<string | null>(null)
   const [monitorStartAt, setMonitorStartAt] = useState(0)
-  const [fallbackStreamUrl, setFallbackStreamUrl] = useState<string | null>(null)
-  const [resolvingYt, setResolvingYt] = useState(false)
+  const [serverPreviewUrl, setServerPreviewUrl] = useState<string | null>(null)
+  const [serverPreviewLoading, setServerPreviewLoading] = useState(false)
+  const [serverPreviewError, setServerPreviewError] = useState<string | null>(null)
+  const activeServerPreviewId = useRef<string | null>(null)
 
   const status = state?.status ?? 'IDLE'
   const item = state?.currentItem ?? null
   const position = state?.position ?? 0
+  const totalElapsed = state?.totalElapsed ?? 0
+  const totalPlaylistDuration = state?.totalPlaylistDuration ?? 0
+  const currentIndex = state?.currentIndex ?? 0
+  const itemCount = state?.itemCount ?? 0
 
-  // Atualiza o monitor quando o clipe muda (não a cada segundo)
+  // Atualiza o monitor quando o clipe muda
   useEffect(() => {
     if (monitorOpen && item?.hlsPath) {
       setMonitorSrc(hlsStreamUrl(item.hlsPath))
@@ -87,18 +393,44 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
     }
   }, [item?.clipId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Resolve YouTube quando o monitor abre com fonte de fallback YOUTUBE
+  // Preview server-side para fontes ao vivo (fallback quando parado)
   useEffect(() => {
     const src = channel.fallbackSource
-    if (!monitorOpen || status === 'PLAYING' || status === 'PAUSED') return
-    if (channel.fallbackType !== 'INPUT_SOURCE' || src?.type !== 'YOUTUBE' || !src.url) return
+    const isIdle = status === 'IDLE' || status === 'STOPPED'
+    const needsServerPreview =
+      monitorOpen && isIdle &&
+      channel.fallbackType === 'INPUT_SOURCE' && src &&
+      (src.type === 'YOUTUBE' || src.type === 'SRT' || src.type === 'SDI' || src.type === 'USB' ||
+       (src.type === 'IP' && src.url && !src.url.match(/\.m3u8/i)))
 
-    setFallbackStreamUrl(null)
-    setResolvingYt(true)
-    inputSourcesApi.resolveYoutube(src.url)
-      .then(({ streamUrl }) => setFallbackStreamUrl(streamUrl))
-      .catch(() => setFallbackStreamUrl(null))
-      .finally(() => setResolvingYt(false))
+    if (!needsServerPreview) {
+      if (activeServerPreviewId.current) {
+        inputSourcesApi.stopPreview(activeServerPreviewId.current).catch(() => {})
+        activeServerPreviewId.current = null
+      }
+      setServerPreviewUrl(null)
+      setServerPreviewError(null)
+      return
+    }
+
+    const sourceId = src!.id
+    activeServerPreviewId.current = sourceId
+    setServerPreviewLoading(true)
+    setServerPreviewError(null)
+    setServerPreviewUrl(null)
+
+    inputSourcesApi.startPreview(sourceId)
+      .then(({ hlsUrl }) => setServerPreviewUrl(hlsUrl))
+      .catch((e: any) => {
+        const d = e.response?.data
+        setServerPreviewError(d?.detail ? `${d.error}: ${d.detail}` : d?.error ?? 'Falha ao iniciar preview')
+      })
+      .finally(() => setServerPreviewLoading(false))
+
+    return () => {
+      inputSourcesApi.stopPreview(sourceId).catch(() => {})
+      activeServerPreviewId.current = null
+    }
   }, [monitorOpen, channel.fallbackSourceId, status]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function toggleMonitor() {
@@ -114,6 +446,8 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
     }
   }
 
+  // ─── Queries ────────────────────────────────────────────────────────────────
+
   const { data: playlists = [] } = useQuery({
     queryKey: ['playlists', channel.id],
     queryFn: () => playlistsApi.list({ channelId: channel.id }),
@@ -123,7 +457,35 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
   const { data: inputSources = [] } = useQuery({
     queryKey: ['input-sources'],
     queryFn: inputSourcesApi.list,
-    enabled: status === 'IDLE' || status === 'STOPPED',
+    enabled: monitorOpen,
+    staleTime: 30_000,
+  })
+
+  const { data: outputs = [] } = useQuery({
+    queryKey: ['channel-outputs', channel.id],
+    queryFn: () => playoutApi.getOutputs(channel.id),
+    refetchInterval: 4000,
+  })
+
+  const { data: playlistItems = [], refetch: refetchItems } = useQuery({
+    queryKey: ['playout-items', channel.id],
+    queryFn: () => playoutApi.getItems(channel.id),
+    enabled: !!state?.playlistId,
+    refetchInterval: state?.playlistId ? 15_000 : false,
+  })
+
+  // ─── Mutations ──────────────────────────────────────────────────────────────
+
+  const toggleOutput = useMutation({
+    mutationFn: (outputId: string) => playoutApi.toggleOutput(channel.id, outputId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['channel-outputs', channel.id] }),
+    onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao alternar saída'),
+  })
+
+  const reconnectOutput = useMutation({
+    mutationFn: (outputId: string) => playoutApi.reconnectOutput(channel.id, outputId),
+    onSuccess: () => { toast.success('Reconectando...'); qc.invalidateQueries({ queryKey: ['channel-outputs', channel.id] }) },
+    onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao reconectar'),
   })
 
   const fallbackMut = useMutation({
@@ -132,31 +494,99 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['channels'] }),
   })
 
-  const availableSources = inputSources.filter(
-    (s) => s.active && (!s.channelId || s.channelId === channel.id)
-  )
+  const cutToInputMut = useMutation({
+    mutationFn: (sourceId: string) => playoutApi.cutToInput(channel.id, sourceId),
+    onSuccess: () => {
+      toast.success('Cortando para entrada...')
+      qc.invalidateQueries({ queryKey: ['channels'] })
+    },
+    onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao comutar entrada'),
+  })
 
-  const cmdMutation = (fn: () => Promise<any>, successMsg?: string) =>
-    useMutation({
-      mutationFn: fn,
-      onSuccess: () => { if (successMsg) toast.success(successMsg) },
-      onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro'),
-    })
+  const toggleLoopMut = useMutation({
+    mutationFn: (itemId: string) => playoutApi.toggleItemLoop(channel.id, itemId),
+    onSuccess: () => refetchItems(),
+    onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao alterar loop'),
+  })
 
-  const playMut = cmdMutation(
-    () => playoutApi.play(channel.id, selectedPlaylistId),
-    'Reprodução iniciada'
-  )
-  const pauseMut = cmdMutation(() => playoutApi.pause(channel.id))
-  const resumeMut = cmdMutation(() => playoutApi.resume(channel.id))
-  const stopMut = cmdMutation(() => playoutApi.stop(channel.id), 'Parado')
-  const nextMut = cmdMutation(() => playoutApi.next(channel.id))
-  const prevMut = cmdMutation(() => playoutApi.prev(channel.id))
+  const reorderMut = useMutation({
+    mutationFn: (payload: { id: string; order: number }[]) =>
+      playoutApi.reorderItems(state!.playlistId!, payload),
+    onSuccess: () => {
+      refetchItems()
+      toast.success('Ordem atualizada — ativa na próxima transição')
+    },
+    onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao reordenar'),
+  })
+
+  function handleDragStart(idx: number) { setDragIdx(idx) }
+  function handleDragOver(e: React.DragEvent, idx: number) { e.preventDefault(); setOverIdx(idx) }
+  function handleDragEnd() { setDragIdx(null); setOverIdx(null) }
+  function handleDrop(targetIdx: number) {
+    if (dragIdx == null || dragIdx === targetIdx) { setDragIdx(null); setOverIdx(null); return }
+    const newItems = [...playlistItems]
+    const [moved] = newItems.splice(dragIdx, 1)
+    newItems.splice(targetIdx, 0, moved)
+    const reordered = newItems.map((item, i) => ({ id: item.id, order: i }))
+    reorderMut.mutate(reordered)
+    setDragIdx(null)
+    setOverIdx(null)
+  }
+
+  const onErr = (e: any) => toast.error(e.response?.data?.error ?? 'Erro')
+
+  const playMut = useMutation({
+    mutationFn: () => playoutApi.play(channel.id, selectedPlaylistId),
+    onSuccess: () => toast.success('Reprodução iniciada'),
+    onError: onErr,
+  })
+  const pauseMut = useMutation({
+    mutationFn: () => playoutApi.pause(channel.id),
+    onError: onErr,
+  })
+  const resumeMut = useMutation({
+    mutationFn: () => playoutApi.resume(channel.id),
+    onError: onErr,
+  })
+  const stopMut = useMutation({
+    mutationFn: () => playoutApi.stop(channel.id),
+    onSuccess: () => toast.success('Parado'),
+    onError: onErr,
+  })
+  const nextMut = useMutation({
+    mutationFn: () => playoutApi.next(channel.id),
+    onError: onErr,
+  })
+  const prevMut = useMutation({
+    mutationFn: () => playoutApi.prev(channel.id),
+    onError: onErr,
+  })
+
+  const jumpMut = useMutation({
+    mutationFn: (index: number) => playoutApi.jump(channel.id, index),
+    onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao avançar'),
+  })
 
   function handlePlay() {
     if (!selectedPlaylistId) { setSelectPlaylistOpen(true); return }
     playMut.mutate()
   }
+
+  function handleClipPlay(idx: number) {
+    if (status === 'STOPPED' || status === 'IDLE') return
+    if (idx === currentIndex) {
+      if (status === 'PLAYING') pauseMut.mutate()
+      else if (status === 'PAUSED') resumeMut.mutate()
+    } else {
+      jumpMut.mutate(idx, {
+        onSuccess: () => { if (status === 'PAUSED') resumeMut.mutate() },
+      })
+    }
+  }
+
+  const availableSources = inputSources.filter(
+    (s) => s.active && (!s.channelId || s.channelId === channel.id)
+  )
 
   const statusColor = {
     PLAYING: 'text-emerald-400',
@@ -165,44 +595,54 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
     IDLE:    'text-gray-500',
   }[status]
 
-  const statusLabel = { PLAYING: 'AO AR', PAUSED: 'PAUSADO', STOPPED: 'PARADO', IDLE: 'AGUARDANDO' }[status]
+  const statusLabel = {
+    PLAYING: 'AO AR',
+    PAUSED:  'PAUSADO',
+    STOPPED: 'PARADO',
+    IDLE:    'AGUARDANDO',
+  }[status]
+
+  // ─── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <div className={clsx(
       'card flex flex-col gap-0 overflow-hidden transition-all',
       status === 'PLAYING' && 'ring-1 ring-emerald-500/30'
     )}>
-      {/* Header do canal */}
+
+      {/* ── Header ────────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
         <div className="flex items-center gap-2.5">
           <div className={clsx(
-            'h-8 w-8 rounded-lg flex items-center justify-center text-xs font-bold',
+            'h-8 w-8 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0',
             status === 'PLAYING' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-gray-800 text-gray-400'
           )}>
             {channel.number}
           </div>
-          <div>
-            <p className="text-sm font-semibold text-white leading-tight">{channel.name}</p>
-            <p className={clsx('text-[11px] font-bold tracking-wider', statusColor)}>{statusLabel}</p>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-white leading-tight truncate">{channel.name}</p>
+            <div className="flex items-center gap-1.5">
+              <p className={clsx('text-[11px] font-bold tracking-wider', statusColor)}>{statusLabel}</p>
+              {status === 'PLAYING' && (
+                <span className="flex items-center gap-0.5 text-[10px] text-emerald-400 font-semibold">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  LIVE
+                </span>
+              )}
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-2">
           {connected
             ? <Wifi className="h-3.5 w-3.5 text-emerald-500" />
             : <WifiOff className="h-3.5 w-3.5 text-red-500" />}
-          {status === 'PLAYING' && (
-            <span className="flex items-center gap-1 text-[10px] text-emerald-400 font-semibold">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              LIVE
-            </span>
-          )}
           <button
             onClick={toggleMonitor}
             className={clsx(
               'p-1 rounded transition-colors',
               monitorOpen ? 'text-brand-400 hover:text-brand-300' : 'text-gray-500 hover:text-gray-300'
             )}
-            title={monitorOpen ? 'Fechar monitor' : 'Abrir monitor / sinal de fallback'}
+            title={monitorOpen ? 'Fechar monitor' : 'Abrir monitor'}
           >
             {monitorOpen
               ? <MonitorOff className="h-4 w-4" />
@@ -211,47 +651,39 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
         </div>
       </div>
 
-      {/* Monitor de vídeo / fallback */}
+      {/* ── Monitor de vídeo ──────────────────────────────────────────────── */}
       {monitorOpen && (
-        <div className="px-4 pt-3 space-y-2">
+        <div className="px-3 pt-3 pb-2 space-y-2 border-b border-gray-800">
           <div className="w-full aspect-video rounded-lg overflow-hidden bg-black">
             {status === 'PLAYING' || status === 'PAUSED' ? (
               monitorSrc
                 ? <VideoPlayer src={monitorSrc} startAt={monitorStartAt} autoPlay muted className="w-full h-full" />
                 : <div className="w-full h-full flex items-center justify-center"><Radio className="h-6 w-6 text-gray-700" /></div>
             ) : (
-              // Sinal de fallback quando parado
               (() => {
                 if (channel.fallbackType === 'COLORBARS') return <ColorBars />
                 if (channel.fallbackType === 'INPUT_SOURCE') {
                   const src = channel.fallbackSource
                   if (!src) return <div className="w-full h-full bg-black" />
-
-                  // YouTube — resolve via yt-dlp
-                  if (src.type === 'YOUTUBE') {
-                    if (resolvingYt) return (
-                      <div className="w-full h-full flex flex-col items-center justify-center gap-2">
-                        <Antenna className="h-5 w-5 text-gray-600 animate-pulse" />
-                        <p className="text-[10px] text-gray-500">Resolvendo YouTube...</p>
-                      </div>
-                    )
-                    if (fallbackStreamUrl) return (
-                      <VideoPlayer src={fallbackStreamUrl} autoPlay muted className="w-full h-full" />
-                    )
-                    return (
-                      <div className="w-full h-full flex flex-col items-center justify-center gap-1">
-                        <Antenna className="h-5 w-5 text-red-500/60" />
-                        <p className="text-[10px] text-gray-500">Falha ao resolver YouTube</p>
-                      </div>
-                    )
-                  }
-
-                  // IP com HLS
-                  if ((src.type === 'IP') && src.url?.match(/\.m3u8/i)) {
+                  if (src.type === 'IP' && src.url?.match(/\.m3u8/i))
                     return <VideoPlayer src={src.url} autoPlay muted className="w-full h-full" />
-                  }
-
-                  // IP com URL direta (não HLS), SRT, SDI, USB
+                  if (serverPreviewLoading) return (
+                    <div className="w-full h-full flex flex-col items-center justify-center gap-2">
+                      <Antenna className="h-5 w-5 text-gray-600 animate-pulse" />
+                      <p className="text-[10px] text-gray-500">
+                        {src.type === 'YOUTUBE' ? 'Resolvendo via yt-dlp...' : 'Iniciando preview...'}
+                      </p>
+                    </div>
+                  )
+                  if (serverPreviewError) return (
+                    <div className="w-full h-full flex flex-col items-center justify-center gap-1 px-4">
+                      <Antenna className="h-5 w-5 text-red-500/60" />
+                      <p className="text-xs text-gray-400 font-medium text-center">{src.name}</p>
+                      <p className="text-[10px] text-red-400/70 text-center">{serverPreviewError}</p>
+                    </div>
+                  )
+                  if (serverPreviewUrl)
+                    return <VideoPlayer src={serverPreviewUrl} autoPlay muted className="w-full h-full" />
                   return (
                     <div className="w-full h-full flex flex-col items-center justify-center gap-1">
                       <Antenna className="h-5 w-5 text-gray-600" />
@@ -265,12 +697,32 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
             )}
           </div>
 
-          {/* Seletor de sinal de fallback — visível apenas quando parado */}
-          {(status === 'IDLE' || status === 'STOPPED') && (
-            <div className="flex items-center gap-1 flex-wrap">
-              <span className="text-[10px] text-gray-600 mr-1">Sinal:</span>
-              {(['BLACK', 'COLORBARS', 'INPUT_SOURCE'] as FallbackType[]).map((t) => (
-                t === 'INPUT_SOURCE' ? null : (
+          {/* Seletor de sinal + CUT buttons */}
+          <div className="flex items-center gap-1 flex-wrap">
+            <button
+              onClick={() => setSignalSelectorOpen((v) => !v)}
+              className={clsx(
+                'text-[10px] font-semibold mr-1 transition-colors flex items-center gap-0.5',
+                signalSelectorOpen ? 'text-brand-400' : 'text-gray-600 hover:text-gray-400'
+              )}
+              title={signalSelectorOpen ? 'Ocultar seletor de sinal' : 'Mostrar seletor de sinal'}
+            >
+              <ChevronDown className={clsx('h-2.5 w-2.5 transition-transform', signalSelectorOpen ? 'rotate-180' : '')} />
+              Sinal:
+            </button>
+            {/* Label da seleção atual (sempre visível, compacto) */}
+            <span className="text-[10px] text-gray-500">
+              {channel.fallbackType === 'BLACK' && '⬛ Black'}
+              {channel.fallbackType === 'COLORBARS' && '🎨 Barras'}
+              {channel.fallbackType === 'INPUT_SOURCE' && (
+                <span className="flex items-center gap-0.5"><Antenna className="h-2.5 w-2.5" />{channel.fallbackSource?.name ?? '—'}</span>
+              )}
+            </span>
+
+            {/* Botões expandidos — só aparecem quando signalSelectorOpen */}
+            {signalSelectorOpen && (
+              <>
+                {(['BLACK', 'COLORBARS'] as FallbackType[]).map((t) => (
                   <button
                     key={t}
                     onClick={() => fallbackMut.mutate({ fallbackType: t })}
@@ -281,130 +733,222 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                         : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
                     )}
                   >
-                    {t === 'BLACK' ? '⬛ Black' : '🎨 Color Bars'}
+                    {t === 'BLACK' ? '⬛ Black' : '🎨 Barras'}
                   </button>
-                )
-              ))}
-              {availableSources.map((s) => (
-                <button
-                  key={s.id}
-                  onClick={() => fallbackMut.mutate({ fallbackType: 'INPUT_SOURCE', fallbackSourceId: s.id })}
-                  className={clsx(
-                    'text-[10px] px-2 py-0.5 rounded transition-colors flex items-center gap-1',
-                    channel.fallbackType === 'INPUT_SOURCE' && channel.fallbackSourceId === s.id
-                      ? 'bg-brand-600/30 text-brand-300 ring-1 ring-brand-500/30'
-                      : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-                  )}
-                >
-                  <Antenna className="h-2.5 w-2.5" />{s.name}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Clip atual */}
-      <div className="px-4 py-3 min-h-[90px] flex flex-col justify-center gap-2">
-        {item ? (
-          <>
-            <div className="flex items-start gap-2">
-              {item.typeCode && (
-                <Badge
-                  bg={item.typeBg ?? '#374151'}
-                  color={item.typeColor ?? '#fff'}
-                  className="text-[10px] mt-0.5 shrink-0"
-                >
-                  {item.typeCode}
-                </Badge>
-              )}
-              <p className="text-sm font-semibold text-white leading-tight line-clamp-2">{item.title}</p>
-            </div>
-            {item.clientName && (
-              <p className="text-[11px] text-gray-500">{item.clientName}</p>
+                ))}
+                {availableSources.map((s) => {
+                  const isActive = channel.fallbackType === 'INPUT_SOURCE' && channel.fallbackSourceId === s.id
+                  const isPlaying = status === 'PLAYING' || status === 'PAUSED'
+                  return (
+                    <div key={s.id} className="flex items-center gap-0.5">
+                      <button
+                        onClick={() => fallbackMut.mutate({ fallbackType: 'INPUT_SOURCE', fallbackSourceId: s.id })}
+                        className={clsx(
+                          'text-[10px] px-2 py-0.5 rounded-l transition-colors flex items-center gap-1',
+                          isActive
+                            ? 'bg-brand-600/30 text-brand-300 ring-1 ring-brand-500/30'
+                            : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                        )}
+                      >
+                        <Antenna className="h-2.5 w-2.5" />{s.name}
+                      </button>
+                      <button
+                        onClick={() => cutToInputMut.mutate(s.id)}
+                        disabled={cutToInputMut.isPending}
+                        title="Cortar para esta entrada agora"
+                        className={clsx(
+                          'text-[10px] px-1.5 py-0.5 rounded-r font-bold transition-colors disabled:opacity-40',
+                          isPlaying
+                            ? 'bg-red-600/30 text-red-300 hover:bg-red-600/50 ring-1 ring-red-500/30'
+                            : 'bg-gray-700 text-gray-500 hover:bg-gray-600 hover:text-gray-300'
+                        )}
+                      >
+                        CUT
+                      </button>
+                    </div>
+                  )
+                })}
+              </>
             )}
-            <ProgressBar value={position} max={item.duration} />
-          </>
-        ) : (
-          <div className="flex items-center gap-2 text-gray-600">
-            <Radio className="h-4 w-4" />
-            <span className="text-sm">Nenhum clipe carregado</span>
           </div>
-        )}
-      </div>
-
-      {/* Playlist selecionada */}
-      {state?.programName && (
-        <div className="px-4 pb-2 flex items-center gap-1.5 text-[11px] text-gray-500">
-          <ListVideo className="h-3.5 w-3.5" />
-          <span>{state.programName}</span>
-          {state.totalElapsed > 0 && (
-            <>
-              <span className="text-gray-700">·</span>
-              <Clock className="h-3 w-3" />
-              <span>{formatTime(state.totalElapsed)} total</span>
-            </>
-          )}
         </div>
       )}
 
-      {/* Controles */}
-      <div className="px-4 py-3 border-t border-gray-800 flex items-center gap-1.5">
-        <Button
-          size="sm" variant="ghost"
-          icon={<SkipBack className="h-4 w-4" />}
-          disabled={status === 'IDLE' || prevMut.isPending}
-          onClick={() => prevMut.mutate()}
-        />
+      {/* ── Saídas de streaming ───────────────────────────────────────────── */}
+      {outputs.length > 0 && (
+        <div className="border-b border-gray-800/60 bg-gray-900/20">
+          <div className="px-3 pt-1.5 pb-0.5">
+            <span className="text-[10px] uppercase tracking-widest text-gray-600 font-semibold">Saídas</span>
+          </div>
+          <div className="px-2 pb-1.5">
+            {outputs.map((o) => (
+              <OutputRow
+                key={o.id}
+                output={o}
+                channelId={channel.id}
+                isPlaying={status === 'PLAYING'}
+                onToggle={() => toggleOutput.mutate(o.id)}
+                onReconnect={() => reconnectOutput.mutate(o.id)}
+                toggling={toggleOutput.isPending && toggleOutput.variables === o.id}
+                reconnecting={reconnectOutput.isPending && reconnectOutput.variables === o.id}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
-        {status === 'PLAYING' ? (
-          <Button
-            size="sm" variant="secondary"
-            icon={<Pause className="h-4 w-4" />}
-            loading={pauseMut.isPending}
-            onClick={() => pauseMut.mutate()}
-          >
-            Pause
-          </Button>
-        ) : status === 'PAUSED' ? (
-          <Button
-            size="sm"
-            icon={<Play className="h-4 w-4" />}
-            loading={resumeMut.isPending}
-            onClick={() => resumeMut.mutate()}
-          >
-            Retomar
-          </Button>
-        ) : (
+      {/* ── Playlist de itens ─────────────────────────────────────────────── */}
+      {state?.playlistId ? (
+        <div className="border-t border-gray-800">
+          {/* Header da playlist com transport controls integrados */}
+          <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-gray-800/50">
+            {/* Controles de transporte */}
+            <button
+              onClick={() => prevMut.mutate()}
+              disabled={status === 'IDLE' || prevMut.isPending}
+              title="Clipe anterior"
+              className="p-1 rounded text-gray-500 hover:text-white hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              <SkipBack className="h-3.5 w-3.5" />
+            </button>
+
+            {status === 'PLAYING' ? (
+              <button
+                onClick={() => pauseMut.mutate()}
+                disabled={pauseMut.isPending}
+                title="Pausar"
+                className="p-1 rounded text-amber-400 hover:bg-amber-900/30 disabled:opacity-40 transition-colors"
+              >
+                <Pause className="h-3.5 w-3.5" />
+              </button>
+            ) : status === 'PAUSED' ? (
+              <button
+                onClick={() => resumeMut.mutate()}
+                disabled={resumeMut.isPending}
+                title="Retomar"
+                className="p-1 rounded text-emerald-400 hover:bg-emerald-900/30 disabled:opacity-40 transition-colors"
+              >
+                <Play className="h-3.5 w-3.5" />
+              </button>
+            ) : (
+              <button
+                onClick={handlePlay}
+                disabled={playMut.isPending}
+                title="Play"
+                className="p-1 rounded text-emerald-400 hover:bg-emerald-900/30 disabled:opacity-40 transition-colors"
+              >
+                <Play className="h-3.5 w-3.5" />
+              </button>
+            )}
+
+            <button
+              onClick={() => stopMut.mutate()}
+              disabled={status === 'IDLE' || stopMut.isPending}
+              title="Stop"
+              className="p-1 rounded text-red-400 hover:bg-red-900/30 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              <Square className="h-3.5 w-3.5" />
+            </button>
+
+            <button
+              onClick={() => nextMut.mutate()}
+              disabled={status === 'IDLE' || nextMut.isPending}
+              title="Próximo clipe"
+              className="p-1 rounded text-gray-500 hover:text-white hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              <SkipForward className="h-3.5 w-3.5" />
+            </button>
+
+            <div className="w-px h-3.5 bg-gray-700 mx-0.5" />
+
+            {/* Info da playlist */}
+            <ListVideo className="h-3 w-3 text-gray-600 flex-shrink-0" />
+            <span className="text-[10px] text-gray-500 font-semibold truncate flex-1 min-w-0">
+              {state.programName}
+            </span>
+
+            {/* Trocar playlist */}
+            <button
+              onClick={() => setSelectPlaylistOpen(true)}
+              title="Trocar playlist"
+              className="flex-shrink-0 text-gray-600 hover:text-brand-400 transition-colors"
+            >
+              <ArrowLeftRight className="h-3.5 w-3.5" />
+            </button>
+            {playlistItems.length > 0 && (
+              <span className="text-[10px] text-gray-700 flex-shrink-0">
+                {playlistItems.length} · {formatTime(totalPlaylistDuration)}
+              </span>
+            )}
+
+            <button
+              onClick={() => setPlaylistOpen((v) => !v)}
+              className="flex-shrink-0 text-gray-600 hover:text-gray-400 transition-colors"
+              title={playlistOpen ? 'Ocultar playlist' : 'Mostrar playlist'}
+            >
+              {playlistOpen
+                ? <ChevronUp className="h-3.5 w-3.5" />
+                : <ChevronDown className="h-3.5 w-3.5" />}
+            </button>
+          </div>
+
+          {/* Barras de progresso compactas */}
+          {item && (
+            <div className="px-3 pt-1.5 pb-1 space-y-1 border-b border-gray-800/40">
+              <ClipProgressBar position={position} duration={item.duration} />
+              {totalPlaylistDuration > 0 && (
+                <PlaylistProgressBar elapsed={totalElapsed} total={totalPlaylistDuration} />
+              )}
+            </div>
+          )}
+
+          {/* Itens com DnD */}
+          {playlistOpen && (
+            <div className="max-h-52 overflow-y-auto py-1">
+              {playlistItems.length === 0 ? (
+                <p className="text-[11px] text-gray-600 text-center py-3">Carregando...</p>
+              ) : (
+                playlistItems.map((pi, idx) => (
+                  <PlaylistItemRow
+                    key={pi.id}
+                    item={pi}
+                    isCurrent={idx === currentIndex}
+                    isPlayed={idx < currentIndex}
+                    isDragging={dragIdx === idx}
+                    isDragOver={overIdx === idx && dragIdx !== idx}
+                    playoutStatus={status}
+                    onJump={() => jumpMut.mutate(idx)}
+                    onClipPlay={() => handleClipPlay(idx)}
+                    onClipStop={() => stopMut.mutate()}
+                    onToggleLoop={() => toggleLoopMut.mutate(pi.id)}
+                    loopPending={toggleLoopMut.isPending && toggleLoopMut.variables === pi.id}
+                    clipPlayPending={(jumpMut.isPending || pauseMut.isPending || resumeMut.isPending) && idx === currentIndex}
+                    clipStopPending={stopMut.isPending}
+                    onDragStart={() => handleDragStart(idx)}
+                    onDragOver={(e) => handleDragOver(e, idx)}
+                    onDragEnd={handleDragEnd}
+                    onDrop={() => handleDrop(idx)}
+                  />
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      ) : (
+        /* Sem playlist — controle simplificado */
+        <div className="px-4 py-3 border-t border-gray-800 flex items-center gap-2">
           <Button
             size="sm"
             icon={<Play className="h-4 w-4" />}
             loading={playMut.isPending}
             onClick={handlePlay}
           >
-            {selectedPlaylistId ? 'Play' : 'Selecionar...'}
+            {selectedPlaylistId ? 'Play' : 'Selecionar playlist...'}
           </Button>
-        )}
+        </div>
+      )}
 
-        <Button
-          size="sm" variant="ghost"
-          icon={<SkipForward className="h-4 w-4" />}
-          disabled={status === 'IDLE' || nextMut.isPending}
-          onClick={() => nextMut.mutate()}
-        />
-
-        <div className="flex-1" />
-
-        <Button
-          size="sm" variant="danger"
-          icon={<Square className="h-4 w-4" />}
-          loading={stopMut.isPending}
-          disabled={status === 'IDLE'}
-          onClick={() => stopMut.mutate()}
-        />
-      </div>
-
-      {/* Modal: selecionar playlist */}
+      {/* ── Modal: selecionar playlist ────────────────────────────────────── */}
       <Modal
         open={selectPlaylistOpen}
         onClose={() => setSelectPlaylistOpen(false)}

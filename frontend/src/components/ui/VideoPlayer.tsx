@@ -40,7 +40,10 @@ export function VideoPlayer({ src, poster, className, autoPlay = false, startAt,
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: false,
-        xhrSetup: (xhr) => {
+        xhrSetup: (xhr, url) => {
+          // Só envia o token para requests na própria API (evita CORS em CDNs externas)
+          const isInternal = !url || url.startsWith('/') || url.includes(window.location.hostname)
+          if (!isInternal) return
           const token = localStorage.getItem('tvplay-auth')
           if (token) {
             try {

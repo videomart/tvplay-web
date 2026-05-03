@@ -8,3 +8,5 @@ storage/
 *.log
 coverage/
 .nyc_output/
+CLAUDE.local.md
+.claude/settings.local.json

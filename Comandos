@@ -1,0 +1,18 @@
+# Rebuild completo (tudo)
+docker-compose up -d --build
+
+# Só o backend
+docker-compose up -d --build api
+
+# Só o frontend
+docker-compose up -d --build web
+
+# Só reiniciar (sem rebuild — quando não mudou código)
+docker-compose restart
+
+# Ver logs em tempo real
+docker logs tvplay_api -f
+docker logs tvplay_web -f
+
+
+

@@ -5,6 +5,8 @@ import { config } from './config'
 import authPlugin from './plugins/auth.plugin'
 import corsPlugin from './plugins/cors.plugin'
 import { registerRoutes } from './routes'
+import { initFromDb } from './services/playout.service'
+import { startScheduler } from './services/scheduler.service'
 
 const app = Fastify({
   logger: {
@@ -29,6 +31,9 @@ async function bootstrap() {
 
   await app.listen({ port: config.port, host: '0.0.0.0' })
   app.log.info(`TVPlay API rodando na porta ${config.port}`)
+
+  await initFromDb()
+  startScheduler()
 }
 
 bootstrap().catch((err) => {

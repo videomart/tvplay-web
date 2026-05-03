@@ -69,16 +69,23 @@ services:
       NODE_ENV: production
     ports:
       - '3001:3001'
+      - '4000-4020:4000-4020/udp'  # SRT / UDP listener (21 portas — suficiente para múltiplos streams)
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
       minio:
-        condition: service_started
+        condition: service_healthy
     volumes:
       - media_storage:/app/storage
     privileged: true
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3001/health || exit 1']
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
 
   web:
     build:

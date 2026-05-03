@@ -28,7 +28,11 @@ export const inputSourcesApi = {
   update: (id: string, data: Partial<InputSource>) => api.put<InputSource>(`/input-sources/${id}`, data).then((r) => r.data),
   delete: (id: string) => api.delete(`/input-sources/${id}`),
   resolveYoutube: (url: string) =>
-    api.post<{ streamUrl: string }>('/input-sources/resolve-youtube', { url }).then((r) => r.data),
+    api.post<{ streamUrl: string; isHls: boolean }>('/input-sources/resolve-youtube', { url }).then((r) => r.data),
   listDevices: () =>
     api.get<{ devices: { path: string; name: string }[] }>('/input-sources/devices').then((r) => r.data),
+  startPreview: (id: string) =>
+    api.post<{ hlsUrl: string }>(`/input-sources/${id}/preview/start`).then((r) => r.data),
+  stopPreview: (id: string) =>
+    api.delete(`/input-sources/${id}/preview/stop`),
 }

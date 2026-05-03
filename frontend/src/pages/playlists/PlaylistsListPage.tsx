@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Pencil, Trash2, ListVideo, CalendarDays } from 'lucide-react'
+import { Plus, Pencil, Trash2, ListVideo, CalendarDays, Clock } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { playlistsApi, type Playlist } from '../../api/playlists.api'
 import { channelsApi } from '../../api/channels.api'
@@ -11,7 +11,7 @@ import { Modal } from '../../components/ui/Modal'
 import { Table, Thead, Th, Tbody, Tr, Td } from '../../components/ui/Table'
 
 const today = new Date().toISOString().slice(0, 10)
-const empty = { programName: '', date: today, channelId: '', notes: '' }
+const empty = { programName: '', date: today, channelId: '', notes: '', autoStart: false, startTime: '' }
 
 export default function PlaylistsListPage() {
   const qc = useQueryClient()
@@ -28,10 +28,19 @@ export default function PlaylistsListPage() {
   })
 
   const save = useMutation({
-    mutationFn: () =>
-      editing
-        ? playlistsApi.update(editing.id, form)
-        : playlistsApi.create({ programName: form.programName, date: form.date, channelId: form.channelId, notes: form.notes }),
+    mutationFn: () => {
+      const payload = {
+        programName: form.programName,
+        date: form.date,
+        channelId: form.channelId,
+        notes: form.notes || undefined,
+        autoStart: form.autoStart,
+        startTime: form.autoStart && form.startTime ? form.startTime : null,
+      }
+      return editing
+        ? playlistsApi.update(editing.id, payload)
+        : playlistsApi.create(payload)
+    },
     onSuccess: () => {
       toast.success(editing ? 'Playlist atualizada' : 'Playlist criada')
       qc.invalidateQueries({ queryKey: ['playlists'] })
@@ -52,7 +61,14 @@ export default function PlaylistsListPage() {
   function openNew() { setEditing(null); setForm(empty); setOpen(true) }
   function openEdit(pl: Playlist) {
     setEditing(pl)
-    setForm({ programName: pl.programName, date: pl.date.slice(0, 10), channelId: pl.channelId, notes: pl.notes ?? '' })
+    setForm({
+      programName: pl.programName,
+      date: pl.date.slice(0, 10),
+      channelId: pl.channelId,
+      notes: pl.notes ?? '',
+      autoStart: pl.autoStart ?? false,
+      startTime: pl.startTime ?? '',
+    })
     setOpen(true)
   }
 
@@ -96,6 +112,11 @@ export default function PlaylistsListPage() {
                     <ListVideo className="h-4 w-4 text-gray-600 shrink-0" />
                     <span className="font-medium text-white">{pl.programName}</span>
                     {pl.locked && <span className="text-[10px] bg-gray-700 text-gray-400 px-1.5 py-0.5 rounded">Bloqueada</span>}
+                    {pl.autoStart && pl.startTime && (
+                      <span className="flex items-center gap-1 text-[10px] bg-brand-900/40 text-brand-300 px-1.5 py-0.5 rounded">
+                        <Clock className="h-2.5 w-2.5" />{pl.startTime}
+                      </span>
+                    )}
                   </div>
                 </Td>
                 <Td>
@@ -135,6 +156,32 @@ export default function PlaylistsListPage() {
             </Select>
           </div>
           <Input label="Observações" value={form.notes} onChange={f('notes')} placeholder="Opcional" />
+
+          {/* Auto-start */}
+          <div className="space-y-2">
+            <label className="flex items-center gap-3 cursor-pointer select-none">
+              <div
+                onClick={() => setForm((v) => ({ ...v, autoStart: !v.autoStart }))}
+                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${form.autoStart ? 'bg-brand-600' : 'bg-gray-700'}`}
+              >
+                <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${form.autoStart ? 'translate-x-4' : 'translate-x-0.5'}`} />
+              </div>
+              <span className="text-sm text-gray-300">Iniciar automaticamente</span>
+            </label>
+            {form.autoStart && (
+              <div className="flex items-center gap-2 pl-12">
+                <Clock className="h-4 w-4 text-gray-500 shrink-0" />
+                <Input
+                  label="Horário (HH:MM)"
+                  type="time"
+                  value={form.startTime}
+                  onChange={f('startTime')}
+                  className="w-36"
+                />
+              </div>
+            )}
+          </div>
+
           <div className="flex gap-3 justify-end pt-2">
             <Button variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button>
             <Button loading={save.isPending} onClick={() => save.mutate()}

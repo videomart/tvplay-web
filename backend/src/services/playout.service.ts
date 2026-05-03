@@ -1,4 +1,27 @@
+import { execFile } from 'child_process'
+import { promisify } from 'util'
 import { prisma } from '../lib/prisma'
+import * as streamService from './stream.service'
+
+const execFileAsync = promisify(execFile)
+
+// Resolve a URL real de uma fonte de entrada (YouTube via yt-dlp; outros direto)
+async function resolveInputUrl(src: { type: string; url: string | null; device: string | null }): Promise<string | null> {
+  const raw = src.url ?? src.device ?? null
+  if (!raw) return null
+  if (src.type !== 'YOUTUBE') return raw
+  // YouTube: resolve via yt-dlp com android client (mais confiável para lives)
+  const base = ['--no-playlist', '-g', '--no-warnings', '--socket-timeout', '15']
+  const fmt  = 'best[protocol=m3u8_native]/best[height<=720]/best'
+  for (const extra of [['--extractor-args', 'youtube:player_client=android'], []]) {
+    try {
+      const { stdout } = await execFileAsync('yt-dlp', [...base, '-f', fmt, ...extra, raw], { timeout: 35000 })
+      const url = stdout.trim().split('\n')[0]
+      if (url) return url
+    } catch { /* tenta próximo */ }
+  }
+  return null
+}
 
 export type PlayoutStatus = 'IDLE' | 'PLAYING' | 'PAUSED' | 'STOPPED'
 
@@ -9,14 +32,17 @@ export interface PlayoutState {
   programName: string | null
   currentIndex: number
   currentItem: CurrentItem | null
-  position: number        // segundos decorridos no clip atual
-  totalElapsed: number    // segundos decorridos na playlist
-  updatedAt: number       // timestamp epoch ms
+  position: number              // segundos decorridos no clip atual
+  totalElapsed: number          // segundos decorridos na playlist
+  totalPlaylistDuration: number // soma das durações de todos os itens
+  itemCount: number             // total de itens na playlist
+  updatedAt: number             // timestamp epoch ms
 }
 
 export interface CurrentItem {
   playlistItemId: string
   clipId: string
+  mediaId: string | null
   code: string
   title: string
   modality: string
@@ -42,6 +68,24 @@ const wsClients = new Map<string, Set<WSClient>>()
 const states = new Map<string, PlayoutState>()
 const timers = new Map<string, ReturnType<typeof setInterval>>()
 
+async function computePlaylistMeta(playlistId: string): Promise<{ totalDuration: number; count: number }> {
+  const items = await prisma.playlistItem.findMany({
+    where: { playlistId },
+    select: {
+      overrideCueIn: true,
+      overrideCueOut: true,
+      clip: { select: { cueIn: true, cueOut: true, duration: true, media: { select: { duration: true } } } },
+    },
+  })
+  const totalDuration = (items as any[]).reduce((sum: number, item) => {
+    const cueIn = item.overrideCueIn ?? item.clip.cueIn
+    const cueOut = item.overrideCueOut ?? item.clip.cueOut ?? item.clip.media?.duration ?? null
+    const dur = cueOut ? cueOut - cueIn : (item.clip.media?.duration ?? item.clip.duration ?? 30)
+    return sum + dur
+  }, 0)
+  return { totalDuration, count: items.length }
+}
+
 function defaultState(channelId: string): PlayoutState {
   return {
     channelId,
@@ -52,8 +96,18 @@ function defaultState(channelId: string): PlayoutState {
     currentItem: null,
     position: 0,
     totalElapsed: 0,
+    totalPlaylistDuration: 0,
+    itemCount: 0,
     updatedAt: Date.now(),
   }
+}
+
+// Persiste o estado do playout no registro do canal (playlist ativa + índice)
+async function persistState(channelId: string, playlistId: string | null, index: number) {
+  await prisma.channel.update({
+    where: { id: channelId },
+    data: { activePlaylistId: playlistId, playlistIndex: index },
+  }).catch(() => {})
 }
 
 export function getState(channelId: string): PlayoutState {
@@ -88,7 +142,7 @@ async function loadItem(playlistId: string, index: number): Promise<CurrentItem 
     include: {
       clip: {
         include: {
-          media: { select: { hlsPath: true, duration: true } },
+          media: { select: { id: true, hlsPath: true, duration: true } },
           client: { select: { name: true } },
           type: { select: { name: true, code: true, fontColor: true, fontBackColor: true } },
         },
@@ -105,6 +159,7 @@ async function loadItem(playlistId: string, index: number): Promise<CurrentItem 
   return {
     playlistItemId: item.id,
     clipId: clip.id,
+    mediaId: clip.media ? (clip.media as any).id ?? null : null,
     code: clip.code,
     title: clip.title,
     modality: clip.modality,
@@ -171,12 +226,34 @@ function startTimer(channelId: string) {
         state.currentIndex = nextIndex
         state.position = 0
         state.currentItem = await loadItem(state.playlistId, nextIndex)
+        // Persiste novo índice
+        persistState(channelId, state.playlistId, nextIndex)
+        // Reinicia streaming para o novo clipe
+        streamService.restartStreaming(channelId, state.currentItem?.mediaId ?? null, state.currentItem?.cueIn ?? 0).catch(() => {})
       } else {
         // Fim da playlist
         state.status = 'STOPPED'
         state.position = 0
+        state.currentItem = null
         stopTimer(channelId)
+        persistState(channelId, null, 0)
         await prisma.channel.update({ where: { id: channelId }, data: { status: 'STOPPED' } }).catch(() => {})
+        broadcast(channelId, state)
+
+        // Auto-switch para entrada de fallback configurada
+        const channel = await prisma.channel.findUnique({
+          where: { id: channelId },
+          include: { fallbackSource: true },
+        }).catch(() => null)
+
+        if (channel?.fallbackType === 'INPUT_SOURCE' && channel.fallbackSource) {
+          resolveInputUrl(channel.fallbackSource).then((url) => {
+            if (url) streamService.startStreamingFromUrl(channelId, url).catch(() => {})
+          }).catch(() => {})
+        } else {
+          streamService.stopStreaming(channelId)
+        }
+        return   // broadcast já foi feito acima
       }
     }
 
@@ -190,7 +267,10 @@ export async function play(channelId: string, playlistId: string): Promise<Playo
   const playlist = await prisma.playlist.findUnique({ where: { id: playlistId } })
   if (!playlist) throw new Error('Playlist não encontrada')
 
-  const firstItem = await loadItem(playlistId, 0)
+  const [firstItem, { totalDuration, count }] = await Promise.all([
+    loadItem(playlistId, 0),
+    computePlaylistMeta(playlistId),
+  ])
   const state: PlayoutState = {
     channelId,
     status: 'PLAYING',
@@ -200,11 +280,15 @@ export async function play(channelId: string, playlistId: string): Promise<Playo
     currentItem: firstItem,
     position: 0,
     totalElapsed: 0,
+    totalPlaylistDuration: totalDuration,
+    itemCount: count,
     updatedAt: Date.now(),
   }
   states.set(channelId, state)
   await prisma.channel.update({ where: { id: channelId }, data: { status: 'PLAYING' } }).catch(() => {})
+  persistState(channelId, playlistId, 0)
   startTimer(channelId)
+  streamService.startStreaming(channelId, firstItem?.mediaId ?? null, firstItem?.cueIn ?? 0).catch(() => {})
   broadcast(channelId, state)
   return state
 }
@@ -233,13 +317,28 @@ export async function resume(channelId: string): Promise<PlayoutState> {
 
 export async function stop(channelId: string): Promise<PlayoutState> {
   stopTimer(channelId)
+  streamService.stopStreaming(channelId)
   const state = states.get(channelId) ?? defaultState(channelId)
   state.status = 'STOPPED'
   state.position = 0
+  state.currentItem = null
   state.updatedAt = Date.now()
   states.set(channelId, state)
+  persistState(channelId, null, 0)
   await prisma.channel.update({ where: { id: channelId }, data: { status: 'STOPPED' } }).catch(() => {})
   broadcast(channelId, state)
+
+  // Comuta para fallback configurado (passthrough)
+  const channel = await prisma.channel.findUnique({
+    where: { id: channelId },
+    include: { fallbackSource: true },
+  }).catch(() => null)
+  if (channel?.fallbackType === 'INPUT_SOURCE' && channel.fallbackSource) {
+    resolveInputUrl(channel.fallbackSource).then((url) => {
+      if (url) streamService.startStreamingFromUrl(channelId, url).catch(() => {})
+    }).catch(() => {})
+  }
+
   return state
 }
 
@@ -253,6 +352,8 @@ export async function nextClip(channelId: string): Promise<PlayoutState> {
   state.position = 0
   state.currentItem = await loadItem(state.playlistId, nextIndex)
   state.updatedAt = Date.now()
+  persistState(channelId, state.playlistId, nextIndex)
+  streamService.restartStreaming(channelId, state.currentItem?.mediaId ?? null, state.currentItem?.cueIn ?? 0).catch(() => {})
   broadcast(channelId, state)
   return state
 }
@@ -265,6 +366,8 @@ export async function prevClip(channelId: string): Promise<PlayoutState> {
   state.position = 0
   state.currentItem = await loadItem(state.playlistId, prevIndex)
   state.updatedAt = Date.now()
+  persistState(channelId, state.playlistId, prevIndex)
+  streamService.restartStreaming(channelId, state.currentItem?.mediaId ?? null, state.currentItem?.cueIn ?? 0).catch(() => {})
   broadcast(channelId, state)
   return state
 }
@@ -278,6 +381,93 @@ export async function jumpTo(channelId: string, itemIndex: number): Promise<Play
   state.position = 0
   state.currentItem = await loadItem(state.playlistId, itemIndex)
   state.updatedAt = Date.now()
+  persistState(channelId, state.playlistId, itemIndex)
+  streamService.restartStreaming(channelId, state.currentItem?.mediaId ?? null, state.currentItem?.cueIn ?? 0).catch(() => {})
   broadcast(channelId, state)
   return state
+}
+
+// Corta imediatamente para uma fonte de entrada (interrompe playlist se ativa)
+export async function cutToInput(channelId: string, sourceId: string): Promise<PlayoutState> {
+  stopTimer(channelId)
+
+  const source = await prisma.inputSource.findUnique({ where: { id: sourceId } })
+  if (!source) throw new Error('Fonte de entrada não encontrada')
+
+  const state = states.get(channelId) ?? defaultState(channelId)
+  state.status = 'STOPPED'
+  state.currentItem = null
+  state.position = 0
+  state.updatedAt = Date.now()
+  states.set(channelId, state)
+
+  persistState(channelId, null, 0)
+  await prisma.channel.update({
+    where: { id: channelId },
+    data: { status: 'STOPPED', fallbackType: 'INPUT_SOURCE', fallbackSourceId: sourceId },
+  }).catch(() => {})
+
+  // Inicia streaming da entrada (assíncrono para não bloquear a resposta)
+  resolveInputUrl(source).then((url) => {
+    if (url) streamService.startStreamingFromUrl(channelId, url).catch(() => {})
+  }).catch(() => {})
+
+  broadcast(channelId, state)
+  return state
+}
+
+// Atualiza o flag de loop do item atual em memória (chamado após toggle no DB)
+export function updateCurrentItemLoop(channelId: string, itemId: string, loop: boolean) {
+  const state = states.get(channelId)
+  if (state?.currentItem?.playlistItemId === itemId) {
+    state.currentItem.loop = loop
+  }
+}
+
+// Restaura estado dos canais que estavam em PLAYING ou PAUSED antes do restart
+export async function initFromDb(): Promise<void> {
+  const channels = await prisma.channel.findMany({
+    where: { status: { in: ['PLAYING', 'PAUSED'] } },
+    select: { id: true, status: true, activePlaylistId: true, playlistIndex: true },
+  })
+
+  for (const ch of channels) {
+    if (!ch.activePlaylistId) {
+      // Estado inválido: limpa no DB
+      await prisma.channel.update({ where: { id: ch.id }, data: { status: 'STOPPED' } }).catch(() => {})
+      continue
+    }
+
+    const playlist = await prisma.playlist.findUnique({ where: { id: ch.activePlaylistId } })
+    if (!playlist) {
+      await prisma.channel.update({ where: { id: ch.id }, data: { status: 'STOPPED' } }).catch(() => {})
+      continue
+    }
+
+    const [item, { totalDuration, count }] = await Promise.all([
+      loadItem(ch.activePlaylistId, ch.playlistIndex),
+      computePlaylistMeta(ch.activePlaylistId),
+    ])
+    const state: PlayoutState = {
+      channelId: ch.id,
+      status: ch.status as PlayoutStatus,
+      playlistId: ch.activePlaylistId,
+      programName: playlist.programName,
+      currentIndex: ch.playlistIndex,
+      currentItem: item,
+      position: 0,
+      totalElapsed: 0,
+      totalPlaylistDuration: totalDuration,
+      itemCount: count,
+      updatedAt: Date.now(),
+    }
+    states.set(ch.id, state)
+
+    if (ch.status === 'PLAYING') {
+      startTimer(ch.id)
+      streamService.startStreaming(ch.id, item?.mediaId ?? null, item?.cueIn ?? 0).catch(() => {})
+    }
+
+    console.log(`[playout] Canal ${ch.id} restaurado: status=${ch.status} playlist=${playlist.programName} idx=${ch.playlistIndex}`)
+  }
 }

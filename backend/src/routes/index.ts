@@ -10,6 +10,8 @@ import playoutRoutes from './playout.route'
 import mediaRoutes from './media.route'
 import streamOutputRoutes from './stream-outputs.route'
 import inputSourceRoutes from './input-sources.route'
+import logsRoutes from './logs.route'
+import usersRoutes from './users.route'
 
 export async function registerRoutes(app: FastifyInstance) {
   await app.register(authRoutes,         { prefix: '/api/auth' })
@@ -23,4 +25,6 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(mediaRoutes,        { prefix: '/api/media' })
   await app.register(streamOutputRoutes, { prefix: '/api/stream-outputs' })
   await app.register(inputSourceRoutes,  { prefix: '/api/input-sources' })
+  await app.register(logsRoutes,         { prefix: '/api/logs' })
+  await app.register(usersRoutes,        { prefix: '/api/users' })
 }

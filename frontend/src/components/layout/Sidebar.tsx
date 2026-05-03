@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Tv2, Users, Tag, Film, LogOut, Radio, ListVideo, Cast, Antenna } from 'lucide-react'
+import { LayoutDashboard, Tv2, Users, Tag, Film, LogOut, Radio, ListVideo, Cast, Antenna, ClipboardList, UserCog } from 'lucide-react'
 import { useAuthStore } from '../../stores/auth.store'
 import { clsx } from 'clsx'
 
@@ -13,10 +13,16 @@ const nav = [
   { to: '/clip-types',     icon: Tag,              label: 'Tipos' },
   { to: '/stream-outputs', icon: Cast,             label: 'Saídas' },
   { to: '/input-sources',  icon: Antenna,          label: 'Entradas' },
+  { to: '/logs',           icon: ClipboardList,    label: 'Logs' },
+]
+
+const adminNav = [
+  { to: '/users', icon: UserCog, label: 'Usuários' },
 ]
 
 export default function Sidebar() {
   const { user, logout } = useAuthStore()
+  const isAdmin = user?.level === 'ADMIN'
 
   return (
     <aside className="w-56 bg-gray-900 border-r border-gray-800 flex flex-col h-full">
@@ -34,7 +40,7 @@ export default function Sidebar() {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 p-2 space-y-0.5">
+      <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto">
         {nav.map(({ to, icon: Icon, label }) => (
           <NavLink
             key={to}
@@ -47,6 +53,25 @@ export default function Sidebar() {
             {label}
           </NavLink>
         ))}
+        {isAdmin && (
+          <>
+            <div className="pt-2 pb-1 px-2">
+              <span className="text-[10px] uppercase tracking-widest text-gray-600 font-semibold">Admin</span>
+            </div>
+            {adminNav.map(({ to, icon: Icon, label }) => (
+              <NavLink
+                key={to}
+                to={to}
+                className={({ isActive }) =>
+                  clsx('sidebar-item', isActive && 'active')
+                }
+              >
+                <Icon className="h-4 w-4 flex-shrink-0" />
+                {label}
+              </NavLink>
+            ))}
+          </>
+        )}
       </nav>
 
       {/* User */}

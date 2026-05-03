@@ -24,9 +24,12 @@ export async function probeMedia(filePath: string): Promise<MediaProbe> {
       const videoStream = metadata.streams.find((s) => s.codec_type === 'video')
       const audioStream = metadata.streams.find((s) => s.codec_type === 'audio')
 
-      const fps = videoStream?.r_frame_rate
-        ? eval(videoStream.r_frame_rate)
-        : 25
+      const fps = (() => {
+        const r = videoStream?.r_frame_rate
+        if (!r) return 25
+        const [num, den] = r.split('/').map(Number)
+        return den ? num / den : num
+      })()
 
       resolve({
         duration: metadata.format.duration ?? 0,
@@ -65,23 +68,27 @@ export async function transcodeToHLS(
   const hlsDir = path.join(outputDir, mediaId)
   fs.mkdirSync(hlsDir, { recursive: true })
   const playlistPath = path.join(hlsDir, 'index.m3u8')
+  const segmentPattern = path.join(hlsDir, 'seg%03d.ts')
 
   await new Promise<void>((resolve, reject) => {
     ffmpeg(inputPath)
       .videoCodec('libx264')
       .audioCodec('aac')
       .addOptions([
+        '-map 0:v:0',
+        '-map 0:a:0?',                                         // áudio opcional (evita erro em vídeos sem áudio)
+        '-pix_fmt yuv420p',                                    // força 8-bit (compatibilidade HLS)
+        '-vf scale=trunc(iw/2)*2:trunc(ih/2)*2',              // dimensões divisíveis por 2
         '-profile:v main',
         '-level 4.0',
         '-preset fast',
         '-crf 23',
-        '-sc_threshold 0',
         '-g 48',
         '-keyint_min 48',
+        '-ac 2',                                               // downmix para estéreo
         '-hls_time 6',
         '-hls_playlist_type vod',
-        // Caminho absoluto para gravar os segmentos no diretório certo
-        '-hls_segment_filename', path.join(hlsDir, 'seg%03d.ts'),
+        `-hls_segment_filename ${segmentPattern}`,
       ])
       .output(playlistPath)
       .on('end', () => resolve())

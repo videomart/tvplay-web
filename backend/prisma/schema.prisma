@@ -50,6 +50,9 @@ enum StreamOutputType {
   RTMP
   HLS_PUSH
   SDI
+  SRT
+  UDP
+  RTP
 }
 
 enum InputSourceType {
@@ -93,6 +96,9 @@ model Channel {
   fallbackType     FallbackType @default(BLACK)
   fallbackSourceId String?
   fallbackSource   InputSource? @relation("ChannelFallback", fields: [fallbackSourceId], references: [id])
+
+  activePlaylistId String?
+  playlistIndex    Int     @default(0)
 
   playlists     Playlist[]
   streamOutputs StreamOutput[]
@@ -201,6 +207,8 @@ model Playlist {
   date        DateTime @db.Date
   programName String
   locked      Boolean  @default(false)
+  autoStart   Boolean  @default(false)
+  startTime   String?
   notes       String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -241,15 +249,16 @@ model PlaylistItem {
 // ─── Saídas de Streaming ─────────────────────────────────────────────────────
 
 model StreamOutput {
-  id        String           @id @default(cuid())
-  name      String
-  type      StreamOutputType
-  url       String?
-  streamKey String?
-  device    String?
-  active    Boolean          @default(true)
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
+  id          String           @id @default(cuid())
+  name        String
+  description String?
+  type        StreamOutputType
+  url         String?
+  streamKey   String?
+  device      String?
+  active      Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
 
   channelId String?
   channel   Channel? @relation(fields: [channelId], references: [id])

@@ -1,6 +1,11 @@
+FROM mwader/static-ffmpeg:latest AS ffmpeg-static
+
 FROM node:20-alpine
 
-RUN apk add --no-cache ffmpeg python3 py3-pip make g++ openssl openssl-dev libc6-compat v4l-utils && \
+COPY --from=ffmpeg-static /ffmpeg /usr/local/bin/ffmpeg
+COPY --from=ffmpeg-static /ffprobe /usr/local/bin/ffprobe
+
+RUN apk add --no-cache python3 py3-pip make g++ openssl openssl-dev libc6-compat v4l-utils && \
     pip3 install --no-cache-dir --break-system-packages yt-dlp
 
 WORKDIR /app
@@ -16,4 +21,4 @@ RUN npm run build
 
 EXPOSE 3001
 
-CMD ["sh", "-c", "npx prisma db push --accept-data-loss && node dist/server.js"]
+CMD ["sh", "-c", "pip3 install --upgrade --break-system-packages yt-dlp --quiet 2>/dev/null & i=0; until npx prisma db push --accept-data-loss; do i=$((i+1)); [ $i -ge 5 ] && echo 'prisma db push falhou após 5 tentativas' && exit 1; echo \"Retry $i/5 em 5s...\"; sleep 5; done && node dist/server.js"]

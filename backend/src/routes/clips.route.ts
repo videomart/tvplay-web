@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { ClipModality } from '@prisma/client'
+import { ClipModality, Prisma } from '@prisma/client'
 import { prisma } from '../lib/prisma'
 
 const clipSchema = z.object({
@@ -49,10 +49,29 @@ export default async function clipRoutes(app: FastifyInstance) {
     return { items, total, page: parseInt(page), limit: parseInt(limit) }
   })
 
+  // Rota estática deve vir antes de /:id
+  app.get('/next-code', auth, async (request: any, reply) => {
+    const prefix = ((request.query.prefix as string) ?? '').toUpperCase()
+    if (!prefix) return reply.status(400).send({ error: 'prefix é obrigatório' })
+
+    const clips = await prisma.clip.findMany({
+      where: { code: { startsWith: prefix } },
+      select: { code: true },
+    })
+
+    let max = 0
+    for (const c of clips) {
+      const n = parseInt(c.code.slice(prefix.length), 10)
+      if (!isNaN(n) && n > max) max = n
+    }
+
+    return { code: `${prefix}${String(max + 1).padStart(6, '0')}` }
+  })
+
   app.get('/:id', auth, async (request: any, reply) => {
     const clip = await prisma.clip.findUnique({
       where: { id: request.params.id },
-      include: { client: true, type: true, media: true },
+      include: { client: true, type: true, media: { select: { id: true, hlsPath: true, duration: true, ingestStatus: true } } },
     })
     if (!clip) return reply.status(404).send({ error: 'Clipe não encontrado' })
     return clip
@@ -70,7 +89,7 @@ export default async function clipRoutes(app: FastifyInstance) {
         ...body.data,
         validUntil: body.data.validUntil ? new Date(body.data.validUntil) : undefined,
       },
-      include: { client: true, type: true, media: true },
+      include: { client: true, type: true, media: { select: { id: true, hlsPath: true, duration: true, ingestStatus: true } } },
     })
     return reply.status(201).send(clip)
   })
@@ -79,17 +98,27 @@ export default async function clipRoutes(app: FastifyInstance) {
     const body = clipSchema.partial().safeParse(request.body)
     if (!body.success) return reply.status(400).send({ error: body.error.flatten() })
 
-    const clip = await prisma.clip.update({
-      where: { id: request.params.id },
-      data: {
-        ...body.data,
-        validUntil: body.data.validUntil ? new Date(body.data.validUntil) : undefined,
-      },
-      include: { client: true, type: true, media: true },
-    }).catch(() => null)
-
-    if (!clip) return reply.status(404).send({ error: 'Clipe não encontrado' })
-    return clip
+    try {
+      const clip = await prisma.clip.update({
+        where: { id: request.params.id },
+        data: {
+          ...body.data,
+          validUntil: body.data.validUntil !== undefined
+            ? (body.data.validUntil ? new Date(body.data.validUntil) : null)
+            : undefined,
+        },
+        include: { client: true, type: true, media: { select: { id: true, hlsPath: true, duration: true, ingestStatus: true } } },
+      })
+      return clip
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError) {
+        if (err.code === 'P2025') return reply.status(404).send({ error: 'Clipe não encontrado' })
+        if (err.code === 'P2002') return reply.status(409).send({ error: 'Código de clipe já cadastrado' })
+        if (err.code === 'P2003') return reply.status(400).send({ error: 'Referência inválida (cliente, tipo ou mídia não encontrado)' })
+      }
+      console.error('[PUT /clips/:id]', err)
+      return reply.status(500).send({ error: 'Erro interno ao atualizar clipe' })
+    }
   })
 
   app.delete('/:id', auth, async (request: any, reply) => {

@@ -1,9 +1,12 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
+import fs from 'fs'
+import path from 'path'
 import { InputSourceType } from '@prisma/client'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { prisma } from '../lib/prisma'
+import * as previewService from '../services/preview.service'
 
 const execFileAsync = promisify(execFile)
 
@@ -44,8 +47,104 @@ async function listVideoDevices(): Promise<{ path: string; name: string }[]> {
   }
 }
 
+function encodeProxyUrl(url: string) {
+  return Buffer.from(url).toString('base64url')
+}
+
+function decodeProxyUrl(encoded: string) {
+  return Buffer.from(encoded, 'base64url').toString('utf-8')
+}
+
+function toProxyPath(absoluteUrl: string) {
+  return `/api/input-sources/proxy-hls?url=${encodeProxyUrl(absoluteUrl)}`
+}
+
+function rewriteM3u8(text: string, originalUrl: string): string {
+  return text.split('\n').map(line => {
+    const trimmed = line.trim()
+    if (!trimmed) return line
+
+    // Reescreve atributo URI="..." dentro de tags (#EXT-X-MAP, #EXT-X-MEDIA, etc.)
+    if (trimmed.startsWith('#') && trimmed.includes('URI="')) {
+      return trimmed.replace(/URI="([^"]+)"/g, (_match, uri) => {
+        try {
+          const abs = new URL(uri, originalUrl).href
+          return `URI="${toProxyPath(abs)}"`
+        } catch { return _match }
+      })
+    }
+
+    // Linhas de segmento / sub-manifest (não começam com #)
+    if (!trimmed.startsWith('#')) {
+      try {
+        const abs = new URL(trimmed, originalUrl).href
+        return toProxyPath(abs)
+      } catch { return line }
+    }
+
+    return line
+  }).join('\n')
+}
+
 export default async function inputSourceRoutes(app: FastifyInstance) {
   const auth = { preHandler: [app.authenticate] }
+
+  // Proxy HLS — evita CORS ao buscar streams externos (YouTube CDN, etc.)
+  app.get('/proxy-hls', auth, async (request: any, reply) => {
+    const encoded = request.query.url as string
+    if (!encoded) return reply.status(400).send({ error: 'url obrigatória' })
+
+    let targetUrl: string
+    try { targetUrl = decodeProxyUrl(encoded) } catch {
+      return reply.status(400).send({ error: 'url inválida' })
+    }
+
+    const isYoutubeCdn = targetUrl.includes('googlevideo.com') || targetUrl.includes('youtube.com')
+
+    const resp = await fetch(targetUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'application/x-mpegURL,application/vnd.apple.mpegurl,*/*;q=0.9',
+        ...(isYoutubeCdn ? {
+          'Origin':  'https://www.youtube.com',
+          'Referer': 'https://www.youtube.com/',
+        } : {}),
+      },
+      redirect: 'follow',
+    }).catch((e) => { throw new Error(`Falha ao buscar stream: ${e.message}`) })
+
+    if (!resp.ok) {
+      console.error(`[proxy-hls] Upstream ${resp.status} para: ${targetUrl}`)
+      return reply.status(502).send({ error: `Upstream retornou ${resp.status}` })
+    }
+
+    const ct = resp.headers.get('content-type') ?? ''
+
+    const buf = Buffer.from(await resp.arrayBuffer())
+
+    const isManifest =
+      buf.slice(0, 7).toString('utf-8').trimStart().startsWith('#EXTM3U') ||
+      targetUrl.includes('.m3u8') ||
+      targetUrl.includes('googlevideo.com/api/manifest') ||
+      ct.includes('mpegurl') ||
+      ct.includes('x-mpegURL') ||
+      ct.includes('vnd.apple.mpegurl')
+
+    reply.header('Access-Control-Allow-Origin', '*')
+
+    if (isManifest) {
+      const rewritten = rewriteM3u8(buf.toString('utf-8'), targetUrl)
+      reply.header('Content-Type', 'application/x-mpegURL')
+      reply.header('Cache-Control', 'no-cache, no-store')
+      return reply.send(rewritten)
+    }
+
+    // Segmento binário (.ts, .aac, .mp4, etc.)
+    reply.header('Content-Type', ct || 'video/MP2T')
+    reply.header('Content-Length', buf.length)
+    reply.header('Cache-Control', 'public, max-age=3600')
+    return reply.send(buf)
+  })
 
   // Lista todos os dispositivos de vídeo disponíveis no servidor
   app.get('/devices', auth, async (_req, reply) => {
@@ -53,39 +152,42 @@ export default async function inputSourceRoutes(app: FastifyInstance) {
     return reply.send({ devices })
   })
 
-  // Resolve URL do YouTube via yt-dlp (retorna URL de stream direto)
+  // Resolve URL do YouTube via yt-dlp e retorna URL proxiada (evita CORS no browser)
   app.post('/resolve-youtube', auth, async (request: any, reply) => {
     const { url } = request.body ?? {}
     if (!url) return reply.status(400).send({ error: 'URL obrigatória' })
 
-    try {
-      // Detecta se é live para escolher o melhor formato
-      let isLive = false
+    const base = ['--no-playlist', '-g', '--no-warnings', '--socket-timeout', '15']
+
+    async function tryYtdlp(extraArgs: string[]): Promise<string | null> {
       try {
-        const { stdout: liveOut } = await execFileAsync(
-          'yt-dlp', ['--print', 'is_live', '--no-warnings', url],
-          { timeout: 15000 }
-        )
-        isLive = liveOut.trim() === 'True'
-      } catch {}
+        const { stdout } = await execFileAsync('yt-dlp', [...base, ...extraArgs, url], { timeout: 35000 })
+        return stdout.trim().split('\n')[0] || null
+      } catch { return null }
+    }
 
-      // Live → força HLS nativo; vídeo → melhor mp4 disponível
-      const format = isLive
-        ? 'best[protocol=m3u8_native]/best'
-        : 'best[ext=mp4]/best[height<=1080]/best'
+    try {
+      // android: mais confiável para lives; web: VOD fallback; sem client: último recurso
+      let rawUrl =
+        await tryYtdlp(['-f', 'best[protocol=m3u8_native]/best[height<=720]/best', '--extractor-args', 'youtube:player_client=android']) ||
+        await tryYtdlp(['-f', 'best[protocol=m3u8_native]/best[ext=mp4][vcodec!=none][acodec!=none]/best', '--extractor-args', 'youtube:player_client=web']) ||
+        await tryYtdlp(['-f', 'best[ext=mp4][vcodec!=none][acodec!=none]/best[vcodec!=none]/best'])
 
-      const { stdout } = await execFileAsync(
-        'yt-dlp',
-        ['--no-playlist', '-g', '-f', format, '--no-warnings', url],
-        { timeout: 30000 }
-      )
-      const streamUrl = stdout.trim().split('\n')[0]
-      if (!streamUrl) throw new Error('Nenhum stream encontrado')
-      return { streamUrl, isLive }
+      if (!rawUrl) throw new Error('Nenhum stream encontrado para este vídeo')
+
+      // HLS (live) → proxia para contornar CORS; mp4/outros → URL direta (video tag nativa)
+      const isHls = /\.m3u8/i.test(rawUrl) || rawUrl.includes('googlevideo.com/api/manifest')
+      const streamUrl = isHls
+        ? `/api/input-sources/proxy-hls?url=${encodeProxyUrl(rawUrl)}`
+        : rawUrl
+
+      return { streamUrl, isHls }
     } catch (e: any) {
+      const detail = e.stderr?.toString()?.trim()?.split('\n').find((l: string) => l.includes('ERROR'))
+        ?? e.message
       return reply.status(422).send({
-        error: 'Não foi possível resolver o URL. Verifique se o link é válido e público.',
-        detail: e.stderr?.toString()?.split('\n')[0] ?? e.message,
+        error: 'Não foi possível resolver o URL do YouTube.',
+        detail,
       })
     }
   })
@@ -114,7 +216,112 @@ export default async function inputSourceRoutes(app: FastifyInstance) {
   })
 
   app.delete('/:id', auth, async (request: any, reply) => {
+    previewService.stopPreview(request.params.id)
     await prisma.inputSource.delete({ where: { id: request.params.id } }).catch(() => null)
     return reply.status(204).send()
+  })
+
+  // ─── Preview ao vivo (SRT / RTSP / RTMP / UDP) via FFmpeg → HLS temp ─────────
+
+  // Inicia transcodificação da fonte para HLS temporário
+  app.post('/:id/preview/start', auth, async (request: any, reply) => {
+    const source = await prisma.inputSource.findUnique({ where: { id: request.params.id } })
+    if (!source) return reply.status(404).send({ error: 'Fonte não encontrada' })
+    if (!source.url && !source.device) return reply.status(400).send({ error: 'Fonte sem URL ou dispositivo' })
+
+    let inputUrl = source.url ?? source.device!
+
+    // YouTube: resolve URL do stream via yt-dlp e passa ao FFmpeg (sem proxy, sem CORS)
+    if (source.type === 'YOUTUBE') {
+      const base = ['--no-playlist', '-g', '--socket-timeout', '15', '--no-warnings']
+      const fmt  = 'best[protocol=m3u8_native]/best[height<=720]/best'
+
+      const tryYt = async (...extra: string[]): Promise<string | null> => {
+        try {
+          const { stdout } = await execFileAsync('yt-dlp', [...base, '-f', fmt, ...extra, inputUrl], { timeout: 35000 })
+          return stdout.trim().split('\n')[0] || null
+        } catch { return null }
+      }
+
+      // Ordem: android (mais confiável para lives) → web → sem client (fallback)
+      const resolved =
+        await tryYt('--extractor-args', 'youtube:player_client=android') ||
+        await tryYt('--extractor-args', 'youtube:player_client=web')     ||
+        await tryYt()
+
+      if (!resolved) {
+        // Última tentativa sem filtro de formato — captura stderr para diagnóstico
+        try {
+          const { stdout } = await execFileAsync('yt-dlp', [...base, inputUrl], { timeout: 35000 })
+          const url = stdout.trim().split('\n')[0]
+          if (url) { inputUrl = url }
+          else throw new Error('Nenhum stream encontrado')
+        } catch (e: any) {
+          const detail = e.stderr?.toString()?.trim()?.split('\n').find((l: string) => l.includes('ERROR')) ?? e.message
+          return reply.status(422).send({ error: 'Não foi possível resolver o YouTube.', detail })
+        }
+      } else {
+        inputUrl = resolved
+      }
+    }
+
+    previewService.startPreview(source.id, inputUrl)
+
+    // YouTube/SRT: até 20s; UDP: até 10s; outros: 8s
+    const lowerUrl = inputUrl.toLowerCase()
+    const isSrt = lowerUrl.startsWith('srt://')
+    const isUdp = lowerUrl.startsWith('udp://')
+    const isYt  = source.type === 'YOUTUBE'
+    const maxAttempts = (isSrt || isYt) ? 40 : isUdp ? 20 : 16   // ×500ms
+    const hlsFile = path.join('/tmp/tvplay-previews', source.id, 'index.m3u8')
+
+    for (let i = 0; i < maxAttempts; i++) {
+      if (fs.existsSync(hlsFile)) break
+      if (previewService.hasPreviewFailed(source.id)) break   // falha antecipada
+      await new Promise((r) => setTimeout(r, 500))
+    }
+
+    if (!fs.existsSync(hlsFile)) {
+      const failed = previewService.hasPreviewFailed(source.id)
+      previewService.stopPreview(source.id)
+      return reply.status(504).send({
+        error: failed
+          ? 'Erro no FFmpeg ao conectar à fonte. Verifique a URL e se o protocolo é suportado pelo servidor.'
+          : 'Timeout: a fonte não enviou dados no tempo esperado. Verifique se está transmitindo.',
+      })
+    }
+
+    return { hlsUrl: `/api/input-sources/${source.id}/preview/stream/index.m3u8` }
+  })
+
+  // Para a transcodificação
+  app.delete('/:id/preview/stop', auth, async (request: any, reply) => {
+    previewService.stopPreview(request.params.id)
+    return reply.status(204).send()
+  })
+
+  // Status da sessão de preview
+  app.get('/:id/preview/status', auth, async (request: any) => ({
+    running: previewService.isPreviewRunning(request.params.id),
+  }))
+
+  // Serve os segmentos HLS gerados pelo FFmpeg
+  app.get('/:id/preview/stream/*', async (request: any, reply) => {
+    const { id } = request.params
+    const file: string = request.params['*']
+    const dir = previewService.getPreviewDir(id)
+
+    if (!dir) return reply.status(404).send({ error: 'Preview não iniciado' })
+
+    const filePath = path.join(dir, file)
+    if (!fs.existsSync(filePath)) return reply.status(404).send({ error: 'Arquivo não encontrado' })
+
+    previewService.touchPreview(id)
+
+    const isPlaylist = file.endsWith('.m3u8')
+    reply.header('Content-Type', isPlaylist ? 'application/x-mpegURL' : 'video/MP2T')
+    reply.header('Cache-Control', isPlaylist ? 'no-cache, no-store' : 'public, max-age=10')
+    reply.header('Access-Control-Allow-Origin', '*')
+    return reply.send(fs.createReadStream(filePath))
   })
 }

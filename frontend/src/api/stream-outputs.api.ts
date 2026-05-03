@@ -1,10 +1,11 @@
 import { api } from './client'
 
-export type StreamOutputType = 'RTMP' | 'HLS_PUSH' | 'SDI'
+export type StreamOutputType = 'RTMP' | 'HLS_PUSH' | 'SDI' | 'SRT' | 'UDP' | 'RTP'
 
 export interface StreamOutput {
   id: string
   name: string
+  description?: string
   type: StreamOutputType
   url?: string
   streamKey?: string
@@ -19,6 +20,18 @@ export const TYPE_LABELS: Record<StreamOutputType, string> = {
   RTMP:     'RTMP',
   HLS_PUSH: 'HLS Push',
   SDI:      'SDI',
+  SRT:      'SRT',
+  UDP:      'UDP',
+  RTP:      'RTP',
+}
+
+export const TYPE_DESCRIPTIONS: Record<StreamOutputType, string> = {
+  RTMP:     'Push para YouTube Live, Facebook, Twitch, etc.',
+  HLS_PUSH: 'HLS para CDN ou servidor remoto',
+  SDI:      'Saída de vídeo SDI (hardware)',
+  SRT:      'Secure Reliable Transport — baixa latência',
+  UDP:      'UDP MPEG-TS — para decoders, IRDs',
+  RTP:      'RTP MPEG-TS — para equipamentos de broadcast',
 }
 
 export const streamOutputsApi = {

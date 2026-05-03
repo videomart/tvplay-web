@@ -21,9 +21,16 @@ export default async function ingestRoutes(app: FastifyInstance) {
     const data = await request.file()
     if (!data) return reply.status(400).send({ error: 'Nenhum arquivo enviado' })
 
-    const allowedMimes = ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/mpeg', 'video/webm']
-    if (!allowedMimes.includes(data.mimetype)) {
-      return reply.status(415).send({ error: 'Formato de arquivo não suportado' })
+    const allowedMimes = [
+      'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/mpeg', 'video/webm',
+      'application/mxf', 'video/mxf',
+      'video/mp2t', 'video/mts',                        // MPEG-TS / MTS
+      'application/octet-stream',                        // fallback genérico de browsers
+    ]
+    const allowedExts = ['.mp4', '.mov', '.avi', '.mpeg', '.mpg', '.webm', '.mxf', '.ts', '.mts', '.m2ts', '.wmv', '.mkv']
+    const fileExt = path.extname(data.filename).toLowerCase()
+    if (!allowedMimes.includes(data.mimetype) && !allowedExts.includes(fileExt)) {
+      return reply.status(415).send({ error: `Formato não suportado: ${data.mimetype} (${fileExt})` })
     }
 
     const tmpDir = path.join(config.storage.transcodeOutputPath, 'tmp')
@@ -71,14 +78,17 @@ export default async function ingestRoutes(app: FastifyInstance) {
     return media
   })
 
-  // Lista arquivos de mídia
+  // Lista arquivos de mídia (suporta ?orphan=true para mostrar só os sem clipe)
   app.get('/media', auth, async (request: any) => {
-    const { status } = request.query
+    const { status, orphan } = request.query
+    const where: any = {}
+    if (status) where.ingestStatus = status
+    if (orphan === 'true') where.clips = { none: {} }
     return prisma.mediaFile.findMany({
-      where: status ? { ingestStatus: status } : undefined,
+      where: Object.keys(where).length > 0 ? where : undefined,
       orderBy: { createdAt: 'desc' },
       take: 100,
-      select: { id: true, originalName: true, ingestStatus: true, duration: true, sizeBytes: true, createdAt: true },
+      select: { id: true, originalName: true, ingestStatus: true, duration: true, createdAt: true },
     })
   })
 }

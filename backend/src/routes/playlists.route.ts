@@ -6,8 +6,20 @@ const playlistSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   programName: z.string().min(1),
   channelId: z.string().min(1),
+  locked: z.boolean().optional(),
+  autoStart: z.boolean().optional(),
+  startTime: z.string().regex(/^\d{2}:\d{2}$/).optional().nullable(),
   notes: z.string().optional(),
 })
+
+async function assertNotLocked(playlistId: string, reply: any): Promise<boolean> {
+  const pl = await prisma.playlist.findUnique({ where: { id: playlistId }, select: { locked: true } })
+  if (pl?.locked) {
+    reply.status(403).send({ error: 'Playlist bloqueada. Desbloqueie antes de editar.' })
+    return true
+  }
+  return false
+}
 
 const itemSchema = z.object({
   clipId: z.string().min(1),
@@ -98,6 +110,7 @@ export default async function playlistRoutes(app: FastifyInstance) {
   // ─── Itens ────────────────────────────────────────────────────────────────
 
   app.post('/:id/items', auth, async (request: any, reply) => {
+    if (await assertNotLocked(request.params.id, reply)) return
     const body = itemSchema.safeParse(request.body)
     if (!body.success) return reply.status(400).send({ error: body.error.flatten() })
     const maxOrder = await prisma.playlistItem.aggregate({
@@ -130,6 +143,7 @@ export default async function playlistRoutes(app: FastifyInstance) {
   })
 
   app.put('/:id/items/:itemId', auth, async (request: any, reply) => {
+    if (await assertNotLocked(request.params.id, reply)) return
     const body = itemSchema.partial().safeParse(request.body)
     if (!body.success) return reply.status(400).send({ error: body.error.flatten() })
     const item = await prisma.playlistItem.update({
@@ -153,12 +167,14 @@ export default async function playlistRoutes(app: FastifyInstance) {
   })
 
   app.delete('/:id/items/:itemId', auth, async (request: any, reply) => {
+    if (await assertNotLocked(request.params.id, reply)) return
     await prisma.playlistItem.delete({ where: { id: request.params.itemId } }).catch(() => null)
     return reply.status(204).send()
   })
 
   // Reordenar itens em massa (drag-and-drop)
   app.put('/:id/reorder', auth, async (request: any, reply) => {
+    if (await assertNotLocked(request.params.id, reply)) return
     const body = reorderSchema.safeParse(request.body)
     if (!body.success) return reply.status(400).send({ error: body.error.flatten() })
     await prisma.$transaction(
