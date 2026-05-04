@@ -85,4 +85,8 @@ export const playoutApi = {
     api.post<{ id: string; loop: boolean }>(`/playout/${channelId}/items/${itemId}/toggle-loop`).then((r) => r.data),
   reorderItems: (playlistId: string, items: { id: string; order: number }[]) =>
     api.put(`/playlists/${playlistId}/reorder`, items).then((r) => r.data),
+  insertClip: (channelId: string, clipId: string) =>
+    api.post<PlayoutState>(`/playout/${channelId}/insert`, { clipId }).then((r) => r.data),
+  removeItem: (channelId: string, itemId: string) =>
+    api.delete<PlayoutState>(`/playout/${channelId}/items/${itemId}`).then((r) => r.data),
 }

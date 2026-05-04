@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Play, Pause, Square, SkipForward, SkipBack,
   Radio, Wifi, WifiOff, ListVideo, MonitorPlay, MonitorOff, Antenna,
-  ChevronDown, ChevronUp, RefreshCw, RotateCcw, GripVertical, ArrowLeftRight,
+  ChevronDown, ChevronUp, RefreshCw, RotateCcw, GripVertical, ArrowLeftRight, Trash2,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
@@ -11,6 +11,7 @@ import { playoutApi, type ChannelOutput, type PlaylistItemRow } from '../../api/
 import { playlistsApi } from '../../api/playlists.api'
 import { channelsApi, type Channel, type FallbackType } from '../../api/channels.api'
 import { inputSourcesApi } from '../../api/input-sources.api'
+import { settingsApi } from '../../api/settings.api'
 import { usePlayoutSocket } from '../../hooks/usePlayoutSocket'
 import { Button } from '../../components/ui/Button'
 import { Badge } from '../../components/ui/Badge'
@@ -204,8 +205,8 @@ function OutputRow({
 function PlaylistItemRow({
   item, isCurrent, isPlayed, isDragging, isDragOver,
   playoutStatus,
-  onJump, onClipPlay, onClipStop, onToggleLoop,
-  loopPending, clipPlayPending, clipStopPending,
+  onJump, onClipPlay, onClipStop, onToggleLoop, onDelete,
+  loopPending, clipPlayPending, clipStopPending, deletePending,
   onDragStart, onDragOver, onDragEnd, onDrop,
 }: {
   item: PlaylistItemRow
@@ -218,9 +219,11 @@ function PlaylistItemRow({
   onClipPlay: () => void
   onClipStop: () => void
   onToggleLoop: () => void
+  onDelete: () => void
   loopPending: boolean
   clipPlayPending: boolean
   clipStopPending: boolean
+  deletePending: boolean
   onDragStart: () => void
   onDragOver: (e: React.DragEvent) => void
   onDragEnd: () => void
@@ -348,6 +351,18 @@ function PlaylistItemRow({
       >
         <RotateCcw className="h-3 w-3" />
       </button>
+
+      {/* Excluir item (apenas se não for o clipe atual em reprodução) */}
+      {!isCurrent && (
+        <button
+          onClick={onDelete}
+          disabled={deletePending}
+          title="Remover da playlist"
+          className="flex-shrink-0 p-0.5 rounded text-gray-700 hover:text-red-400 transition-colors disabled:opacity-40"
+        >
+          <Trash2 className="h-3 w-3" />
+        </button>
+      )}
     </div>
   )
 }
@@ -361,11 +376,32 @@ interface ChannelPanelProps {
 export default function ChannelPanel({ channel }: ChannelPanelProps) {
   const qc = useQueryClient()
   const { state, connected } = usePlayoutSocket(channel.id)
+
+  const { data: sysSettings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: settingsApi.get,
+    staleTime: 60_000,
+  })
+
   const [selectPlaylistOpen, setSelectPlaylistOpen] = useState(false)
   const [selectedPlaylistId, setSelectedPlaylistId] = useState('')
   const [monitorOpen, setMonitorOpen] = useState(true)
+  const [fallbackOpen, setFallbackOpen] = useState(true)
   const [signalSelectorOpen, setSignalSelectorOpen] = useState(false)
+  const [outputsOpen, setOutputsOpen] = useState(true)
   const [playlistOpen, setPlaylistOpen] = useState(true)
+  const [defaultsApplied, setDefaultsApplied] = useState(false)
+
+  // Aplica defaults do SystemSettings na primeira carga
+  useEffect(() => {
+    if (sysSettings && !defaultsApplied) {
+      setMonitorOpen(sysSettings.defaultMonitorOpen)
+      setFallbackOpen(sysSettings.defaultFallbackOpen)
+      setOutputsOpen(sysSettings.defaultOutputsOpen)
+      setPlaylistOpen(sysSettings.defaultPlaylistOpen)
+      setDefaultsApplied(true)
+    }
+  }, [sysSettings, defaultsApplied])
   const [dragIdx, setDragIdx] = useState<number | null>(null)
   const [overIdx, setOverIdx] = useState<number | null>(null)
   const [monitorSrc, setMonitorSrc] = useState<string | null>(null)
@@ -449,8 +485,8 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
   // ─── Queries ────────────────────────────────────────────────────────────────
 
   const { data: playlists = [] } = useQuery({
-    queryKey: ['playlists', channel.id],
-    queryFn: () => playlistsApi.list({ channelId: channel.id }),
+    queryKey: ['playlists-all'],
+    queryFn: () => playlistsApi.list(),
     enabled: selectPlaylistOpen,
   })
 
@@ -517,6 +553,12 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
       toast.success('Ordem atualizada — ativa na próxima transição')
     },
     onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao reordenar'),
+  })
+
+  const deleteItemMut = useMutation({
+    mutationFn: (itemId: string) => playoutApi.removeItem(channel.id, itemId),
+    onSuccess: () => { toast.success('Item removido'); refetchItems() },
+    onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao remover item'),
   })
 
   function handleDragStart(idx: number) { setDragIdx(idx) }
@@ -632,10 +674,20 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           {connected
             ? <Wifi className="h-3.5 w-3.5 text-emerald-500" />
             : <WifiOff className="h-3.5 w-3.5 text-red-500" />}
+          <button
+            onClick={() => setFallbackOpen((v) => !v)}
+            className={clsx(
+              'p-1 rounded transition-colors',
+              fallbackOpen ? 'text-brand-400 hover:text-brand-300' : 'text-gray-500 hover:text-gray-300'
+            )}
+            title={fallbackOpen ? 'Ocultar sinal/fallback' : 'Mostrar sinal/fallback'}
+          >
+            <Antenna className="h-4 w-4" />
+          </button>
           <button
             onClick={toggleMonitor}
             className={clsx(
@@ -653,7 +705,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
 
       {/* ── Monitor de vídeo ──────────────────────────────────────────────── */}
       {monitorOpen && (
-        <div className="px-3 pt-3 pb-2 space-y-2 border-b border-gray-800">
+        <div className="px-3 pt-3 pb-2 border-b border-gray-800">
           <div className="w-full aspect-video rounded-lg overflow-hidden bg-black">
             {status === 'PLAYING' || status === 'PAUSED' ? (
               monitorSrc
@@ -696,7 +748,12 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
               })()
             )}
           </div>
+        </div>
+      )}
 
+      {/* ── Seletor de sinal / Fallback ───────────────────────────────────── */}
+      {fallbackOpen && (
+        <div className="px-3 py-2 border-b border-gray-800">
           {/* Seletor de sinal + CUT buttons */}
           <div className="flex items-center gap-1 flex-wrap">
             <button
@@ -777,23 +834,41 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
       {/* ── Saídas de streaming ───────────────────────────────────────────── */}
       {outputs.length > 0 && (
         <div className="border-b border-gray-800/60 bg-gray-900/20">
-          <div className="px-3 pt-1.5 pb-0.5">
-            <span className="text-[10px] uppercase tracking-widest text-gray-600 font-semibold">Saídas</span>
+          <div className="flex items-center justify-between px-3 pt-1.5 pb-0.5">
+            <span className="text-[10px] uppercase tracking-widest text-gray-600 font-semibold">
+              Saídas
+              {!outputsOpen && (
+                <span className="ml-1.5 text-gray-700 normal-case tracking-normal">
+                  ({outputs.filter((o) => o.streaming).length} ao ar)
+                </span>
+              )}
+            </span>
+            <button
+              onClick={() => setOutputsOpen((v) => !v)}
+              className="text-gray-700 hover:text-gray-400 transition-colors"
+              title={outputsOpen ? 'Ocultar saídas' : 'Mostrar saídas'}
+            >
+              {outputsOpen
+                ? <ChevronUp className="h-3 w-3" />
+                : <ChevronDown className="h-3 w-3" />}
+            </button>
           </div>
-          <div className="px-2 pb-1.5">
-            {outputs.map((o) => (
-              <OutputRow
-                key={o.id}
-                output={o}
-                channelId={channel.id}
-                isPlaying={status === 'PLAYING'}
-                onToggle={() => toggleOutput.mutate(o.id)}
-                onReconnect={() => reconnectOutput.mutate(o.id)}
-                toggling={toggleOutput.isPending && toggleOutput.variables === o.id}
-                reconnecting={reconnectOutput.isPending && reconnectOutput.variables === o.id}
-              />
-            ))}
-          </div>
+          {outputsOpen && (
+            <div className="px-2 pb-1.5">
+              {outputs.map((o) => (
+                <OutputRow
+                  key={o.id}
+                  output={o}
+                  channelId={channel.id}
+                  isPlaying={status === 'PLAYING'}
+                  onToggle={() => toggleOutput.mutate(o.id)}
+                  onReconnect={() => reconnectOutput.mutate(o.id)}
+                  toggling={toggleOutput.isPending && toggleOutput.variables === o.id}
+                  reconnecting={reconnectOutput.isPending && reconnectOutput.variables === o.id}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -921,7 +996,9 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                     onClipPlay={() => handleClipPlay(idx)}
                     onClipStop={() => stopMut.mutate()}
                     onToggleLoop={() => toggleLoopMut.mutate(pi.id)}
+                    onDelete={() => deleteItemMut.mutate(pi.id)}
                     loopPending={toggleLoopMut.isPending && toggleLoopMut.variables === pi.id}
+                    deletePending={deleteItemMut.isPending && deleteItemMut.variables === pi.id}
                     clipPlayPending={(jumpMut.isPending || pauseMut.isPending || resumeMut.isPending) && idx === currentIndex}
                     clipStopPending={stopMut.isPending}
                     onDragStart={() => handleDragStart(idx)}
@@ -976,6 +1053,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                   <p className="text-[11px] text-gray-500 mt-0.5">
                     {new Date(pl.date).toLocaleDateString('pt-BR')}
                     {pl._count && ` · ${pl._count.items} clipes`}
+                    {pl.channel && ` · ${pl.channel.name}`}
                   </p>
                 </button>
               ))}

@@ -286,6 +286,25 @@ model InputSource {
   @@map("input_sources")
 }
 
+// ─── Configurações do Sistema ────────────────────────────────────────────────
+
+model SystemSettings {
+  id          String  @id @default("singleton")
+  companyName String  @default("TVPlay")
+  logoUrl     String?
+  email       String?
+
+  // Visibilidade default dos blocos no Playout
+  defaultMonitorOpen  Boolean @default(true)
+  defaultFallbackOpen Boolean @default(true)
+  defaultOutputsOpen  Boolean @default(true)
+  defaultPlaylistOpen Boolean @default(true)
+
+  updatedAt DateTime @updatedAt
+
+  @@map("system_settings")
+}
+
 // ─── Log de Exibição ──────────────────────────────────────────────────────────
 
 model Log {

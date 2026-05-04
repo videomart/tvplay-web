@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Tv2, Radio } from 'lucide-react'
 import { channelsApi } from '../../api/channels.api'
 import ChannelPanel from './ChannelPanel'
+import ClipLibraryPanel from './ClipLibraryPanel'
 
 export default function PlayoutPage() {
   const { data: channels = [], isLoading } = useQuery({
@@ -11,6 +12,17 @@ export default function PlayoutPage() {
   })
 
   const active = channels.filter((ch) => ch.active)
+
+  // Monta a grade intercalando os canais com a biblioteca após o primeiro canal
+  function buildGrid() {
+    if (active.length === 0) return []
+    const panels: React.ReactNode[] = [<ChannelPanel key={active[0].id} channel={active[0]} />]
+    panels.push(<ClipLibraryPanel key="library" channels={active} />)
+    for (let i = 1; i < active.length; i++) {
+      panels.push(<ChannelPanel key={active[i].id} channel={active[i]} />)
+    }
+    return panels
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -41,9 +53,7 @@ export default function PlayoutPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {active.map((ch) => (
-            <ChannelPanel key={ch.id} channel={ch} />
-          ))}
+          {buildGrid()}
         </div>
       )}
     </div>

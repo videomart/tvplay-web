@@ -181,6 +181,22 @@ export default async function playoutRoutes(app: FastifyInstance) {
     })
   })
 
+  // Insere clipe ao vivo após o item atual
+  app.post('/:channelId/insert', auth, async (request: any, reply) => {
+    const { clipId } = request.body as { clipId: string }
+    if (!clipId) return reply.status(400).send({ error: 'clipId é obrigatório' })
+    return playout.insertClip(request.params.channelId, clipId).catch((e) =>
+      reply.status(400).send({ error: e.message })
+    )
+  })
+
+  // Remove item da playlist ativa
+  app.delete('/:channelId/items/:itemId', auth, async (request: any, reply) =>
+    playout.removeItem(request.params.channelId, request.params.itemId).catch((e) =>
+      reply.status(400).send({ error: e.message })
+    )
+  )
+
   // Toggle loop de um item da playlist — atualiza DB e estado em memória
   app.post('/:channelId/items/:itemId/toggle-loop', auth, async (request: any, reply) => {
     const { channelId, itemId } = request.params

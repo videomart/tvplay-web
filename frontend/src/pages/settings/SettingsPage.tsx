@@ -1,0 +1,280 @@
+import { useState, useEffect } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Settings, Building2, Tv2, LayoutDashboard, Save } from 'lucide-react'
+import toast from 'react-hot-toast'
+import { clsx } from 'clsx'
+import { settingsApi } from '../../api/settings.api'
+import { channelsApi } from '../../api/channels.api'
+import { Button } from '../../components/ui/Button'
+import { Input } from '../../components/ui/Input'
+
+const inputCls = 'w-full rounded-lg bg-gray-800 border border-gray-700 text-gray-100 placeholder-gray-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 transition-colors text-sm px-3 py-2'
+
+type Tab = 'empresa' | 'canais' | 'playout'
+
+export default function SettingsPage() {
+  const qc = useQueryClient()
+  const [tab, setTab] = useState<Tab>('empresa')
+
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: settingsApi.get,
+  })
+
+  const { data: channels = [] } = useQuery({
+    queryKey: ['channels'],
+    queryFn: channelsApi.list,
+  })
+
+  const saveMut = useMutation({
+    mutationFn: settingsApi.update,
+    onSuccess: () => {
+      toast.success('Configurações salvas')
+      qc.invalidateQueries({ queryKey: ['settings'] })
+    },
+    onError: () => toast.error('Erro ao salvar'),
+  })
+
+  const saveChannelMut = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: { name: string; description?: string } }) =>
+      channelsApi.update(id, data),
+    onSuccess: () => {
+      toast.success('Canal atualizado')
+      qc.invalidateQueries({ queryKey: ['channels'] })
+    },
+    onError: () => toast.error('Erro ao atualizar canal'),
+  })
+
+  // ─── Estado local dos formulários ──────────────────────────────────────────
+
+  const [empresa, setEmpresa] = useState({ companyName: '', logoUrl: '', email: '' })
+  const [playoutDefaults, setPlayoutDefaults] = useState({
+    defaultMonitorOpen: true,
+    defaultFallbackOpen: true,
+    defaultOutputsOpen: true,
+    defaultPlaylistOpen: true,
+  })
+  const [channelNames, setChannelNames] = useState<Record<string, { name: string; description: string }>>({})
+
+  useEffect(() => {
+    if (settings) {
+      setEmpresa({
+        companyName: settings.companyName,
+        logoUrl: settings.logoUrl ?? '',
+        email: settings.email ?? '',
+      })
+      setPlayoutDefaults({
+        defaultMonitorOpen:  settings.defaultMonitorOpen,
+        defaultFallbackOpen: settings.defaultFallbackOpen,
+        defaultOutputsOpen:  settings.defaultOutputsOpen,
+        defaultPlaylistOpen: settings.defaultPlaylistOpen,
+      })
+    }
+  }, [settings])
+
+  useEffect(() => {
+    if (channels.length) {
+      const initial: Record<string, { name: string; description: string }> = {}
+      channels.forEach((ch) => { initial[ch.id] = { name: ch.name, description: ch.description ?? '' } })
+      setChannelNames(initial)
+    }
+  }, [channels])
+
+  // ─── Tabs ─────────────────────────────────────────────────────────────────
+
+  const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
+    { id: 'empresa',  label: 'Empresa',         icon: Building2 },
+    { id: 'canais',   label: 'Canais',           icon: Tv2 },
+    { id: 'playout',  label: 'Padrões Playout',  icon: LayoutDashboard },
+  ]
+
+  return (
+    <div className="p-6 max-w-2xl mx-auto space-y-6">
+      <div className="flex items-center gap-2.5">
+        <Settings className="h-6 w-6 text-brand-400" />
+        <h1 className="text-2xl font-bold text-white">Configurações</h1>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 bg-gray-900 p-1 rounded-lg">
+        {tabs.map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            onClick={() => setTab(id)}
+            className={clsx(
+              'flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium transition-colors',
+              tab === id
+                ? 'bg-brand-600/30 text-brand-300 ring-1 ring-brand-500/30'
+                : 'text-gray-500 hover:text-gray-300'
+            )}
+          >
+            <Icon className="h-3.5 w-3.5" />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Aba: Empresa ───────────────────────────────────────────────────── */}
+      {tab === 'empresa' && (
+        <div className="card p-5 space-y-4">
+          <h2 className="text-sm font-semibold text-white">Dados da Empresa</h2>
+
+          <Input
+            label="Nome da empresa / emissora"
+            value={empresa.companyName}
+            onChange={(e) => setEmpresa((s) => ({ ...s, companyName: e.target.value }))}
+            placeholder="Ex.: TV Exemplo"
+          />
+
+          <div className="space-y-1.5">
+            <Input
+              label="URL do logotipo (PNG/SVG com fundo transparente)"
+              value={empresa.logoUrl}
+              onChange={(e) => setEmpresa((s) => ({ ...s, logoUrl: e.target.value }))}
+              placeholder="https://..."
+            />
+            <p className="text-[11px] text-gray-600">
+              Recomendado: PNG ou SVG com fundo transparente, quadrado, mínimo 128×128 px.
+              O logo aparece na barra lateral com altura de 28 px.
+            </p>
+            {empresa.logoUrl && (
+              <div className="mt-2 flex items-center gap-3">
+                <img
+                  src={empresa.logoUrl}
+                  alt="preview"
+                  className="h-14 w-14 object-contain rounded-lg bg-gray-800 p-1 border border-gray-700"
+                />
+                <span className="text-xs text-gray-500">Pré-visualização</span>
+              </div>
+            )}
+          </div>
+
+          <Input
+            label="E-mail de contato"
+            type="email"
+            value={empresa.email}
+            onChange={(e) => setEmpresa((s) => ({ ...s, email: e.target.value }))}
+            placeholder="contato@empresa.com"
+          />
+
+          <div className="flex justify-end pt-2">
+            <Button
+              icon={<Save className="h-4 w-4" />}
+              loading={saveMut.isPending}
+              onClick={() => saveMut.mutate({
+                companyName: empresa.companyName || 'TVPlay',
+                logoUrl: empresa.logoUrl || null,
+                email: empresa.email || null,
+              })}
+            >
+              Salvar
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Aba: Canais ────────────────────────────────────────────────────── */}
+      {tab === 'canais' && (
+        <div className="card p-5 space-y-4">
+          <h2 className="text-sm font-semibold text-white">Designação dos Canais</h2>
+          <p className="text-xs text-gray-500">
+            Defina nomes e descrições para cada canal conforme a finalidade (ex.: "Canal Broadcast", "Transmissão YouTube").
+          </p>
+
+          {channels.length === 0 && (
+            <p className="text-sm text-gray-500 text-center py-4">Nenhum canal cadastrado.</p>
+          )}
+
+          {channels.map((ch) => {
+            const local = channelNames[ch.id] ?? { name: ch.name, description: ch.description ?? '' }
+            return (
+              <div key={ch.id} className="space-y-3 p-3 bg-gray-800/40 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <span className="h-7 w-7 rounded bg-gray-700 flex items-center justify-center text-xs font-bold text-gray-300">
+                    {ch.number}
+                  </span>
+                  <span className="text-xs text-gray-500">Canal {ch.number}</span>
+                </div>
+                <input
+                  value={local.name}
+                  onChange={(e) =>
+                    setChannelNames((s) => ({ ...s, [ch.id]: { ...local, name: e.target.value } }))
+                  }
+                  className={inputCls}
+                  placeholder="Ex.: Canal Broadcast"
+                />
+                <input
+                  value={local.description}
+                  onChange={(e) =>
+                    setChannelNames((s) => ({ ...s, [ch.id]: { ...local, description: e.target.value } }))
+                  }
+                  className={inputCls}
+                  placeholder="Descrição (opcional)"
+                />
+                <div className="flex justify-end">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    icon={<Save className="h-3.5 w-3.5" />}
+                    loading={saveChannelMut.isPending && (saveChannelMut.variables as any)?.id === ch.id}
+                    onClick={() =>
+                      saveChannelMut.mutate({ id: ch.id, data: { name: local.name, description: local.description } })
+                    }
+                  >
+                    Salvar canal
+                  </Button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* ── Aba: Padrões Playout ───────────────────────────────────────────── */}
+      {tab === 'playout' && (
+        <div className="card p-5 space-y-4">
+          <h2 className="text-sm font-semibold text-white">Visibilidade Padrão dos Blocos no Playout</h2>
+          <p className="text-xs text-gray-500">
+            Define o estado inicial (aberto/fechado) de cada bloco ao carregar o painel de playout.
+          </p>
+
+          {(
+            [
+              { key: 'defaultMonitorOpen',  label: 'Monitor de vídeo' },
+              { key: 'defaultFallbackOpen', label: 'Seletor de Sinal / Fallback' },
+              { key: 'defaultOutputsOpen',  label: 'Saídas de Streaming' },
+              { key: 'defaultPlaylistOpen', label: 'Playlist (lista de itens)' },
+            ] as { key: keyof typeof playoutDefaults; label: string }[]
+          ).map(({ key, label }) => (
+            <div key={key} className="flex items-center justify-between gap-3 p-3 rounded-lg hover:bg-gray-800/30">
+              <span className="text-sm text-gray-300">{label}</span>
+              <button
+                type="button"
+                onClick={() => setPlayoutDefaults((s) => ({ ...s, [key]: !s[key] }))}
+                className={clsx(
+                  'relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0',
+                  playoutDefaults[key] ? 'bg-brand-600' : 'bg-gray-700'
+                )}
+              >
+                <span className={clsx(
+                  'inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform',
+                  playoutDefaults[key] ? 'translate-x-[18px]' : 'translate-x-0.5'
+                )} />
+              </button>
+            </div>
+          ))}
+
+          <div className="flex justify-end pt-2">
+            <Button
+              icon={<Save className="h-4 w-4" />}
+              loading={saveMut.isPending}
+              onClick={() => saveMut.mutate(playoutDefaults)}
+            >
+              Salvar
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

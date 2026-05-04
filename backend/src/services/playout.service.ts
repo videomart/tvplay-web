@@ -424,6 +424,85 @@ export function updateCurrentItemLoop(channelId: string, itemId: string, loop: b
   }
 }
 
+// Insere um clipe imediatamente após o item atual na playlist ativa
+export async function insertClip(channelId: string, clipId: string): Promise<PlayoutState> {
+  const state = states.get(channelId)
+  if (!state || !state.playlistId) throw new Error('Nenhuma playlist ativa')
+
+  const clip = await prisma.clip.findUnique({ where: { id: clipId } })
+  if (!clip) throw new Error('Clipe não encontrado')
+
+  const insertOrder = state.currentIndex + 1
+
+  await prisma.playlistItem.updateMany({
+    where: { playlistId: state.playlistId, order: { gte: insertOrder } },
+    data: { order: { increment: 1 } },
+  })
+
+  await prisma.playlistItem.create({
+    data: { playlistId: state.playlistId, clipId, order: insertOrder, loop: false, breakNum: 0 },
+  })
+
+  const { totalDuration, count } = await computePlaylistMeta(state.playlistId)
+  state.totalPlaylistDuration = totalDuration
+  state.itemCount = count
+  state.updatedAt = Date.now()
+  broadcast(channelId, state)
+  return state
+}
+
+// Remove um item da playlist ativa; se for o clipe atual, avança para o próximo
+export async function removeItem(channelId: string, itemId: string): Promise<PlayoutState> {
+  const state = states.get(channelId)
+  if (!state || !state.playlistId) throw new Error('Nenhuma playlist ativa')
+
+  const items = await prisma.playlistItem.findMany({
+    where: { playlistId: state.playlistId },
+    orderBy: { order: 'asc' },
+  })
+
+  const removeIdx = items.findIndex((i: { id: string }) => i.id === itemId)
+  if (removeIdx === -1) throw new Error('Item não encontrado na playlist ativa')
+
+  const isActive = state.status === 'PLAYING' || state.status === 'PAUSED'
+  const isCurrentItem = removeIdx === state.currentIndex
+
+  if (isCurrentItem && isActive && items.length === 1) {
+    throw new Error('Não é possível remover o único clipe enquanto o canal está em reprodução')
+  }
+
+  const removedOrder = items[removeIdx].order
+
+  await prisma.playlistItem.delete({ where: { id: itemId } })
+  await prisma.playlistItem.updateMany({
+    where: { playlistId: state.playlistId, order: { gt: removedOrder } },
+    data: { order: { decrement: 1 } },
+  })
+
+  let newIndex = state.currentIndex
+  if (removeIdx < state.currentIndex) {
+    newIndex = state.currentIndex - 1
+  } else if (isCurrentItem) {
+    newIndex = Math.min(state.currentIndex, items.length - 2)
+  }
+
+  state.currentIndex = newIndex
+
+  if (isCurrentItem && isActive) {
+    state.position = 0
+    state.currentItem = await loadItem(state.playlistId, newIndex)
+    persistState(channelId, state.playlistId, newIndex)
+    streamService.restartStreaming(channelId, state.currentItem?.mediaId ?? null, state.currentItem?.cueIn ?? 0).catch(() => {})
+  }
+
+  const { totalDuration, count } = await computePlaylistMeta(state.playlistId)
+  state.totalPlaylistDuration = totalDuration
+  state.itemCount = count
+  state.updatedAt = Date.now()
+  broadcast(channelId, state)
+  return state
+}
+
 // Restaura estado dos canais que estavam em PLAYING ou PAUSED antes do restart
 export async function initFromDb(): Promise<void> {
   const channels = await prisma.channel.findMany({

@@ -12,6 +12,7 @@ import streamOutputRoutes from './stream-outputs.route'
 import inputSourceRoutes from './input-sources.route'
 import logsRoutes from './logs.route'
 import usersRoutes from './users.route'
+import settingsRoutes from './settings.route'
 
 export async function registerRoutes(app: FastifyInstance) {
   await app.register(authRoutes,         { prefix: '/api/auth' })
@@ -27,4 +28,5 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(inputSourceRoutes,  { prefix: '/api/input-sources' })
   await app.register(logsRoutes,         { prefix: '/api/logs' })
   await app.register(usersRoutes,        { prefix: '/api/users' })
+  await app.register(settingsRoutes,     { prefix: '/api/settings' })
 }
