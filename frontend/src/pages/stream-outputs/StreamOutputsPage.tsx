@@ -79,7 +79,7 @@ export default function StreamOutputsPage() {
         url:         getUrlForSave(),
         streamKey:   (form.type !== 'SRT' && form.streamKey) ? form.streamKey : undefined,
         device:      form.device || undefined,
-        channelId:   form.channelId || undefined,
+        channelId:   form.channelId,
       }
       return editing ? streamOutputsApi.update(editing.id, payload) : streamOutputsApi.create(payload)
     },
@@ -220,8 +220,8 @@ export default function StreamOutputsPage() {
                 <option key={k} value={k}>{TYPE_LABELS[k]}</option>
               ))}
             </Select>
-            <Select label="Canal" value={form.channelId} onChange={f('channelId')}>
-              <option value="">Todos os canais</option>
+            <Select label="Canal *" value={form.channelId} onChange={f('channelId')}>
+              <option value="" disabled>Selecione o canal</option>
               {channels.filter((c) => c.active).map((c) => (
                 <option key={c.id} value={c.id}>Canal {c.number} — {c.name}</option>
               ))}
@@ -327,7 +327,10 @@ export default function StreamOutputsPage() {
 
           <div className="flex gap-3 justify-end pt-2">
             <Button variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button>
-            <Button loading={save.isPending} onClick={() => save.mutate()}>Salvar</Button>
+            <Button loading={save.isPending} onClick={() => {
+              if (!form.channelId) { toast.error('Canal é obrigatório'); return }
+              save.mutate()
+            }}>Salvar</Button>
           </div>
         </div>
       </Modal>

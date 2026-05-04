@@ -10,7 +10,7 @@ const schema = z.object({
   url:         z.string().optional().nullable(),
   streamKey:   z.string().optional().nullable(),
   device:      z.string().optional().nullable(),
-  channelId:   z.string().optional().nullable(),
+  channelId:   z.string().min(1),
   active:      z.boolean().optional(),
 })
 

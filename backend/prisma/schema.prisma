@@ -260,8 +260,8 @@ model StreamOutput {
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 
-  channelId String?
-  channel   Channel? @relation(fields: [channelId], references: [id])
+  channelId String
+  channel   Channel @relation(fields: [channelId], references: [id])
 
   @@map("stream_outputs")
 }
