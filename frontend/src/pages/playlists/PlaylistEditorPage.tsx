@@ -185,6 +185,20 @@ export default function PlaylistEditorPage() {
             </Button>
           </div>
         ) : (
+          <>
+          {/* Cabeçalho das colunas */}
+          <div className="flex items-center gap-3 px-3 py-1.5 mb-1 border-b border-gray-800/60">
+            <span className="w-4 shrink-0" />
+            <span className="text-[10px] font-semibold text-gray-600 uppercase tracking-wide w-6 text-right shrink-0">#</span>
+            <span className="text-[10px] font-semibold text-gray-600 uppercase tracking-wide w-8 shrink-0">Bloco</span>
+            <span className="text-[10px] font-semibold text-gray-600 uppercase tracking-wide w-10 shrink-0">Tipo</span>
+            <span className="text-[10px] font-semibold text-gray-600 uppercase tracking-wide flex-1">Título / Código / Cliente</span>
+            <span className="text-[10px] font-semibold text-gray-600 uppercase tracking-wide shrink-0 w-14 text-right">Duração</span>
+            <span className="text-[10px] font-semibold text-gray-600 uppercase tracking-wide shrink-0 w-12 text-center">Mídia</span>
+            <span className="text-[10px] font-semibold text-gray-600 uppercase tracking-wide shrink-0 w-16 text-center">Loop</span>
+            <span className="w-16 shrink-0" />
+          </div>
+
           <div className="space-y-1">
             {items.map((item, idx) => {
               const clip = item.clip
@@ -296,6 +310,7 @@ export default function PlaylistEditorPage() {
               )
             })}
           </div>
+          </>
         )}
       </div>
 
