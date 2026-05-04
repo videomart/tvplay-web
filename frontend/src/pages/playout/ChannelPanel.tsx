@@ -391,6 +391,8 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
   const [outputsOpen, setOutputsOpen] = useState(true)
   const [playlistOpen, setPlaylistOpen] = useState(true)
   const [defaultsApplied, setDefaultsApplied] = useState(false)
+  const playlistScrollRef = useRef<HTMLDivElement>(null)
+  const currentItemRef = useRef<HTMLDivElement>(null)
 
   // Aplica defaults do SystemSettings na primeira carga
   useEffect(() => {
@@ -418,6 +420,15 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
   const totalPlaylistDuration = state?.totalPlaylistDuration ?? 0
   const currentIndex = state?.currentIndex ?? 0
   const itemCount = state?.itemCount ?? 0
+
+  // Auto-scroll para manter o clipe atual próximo ao centro do grid
+  useEffect(() => {
+    const container = playlistScrollRef.current
+    const item = currentItemRef.current
+    if (!container || !item || !playlistOpen) return
+    const top = item.offsetTop - container.clientHeight / 2 + item.offsetHeight / 2
+    container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+  }, [currentIndex, playlistOpen])
 
   // Atualiza o monitor quando o clipe muda
   useEffect(() => {
@@ -493,7 +504,6 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
   const { data: inputSources = [] } = useQuery({
     queryKey: ['input-sources'],
     queryFn: inputSourcesApi.list,
-    enabled: monitorOpen,
     staleTime: 30_000,
   })
 
@@ -525,7 +535,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
   })
 
   const fallbackMut = useMutation({
-    mutationFn: (data: { fallbackType: FallbackType; fallbackSourceId?: string }) =>
+    mutationFn: (data: { fallbackType: FallbackType; fallbackSourceId?: string | null }) =>
       channelsApi.update(channel.id, data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['channels'] }),
   })
@@ -782,7 +792,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                 {(['BLACK', 'COLORBARS'] as FallbackType[]).map((t) => (
                   <button
                     key={t}
-                    onClick={() => fallbackMut.mutate({ fallbackType: t })}
+                    onClick={() => fallbackMut.mutate({ fallbackType: t, fallbackSourceId: null })}
                     className={clsx(
                       'text-[10px] px-2 py-0.5 rounded transition-colors',
                       channel.fallbackType === t
@@ -979,33 +989,34 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
 
           {/* Itens com DnD */}
           {playlistOpen && (
-            <div className="max-h-52 overflow-y-auto py-1">
+            <div ref={playlistScrollRef} className="max-h-72 overflow-y-auto py-1">
               {playlistItems.length === 0 ? (
                 <p className="text-[11px] text-gray-600 text-center py-3">Carregando...</p>
               ) : (
                 playlistItems.map((pi, idx) => (
-                  <PlaylistItemRow
-                    key={pi.id}
-                    item={pi}
-                    isCurrent={idx === currentIndex}
-                    isPlayed={idx < currentIndex}
-                    isDragging={dragIdx === idx}
-                    isDragOver={overIdx === idx && dragIdx !== idx}
-                    playoutStatus={status}
-                    onJump={() => jumpMut.mutate(idx)}
-                    onClipPlay={() => handleClipPlay(idx)}
-                    onClipStop={() => stopMut.mutate()}
-                    onToggleLoop={() => toggleLoopMut.mutate(pi.id)}
-                    onDelete={() => deleteItemMut.mutate(pi.id)}
-                    loopPending={toggleLoopMut.isPending && toggleLoopMut.variables === pi.id}
-                    deletePending={deleteItemMut.isPending && deleteItemMut.variables === pi.id}
-                    clipPlayPending={(jumpMut.isPending || pauseMut.isPending || resumeMut.isPending) && idx === currentIndex}
-                    clipStopPending={stopMut.isPending}
-                    onDragStart={() => handleDragStart(idx)}
-                    onDragOver={(e) => handleDragOver(e, idx)}
-                    onDragEnd={handleDragEnd}
-                    onDrop={() => handleDrop(idx)}
-                  />
+                  <div key={pi.id} ref={idx === currentIndex ? currentItemRef : undefined}>
+                    <PlaylistItemRow
+                      item={pi}
+                      isCurrent={idx === currentIndex}
+                      isPlayed={idx < currentIndex}
+                      isDragging={dragIdx === idx}
+                      isDragOver={overIdx === idx && dragIdx !== idx}
+                      playoutStatus={status}
+                      onJump={() => jumpMut.mutate(idx)}
+                      onClipPlay={() => handleClipPlay(idx)}
+                      onClipStop={() => stopMut.mutate()}
+                      onToggleLoop={() => toggleLoopMut.mutate(pi.id)}
+                      onDelete={() => deleteItemMut.mutate(pi.id)}
+                      loopPending={toggleLoopMut.isPending && toggleLoopMut.variables === pi.id}
+                      deletePending={deleteItemMut.isPending && deleteItemMut.variables === pi.id}
+                      clipPlayPending={(jumpMut.isPending || pauseMut.isPending || resumeMut.isPending) && idx === currentIndex}
+                      clipStopPending={stopMut.isPending}
+                      onDragStart={() => handleDragStart(idx)}
+                      onDragOver={(e) => handleDragOver(e, idx)}
+                      onDragEnd={handleDragEnd}
+                      onDrop={() => handleDrop(idx)}
+                    />
+                  </div>
                 ))
               )}
             </div>

@@ -11,7 +11,7 @@ export interface Channel {
   active: boolean
   status: string
   fallbackType: FallbackType
-  fallbackSourceId?: string
+  fallbackSourceId?: string | null
   fallbackSource?: { id: string; name: string; type: string; url?: string }
   createdAt: string
 }
