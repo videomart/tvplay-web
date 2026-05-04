@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, Plus, Trash2, Search, GripVertical,
-  Clock, ListVideo, ChevronRight, Repeat2, Lock
+  Clock, ListVideo, ChevronRight, Repeat2, Lock, Upload
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
@@ -38,6 +38,34 @@ export default function PlaylistEditorPage() {
   const [search, setSearch] = useState('')
   const [dragIdx, setDragIdx] = useState<number | null>(null)
   const [overIdx, setOverIdx] = useState<number | null>(null)
+  const [uploadingClipId, setUploadingClipId] = useState<string | null>(null)
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const uploadClipIdRef = useRef<string | null>(null)
+  const uploadFileRef = useRef<HTMLInputElement>(null)
+
+  function startUpload(clipId: string) {
+    uploadClipIdRef.current = clipId
+    uploadFileRef.current?.click()
+  }
+
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    const clipId = uploadClipIdRef.current
+    if (!file || !clipId) return
+    setUploadingClipId(clipId)
+    setUploadProgress(0)
+    try {
+      await clipsApi.uploadMedia(file, clipId, setUploadProgress)
+      toast.success('Upload concluído — transcodificação em andamento')
+      qc.invalidateQueries({ queryKey: ['playlist', id] })
+    } catch {
+      toast.error('Erro no upload')
+    } finally {
+      setUploadingClipId(null)
+      uploadClipIdRef.current = null
+      if (uploadFileRef.current) uploadFileRef.current.value = ''
+    }
+  }
 
   const { data: playlist, isLoading } = useQuery({
     queryKey: ['playlist', id],
@@ -142,6 +170,7 @@ export default function PlaylistEditorPage() {
               Adicionar Clipe
             </Button>
           )}
+          <input ref={uploadFileRef} type="file" accept="video/*,.mxf,.mts,.m2ts" className="hidden" onChange={handleFileUpload} />
         </div>
       </div>
 
@@ -243,6 +272,18 @@ export default function PlaylistEditorPage() {
                     <Repeat2 className="h-3 w-3" />
                     {item.loop ? 'Loop ON' : 'Loop'}
                   </button>
+
+                  {/* Upload — só aparece para clipes sem arquivo */}
+                  {!media && (
+                    <Button
+                      size="sm" variant="ghost"
+                      loading={uploadingClipId === clip.id}
+                      disabled={uploadingClipId !== null && uploadingClipId !== clip.id}
+                      icon={<Upload className="h-3.5 w-3.5 text-orange-400" />}
+                      onClick={() => startUpload(clip.id)}
+                      title={uploadingClipId === clip.id ? `${uploadProgress}%` : 'Enviar arquivo de mídia'}
+                    />
+                  )}
 
                   {/* Remover */}
                   <Button

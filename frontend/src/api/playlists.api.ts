@@ -31,6 +31,7 @@ export interface Playlist {
   updatedAt: string
   items?: PlaylistItem[]
   _count?: { items: number }
+  _noMediaCount?: number
 }
 
 export const playlistsApi = {

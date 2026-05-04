@@ -21,7 +21,8 @@ export default async function clipRoutes(app: FastifyInstance) {
   const auth = { preHandler: [app.authenticate] }
 
   app.get('/', auth, async (request: any) => {
-    const { search, modality, clientId, typeId, page = '1', limit = '50' } = request.query
+    const { search, modality, clientId, typeId, page = '1', limit = '50', sortBy = 'title', sortDir = 'asc' } = request.query
+    const dir: 'asc' | 'desc' = sortDir === 'desc' ? 'desc' : 'asc'
 
     const where: any = { active: true }
     if (search) where.OR = [
@@ -32,6 +33,16 @@ export default async function clipRoutes(app: FastifyInstance) {
     if (clientId) where.clientId = clientId
     if (typeId) where.typeId = typeId
 
+    const orderByMap: Record<string, any> = {
+      code:     { code: dir },
+      title:    { title: dir },
+      modality: { modality: dir },
+      client:   [{ client: { name: dir } }, { title: 'asc' }],
+      duration: [{ media: { duration: dir } }, { title: 'asc' }],
+      media:    { mediaId: { sort: dir, nulls: dir === 'asc' ? 'first' : 'last' } },
+    }
+    const orderBy = orderByMap[sortBy] ?? { title: 'asc' }
+
     const skip = (parseInt(page) - 1) * parseInt(limit)
     const take = parseInt(limit)
 
@@ -39,7 +50,7 @@ export default async function clipRoutes(app: FastifyInstance) {
       prisma.clip.findMany({
         where,
         include: { client: true, type: true, media: { select: { duration: true, hlsPath: true, ingestStatus: true } } },
-        orderBy: { title: 'asc' },
+        orderBy,
         skip,
         take,
       }),

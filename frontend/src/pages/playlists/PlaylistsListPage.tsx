@@ -136,7 +136,14 @@ export default function PlaylistsListPage() {
                   </div>
                 </Td>
                 <Td>
-                  <span className="text-sm text-gray-400">{pl._count?.items ?? 0} clipes</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-400">{pl._count?.items ?? 0} clipes</span>
+                    {(pl._noMediaCount ?? 0) > 0 && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-900/50 text-orange-400 border border-orange-700/40 font-medium">
+                        {pl._noMediaCount} sem arquivo
+                      </span>
+                    )}
+                  </div>
                 </Td>
                 <Td className="text-right">
                   <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>

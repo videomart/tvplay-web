@@ -16,9 +16,17 @@ export function Thead({ children }: { children: React.ReactNode }) {
   )
 }
 
-export function Th({ children, className }: { children: React.ReactNode; className?: string }) {
+export function Th({ children, className, onClick, title }: { children: React.ReactNode; className?: string; onClick?: () => void; title?: string }) {
   return (
-    <th className={clsx('px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide', className)}>
+    <th
+      title={title}
+      onClick={onClick}
+      className={clsx(
+        'px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide',
+        onClick && 'cursor-pointer select-none hover:text-gray-300 transition-colors',
+        className,
+      )}
+    >
       {children}
     </th>
   )

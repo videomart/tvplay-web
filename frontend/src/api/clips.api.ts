@@ -41,7 +41,7 @@ export interface ClipsListResponse {
 }
 
 export const clipsApi = {
-  list: (params?: { search?: string; modality?: string; clientId?: string; typeId?: string; page?: number }) =>
+  list: (params?: { search?: string; modality?: string; clientId?: string; typeId?: string; page?: number; sortBy?: string; sortDir?: string }) =>
     api.get<ClipsListResponse>('/clips', { params }).then((r) => r.data),
   get: (id: string) => api.get<Clip>(`/clips/${id}`).then((r) => r.data),
   create: (data: Partial<Clip>) => api.post<Clip>('/clips', data).then((r) => r.data),

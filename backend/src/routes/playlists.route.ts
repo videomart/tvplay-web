@@ -44,7 +44,8 @@ export default async function playlistRoutes(app: FastifyInstance) {
     const where: any = {}
     if (channelId) where.channelId = channelId
     if (date) where.date = new Date(date)
-    return prisma.playlist.findMany({
+
+    const playlists = await prisma.playlist.findMany({
       where,
       include: {
         channel: { select: { id: true, name: true, number: true } },
@@ -52,6 +53,21 @@ export default async function playlistRoutes(app: FastifyInstance) {
       },
       orderBy: [{ date: 'desc' }, { programName: 'asc' }],
     })
+
+    // Contagem de itens sem arquivo de mídia por playlist
+    const ids = playlists.map((p) => p.id)
+    const noMediaItems = ids.length > 0
+      ? await prisma.playlistItem.findMany({
+          where: { playlistId: { in: ids }, clip: { mediaId: null } },
+          select: { playlistId: true },
+        })
+      : []
+    const noMediaMap = noMediaItems.reduce(
+      (m, i) => m.set(i.playlistId, (m.get(i.playlistId) ?? 0) + 1),
+      new Map<string, number>()
+    )
+
+    return playlists.map((p) => ({ ...p, _noMediaCount: noMediaMap.get(p.id) ?? 0 }))
   })
 
   app.get('/:id', auth, async (request: any, reply) => {
