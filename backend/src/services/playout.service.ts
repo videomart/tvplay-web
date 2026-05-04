@@ -182,6 +182,58 @@ async function countItems(playlistId: string): Promise<number> {
   return prisma.playlistItem.count({ where: { playlistId } })
 }
 
+// Retorna o primeiro item COM hlsPath a partir de fromIndex (pula clipes sem arquivo)
+async function findNextReadyFrom(
+  playlistId: string,
+  fromIndex: number
+): Promise<{ index: number; item: CurrentItem } | null> {
+  const items = await prisma.playlistItem.findMany({
+    where: { playlistId },
+    include: {
+      clip: {
+        include: {
+          media: { select: { id: true, hlsPath: true, duration: true } },
+          client: { select: { name: true } },
+          type: { select: { name: true, code: true, fontColor: true, fontBackColor: true } },
+        },
+      },
+    },
+    orderBy: { order: 'asc' },
+  })
+  for (let i = fromIndex; i < items.length; i++) {
+    const item = items[i]
+    const clip = item.clip
+    if (!clip.media?.hlsPath) continue // sem arquivo — pula
+    const cueIn  = item.overrideCueIn  ?? clip.cueIn
+    const cueOut = item.overrideCueOut ?? clip.cueOut ?? clip.media.duration ?? null
+    const duration = cueOut ? cueOut - cueIn : (clip.media.duration ?? clip.duration ?? 30)
+    return {
+      index: i,
+      item: {
+        playlistItemId: item.id,
+        clipId: clip.id,
+        mediaId: (clip.media as any).id,
+        code: clip.code,
+        title: clip.title,
+        modality: clip.modality,
+        clientName: clip.client?.name ?? null,
+        typeName: clip.type?.name ?? null,
+        typeCode: clip.type?.code ?? null,
+        typeBg: clip.type?.fontBackColor ?? null,
+        typeColor: clip.type?.fontColor ?? null,
+        duration,
+        cueIn,
+        cueOut,
+        hlsPath: clip.media.hlsPath,
+        order: item.order,
+        breakNum: item.breakNum,
+        loop: item.loop,
+      },
+    }
+  }
+  return null
+}
+
 function stopTimer(channelId: string) {
   const t = timers.get(channelId)
   if (t) { clearInterval(t); timers.delete(channelId) }
@@ -205,10 +257,13 @@ function startTimer(channelId: string) {
         broadcast(channelId, state)
         return
       }
-      // Avança para o próximo clip
+      // Avança para o próximo clip com arquivo pronto
       const total = state.playlistId ? await countItems(state.playlistId) : 0
       const nextIndex = state.currentIndex + 1
-      if (state.playlistId && nextIndex < total) {
+      const next = state.playlistId && nextIndex < total
+        ? await findNextReadyFrom(state.playlistId, nextIndex)
+        : null
+      if (next) {
         // Registra log do clip que terminou
         if (state.currentItem) {
           await prisma.log.create({
@@ -223,13 +278,11 @@ function startTimer(channelId: string) {
             },
           }).catch(() => {})
         }
-        state.currentIndex = nextIndex
+        state.currentIndex = next.index
         state.position = 0
-        state.currentItem = await loadItem(state.playlistId, nextIndex)
-        // Persiste novo índice
-        persistState(channelId, state.playlistId, nextIndex)
-        // Reinicia streaming para o novo clipe
-        streamService.restartStreaming(channelId, state.currentItem?.mediaId ?? null, state.currentItem?.cueIn ?? 0).catch(() => {})
+        state.currentItem = next.item
+        persistState(channelId, state.playlistId!, next.index)
+        streamService.restartStreaming(channelId, next.item.mediaId, next.item.cueIn).catch(() => {})
       } else {
         // Fim da playlist
         state.status = 'STOPPED'
@@ -267,16 +320,18 @@ export async function play(channelId: string, playlistId: string): Promise<Playo
   const playlist = await prisma.playlist.findUnique({ where: { id: playlistId } })
   if (!playlist) throw new Error('Playlist não encontrada')
 
-  const [firstItem, { totalDuration, count }] = await Promise.all([
-    loadItem(playlistId, 0),
+  const [firstReady, { totalDuration, count }] = await Promise.all([
+    findNextReadyFrom(playlistId, 0),
     computePlaylistMeta(playlistId),
   ])
+  const startIndex = firstReady?.index ?? 0
+  const firstItem  = firstReady?.item ?? await loadItem(playlistId, 0) // fallback: carrega mesmo sem mídia
   const state: PlayoutState = {
     channelId,
     status: 'PLAYING',
     playlistId,
     programName: playlist.programName,
-    currentIndex: 0,
+    currentIndex: startIndex,
     currentItem: firstItem,
     position: 0,
     totalElapsed: 0,
@@ -286,7 +341,7 @@ export async function play(channelId: string, playlistId: string): Promise<Playo
   }
   states.set(channelId, state)
   await prisma.channel.update({ where: { id: channelId }, data: { status: 'PLAYING' } }).catch(() => {})
-  persistState(channelId, playlistId, 0)
+  persistState(channelId, playlistId, startIndex)
   startTimer(channelId)
   streamService.startStreaming(channelId, firstItem?.mediaId ?? null, firstItem?.cueIn ?? 0).catch(() => {})
   broadcast(channelId, state)
