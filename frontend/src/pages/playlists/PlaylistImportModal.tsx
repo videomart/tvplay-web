@@ -1,9 +1,11 @@
 import { useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Upload, FileText, CheckCircle2, XCircle, ChevronDown, ChevronRight } from 'lucide-react'
+import { Upload, FileText, CheckCircle2, AlertCircle, ChevronDown, ChevronRight } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
-import { clipsApi, type Clip } from '../../api/clips.api'
+import { clipsApi, type Clip, type ClipModality, MODALITY_LABELS } from '../../api/clips.api'
+import { clipTypesApi } from '../../api/clip-types.api'
+import { clientsApi } from '../../api/clients.api'
 import { channelsApi } from '../../api/channels.api'
 import { playlistsApi } from '../../api/playlists.api'
 import { Modal } from '../../components/ui/Modal'
@@ -20,8 +22,6 @@ interface ParsedRow {
   cliente: string
   programa: string
   breakNum: number
-  arquivo: string
-  inicio: string
 }
 
 interface ProgramGroup {
@@ -69,7 +69,6 @@ function parseRoteiro(text: string): ParsedFile {
     ? `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`
     : new Date().toISOString().slice(0, 10)
 
-  // Find header line (contains "CODIGO")
   let headerIdx = lines.findIndex((l) => l.includes('CODIGO'))
   if (headerIdx === -1) headerIdx = 1
   const cols = parseHeaderCols(lines[headerIdx])
@@ -88,12 +87,9 @@ function parseRoteiro(text: string): ParsedFile {
       cliente:  f['CLIENTE'] ?? '',
       programa: f['PROGRAMA'] ?? 'SEM PROGRAMA',
       breakNum: parseInt(f['BREAK'] ?? '1') || 1,
-      arquivo:  f['ARQUIVO'] ?? '',
-      inicio:   f['INICIO'] ?? '',
     })
   }
 
-  // Group by PROGRAMA preserving order
   const seen = new Map<string, ParsedRow[]>()
   for (const row of rows) {
     if (!seen.has(row.programa)) seen.set(row.programa, [])
@@ -105,6 +101,8 @@ function parseRoteiro(text: string): ParsedFile {
     programs: Array.from(seen.entries()).map(([name, items]) => ({ name, items })),
   }
 }
+
+const VALID_MODALITIES = new Set<string>(['BK','AR','PT','VH','CP','CA','LV','ID','MT'])
 
 // ── Component ──────────────────────────────────────────────────────────────
 
@@ -164,13 +162,21 @@ export default function PlaylistImportModal({ open, onClose }: { open: boolean; 
   async function handleImport() {
     if (!parsed) return
     setImporting(true)
+    let totalAdded = 0
     let totalCreated = 0
-    let totalSkipped = 0
+
     try {
+      // Snapshot atual de tipos e clientes para "find or create"
+      const [currentTypes, currentClients] = await Promise.all([
+        clipTypesApi.list(),
+        clientsApi.list(),
+      ])
+      const typeByCode  = new Map(currentTypes.map((t) => [t.code.toUpperCase(), t]))
+      const clientByName = new Map(currentClients.map((c) => [c.name.toUpperCase(), c]))
+      const localClipMap = new Map<string, Clip>(allClips.map((c) => [c.code, c]))
+
       for (const prog of parsed.programs) {
-        const found = prog.items.filter((r) => clipByCode.has(r.code))
-        totalSkipped += prog.items.length - found.length
-        if (found.length === 0) continue
+        if (prog.items.length === 0) continue
 
         const playlist = await playlistsApi.create({
           date: parsed.date,
@@ -178,22 +184,72 @@ export default function PlaylistImportModal({ open, onClose }: { open: boolean; 
           channelId: channelId || null,
         })
 
-        for (let i = 0; i < found.length; i++) {
-          const row = found[i]
+        for (let i = 0; i < prog.items.length; i++) {
+          const row = prog.items[i]
+          let clip = localClipMap.get(row.code)
+
+          if (!clip) {
+            // Encontra ou cria o tipo de clipe
+            const typeCode = row.tipo.toUpperCase()
+            let typeId: string | undefined
+            if (typeCode) {
+              if (!typeByCode.has(typeCode)) {
+                const newType = await clipTypesApi.create({
+                  name: MODALITY_LABELS[typeCode as ClipModality] ?? typeCode,
+                  code: typeCode,
+                  fontColor: '#FFFFFF',
+                  fontBackColor: '#374151',
+                })
+                typeByCode.set(typeCode, newType)
+              }
+              typeId = typeByCode.get(typeCode)?.id
+            }
+
+            // Encontra ou cria o cliente
+            const clientName = row.cliente.trim()
+            let clientId: string | undefined
+            if (clientName) {
+              if (!clientByName.has(clientName.toUpperCase())) {
+                const newClient = await clientsApi.create({ name: clientName })
+                clientByName.set(clientName.toUpperCase(), newClient)
+              }
+              clientId = clientByName.get(clientName.toUpperCase())?.id
+            }
+
+            // Cria o clipe (sem arquivo de mídia)
+            const modality = VALID_MODALITIES.has(row.tipo.toUpperCase())
+              ? (row.tipo.toUpperCase() as ClipModality)
+              : 'AR'
+            clip = await clipsApi.create({
+              code:      row.code,
+              title:     row.titulo || row.code,
+              modality,
+              cueIn:     0,
+              cueOut:    row.dur > 0 ? row.dur : undefined,
+              duration:  row.dur > 0 ? row.dur : undefined,
+              typeId,
+              clientId,
+            })
+            localClipMap.set(row.code, clip)
+            totalCreated++
+          }
+
           await playlistsApi.addItem(playlist.id, {
-            clipId: clipByCode.get(row.code)!.id,
+            clipId: clip.id,
             order: i,
             breakNum: row.breakNum,
           })
-          totalCreated++
+          totalAdded++
         }
       }
 
-      const msg = totalSkipped > 0
-        ? `${totalCreated} clipe(s) importado(s) — ${totalSkipped} código(s) não encontrado(s) no sistema`
-        : `${totalCreated} clipe(s) importado(s) com sucesso`
-      toast.success(msg, { duration: 5000 })
+      const parts = [`${totalAdded} clipe(s) adicionado(s)`]
+      if (totalCreated > 0) parts.push(`${totalCreated} criado(s) automaticamente sem arquivo`)
+      toast.success(parts.join(' — '), { duration: 6000 })
       qc.invalidateQueries({ queryKey: ['playlists'] })
+      qc.invalidateQueries({ queryKey: ['clips'] })
+      qc.invalidateQueries({ queryKey: ['clip-types'] })
+      qc.invalidateQueries({ queryKey: ['clients'] })
       handleClose()
     } catch (e: any) {
       toast.error(e.response?.data?.error ?? 'Erro ao importar')
@@ -209,8 +265,9 @@ export default function PlaylistImportModal({ open, onClose }: { open: boolean; 
     onClose()
   }
 
-  const totalFound = parsed?.programs.reduce((acc, p) => acc + p.items.filter((r) => clipByCode.has(r.code)).length, 0) ?? 0
   const totalRows = parsed?.programs.reduce((acc, p) => acc + p.items.length, 0) ?? 0
+  const totalNew  = parsed?.programs.reduce((acc, p) =>
+    acc + p.items.filter((r) => !clipByCode.has(r.code)).length, 0) ?? 0
 
   return (
     <Modal open={open} onClose={handleClose} title="Importar Roteiro de Programação" size="lg">
@@ -247,7 +304,6 @@ export default function PlaylistImportModal({ open, onClose }: { open: boolean; 
 
         <input ref={fileRef} type="file" accept=".txt,.log,.rpt" className="hidden" onChange={handleFileChange} />
 
-        {/* Configurações de importação */}
         {parsed && (
           <>
             <Select label="Canal (opcional)" value={channelId} onChange={(e) => setChannelId(e.target.value)}>
@@ -260,7 +316,7 @@ export default function PlaylistImportModal({ open, onClose }: { open: boolean; 
             {/* Preview dos programas */}
             <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
               {parsed.programs.map((prog) => {
-                const foundCount = prog.items.filter((r) => clipByCode.has(r.code)).length
+                const newCount = prog.items.filter((r) => !clipByCode.has(r.code)).length
                 const isOpen = expanded.has(prog.name)
                 return (
                   <div key={prog.name} className="border border-gray-800 rounded-lg overflow-hidden">
@@ -273,9 +329,9 @@ export default function PlaylistImportModal({ open, onClose }: { open: boolean; 
                         <span className="text-sm font-medium text-white">{prog.name}</span>
                       </div>
                       <div className="flex items-center gap-2 text-xs">
-                        <span className="text-emerald-400">{foundCount} encontrado(s)</span>
-                        {prog.items.length - foundCount > 0 && (
-                          <span className="text-amber-400">{prog.items.length - foundCount} não encontrado(s)</span>
+                        <span className="text-emerald-400">{prog.items.length - newCount} no sistema</span>
+                        {newCount > 0 && (
+                          <span className="text-orange-400">{newCount} serão criados</span>
                         )}
                       </div>
                     </button>
@@ -283,21 +339,23 @@ export default function PlaylistImportModal({ open, onClose }: { open: boolean; 
                     {isOpen && (
                       <div className="divide-y divide-gray-800/60">
                         {prog.items.map((row, idx) => {
-                          const found = clipByCode.has(row.code)
+                          const inSystem = clipByCode.has(row.code)
                           return (
-                            <div key={idx} className={clsx(
-                              'flex items-center gap-2 px-3 py-1.5 text-xs',
-                              found ? 'text-gray-300' : 'text-gray-600'
-                            )}>
-                              {found
+                            <div key={idx} className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-300">
+                              {inSystem
                                 ? <CheckCircle2 className="h-3 w-3 text-emerald-500 shrink-0" />
-                                : <XCircle className="h-3 w-3 text-amber-600 shrink-0" />
+                                : <AlertCircle  className="h-3 w-3 text-orange-400 shrink-0" />
                               }
                               <span className="font-mono w-20 shrink-0">{row.code}</span>
-                              <span className={clsx('text-[10px] px-1.5 py-0.5 rounded font-mono shrink-0',
-                                found ? 'bg-gray-700 text-gray-400' : 'bg-gray-800 text-gray-700'
-                              )}>{row.tipo}</span>
+                              <span className="text-[10px] px-1.5 py-0.5 rounded font-mono shrink-0 bg-gray-700 text-gray-400">
+                                {row.tipo}
+                              </span>
                               <span className="flex-1 truncate">{row.titulo}</span>
+                              {!inSystem && (
+                                <span className="text-[9px] px-1 py-0.5 rounded bg-orange-900/40 text-orange-400 border border-orange-700/40 shrink-0">
+                                  sem arquivo
+                                </span>
+                              )}
                               <span className="text-gray-600 shrink-0 w-8 text-right">
                                 {row.dur > 0 ? `${row.dur}s` : '—'}
                               </span>
@@ -312,9 +370,10 @@ export default function PlaylistImportModal({ open, onClose }: { open: boolean; 
               })}
             </div>
 
-            {totalRows - totalFound > 0 && (
-              <p className="text-xs text-amber-400/80 bg-amber-950/30 border border-amber-800/40 rounded px-2.5 py-1.5">
-                {totalRows - totalFound} clipe(s) com código não cadastrado no sistema serão ignorados na importação.
+            {totalNew > 0 && (
+              <p className="text-xs text-orange-400/80 bg-orange-950/30 border border-orange-800/40 rounded px-2.5 py-1.5">
+                {totalNew} clipe(s) não encontrado(s) serão criados automaticamente sem arquivo de mídia.
+                Aparecerão com indicação <strong>"sem arquivo"</strong> nas playlists e devem receber upload antes da exibição.
               </p>
             )}
           </>
@@ -322,13 +381,10 @@ export default function PlaylistImportModal({ open, onClose }: { open: boolean; 
 
         <div className="flex gap-3 justify-end pt-2">
           <Button variant="secondary" onClick={handleClose}>Cancelar</Button>
-          {parsed && (
-            <Button
-              loading={importing}
-              disabled={totalFound === 0}
-              onClick={handleImport}
-            >
-              Importar {parsed.programs.length} playlist(s) · {totalFound} clipe(s)
+          {parsed && totalRows > 0 && (
+            <Button loading={importing} onClick={handleImport}>
+              Importar {parsed.programs.length} playlist(s) · {totalRows} clipe(s)
+              {totalNew > 0 && ` (${totalNew} novos)`}
             </Button>
           )}
         </div>

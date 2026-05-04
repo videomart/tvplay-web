@@ -211,7 +211,11 @@ export default function PlaylistEditorPage() {
                   <span className="text-xs font-mono text-gray-400 shrink-0">{formatDur(dur)}</span>
 
                   {/* Status mídia */}
-                  {media && (
+                  {!media ? (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded shrink-0 bg-orange-900/50 text-orange-400 border border-orange-700/40 font-medium">
+                      sem arquivo
+                    </span>
+                  ) : (
                     <span className={clsx(
                       'text-[10px] px-1.5 py-0.5 rounded shrink-0',
                       media.ingestStatus === 'READY'

@@ -288,6 +288,13 @@ function PlaylistItemRow({
         {item.title}
       </button>
 
+      {/* Indicador sem arquivo */}
+      {!item.mediaReady && (
+        <span className="text-[9px] px-1 py-0.5 rounded bg-orange-900/50 text-orange-400 border border-orange-700/40 flex-shrink-0 font-medium">
+          SEM ARQ
+        </span>
+      )}
+
       {/* Duração */}
       <span className="text-[10px] font-mono text-gray-600 flex-shrink-0 w-10 text-right">
         {formatTime(item.duration)}

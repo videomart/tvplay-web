@@ -46,6 +46,7 @@ export interface PlaylistItemRow {
   loop: boolean
   clientName: string | null
   breakNum: number
+  mediaReady: boolean
 }
 
 export interface ChannelOutput {
