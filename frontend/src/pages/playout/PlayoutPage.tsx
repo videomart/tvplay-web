@@ -27,13 +27,11 @@ export default function PlayoutPage() {
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <Radio className="h-6 w-6 text-brand-400" />
-            Playout
-          </h1>
-          <p className="text-gray-500 text-sm mt-1">Controle em tempo real dos canais</p>
-        </div>
+        <h1 className="text-2xl font-bold text-white flex items-center gap-3">
+          <Radio className="h-6 w-6 text-brand-400" />
+          Playout
+          <span className="text-sm font-normal text-gray-500">Controle em tempo real dos canais</span>
+        </h1>
         <div className="flex items-center gap-2 text-sm text-gray-500">
           <Tv2 className="h-4 w-4" />
           {active.length} canal(is) ativo(s)

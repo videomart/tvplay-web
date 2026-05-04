@@ -22,16 +22,18 @@ async function checkSchedule() {
       autoStart: true,
       startTime: hhmm,
       date: today,
+      channelId: { not: null },
     },
     select: { id: true, channelId: true, programName: true },
   }).catch(() => [])
 
   for (const pl of playlists) {
-    const state = playoutService.getState(pl.channelId)
+    const channelId = pl.channelId as string
+    const state = playoutService.getState(channelId)
     if (state.status === 'PLAYING' || state.status === 'PAUSED') continue
 
-    console.log(`[scheduler] Auto-iniciando "${pl.programName}" (canal ${pl.channelId}) às ${hhmm}`)
-    playoutService.play(pl.channelId, pl.id).catch((e: Error) =>
+    console.log(`[scheduler] Auto-iniciando "${pl.programName}" (canal ${channelId}) às ${hhmm}`)
+    playoutService.play(channelId, pl.id).catch((e: Error) =>
       console.error(`[scheduler] Falha ao iniciar "${pl.programName}": ${e.message}`)
     )
   }

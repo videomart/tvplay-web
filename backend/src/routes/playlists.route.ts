@@ -5,7 +5,7 @@ import { prisma } from '../lib/prisma'
 const playlistSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   programName: z.string().min(1),
-  channelId: z.string().min(1),
+  channelId: z.string().optional().nullable(),
   locked: z.boolean().optional(),
   autoStart: z.boolean().optional(),
   startTime: z.string().regex(/^\d{2}:\d{2}$/).optional().nullable(),

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Pencil, Trash2, ListVideo, CalendarDays, Clock } from 'lucide-react'
+import { Plus, Pencil, Trash2, ListVideo, CalendarDays, Clock, Upload } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { playlistsApi, type Playlist } from '../../api/playlists.api'
 import { channelsApi } from '../../api/channels.api'
@@ -9,6 +9,7 @@ import { Button } from '../../components/ui/Button'
 import { Input, Select } from '../../components/ui/Input'
 import { Modal } from '../../components/ui/Modal'
 import { Table, Thead, Th, Tbody, Tr, Td } from '../../components/ui/Table'
+import PlaylistImportModal from './PlaylistImportModal'
 
 const today = new Date().toISOString().slice(0, 10)
 const empty = { programName: '', date: today, channelId: '', notes: '', autoStart: false, startTime: '' }
@@ -17,6 +18,7 @@ export default function PlaylistsListPage() {
   const qc = useQueryClient()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
   const [editing, setEditing] = useState<Playlist | null>(null)
   const [filterChannel, setFilterChannel] = useState('')
   const [form, setForm] = useState(empty)
@@ -64,7 +66,7 @@ export default function PlaylistsListPage() {
     setForm({
       programName: pl.programName,
       date: pl.date.slice(0, 10),
-      channelId: pl.channelId,
+      channelId: pl.channelId ?? '',
       notes: pl.notes ?? '',
       autoStart: pl.autoStart ?? false,
       startTime: pl.startTime ?? '',
@@ -79,7 +81,10 @@ export default function PlaylistsListPage() {
           <h1 className="text-2xl font-bold text-white">Playlists</h1>
           <p className="text-gray-500 text-sm mt-1">{data.length} playlist(s)</p>
         </div>
-        <Button onClick={openNew} icon={<Plus className="h-4 w-4" />}>Nova Playlist</Button>
+        <div className="flex gap-2">
+          <Button variant="secondary" onClick={() => setImportOpen(true)} icon={<Upload className="h-4 w-4" />}>Importar Roteiro</Button>
+          <Button onClick={openNew} icon={<Plus className="h-4 w-4" />}>Nova Playlist</Button>
+        </div>
       </div>
 
       <div className="flex gap-3">
@@ -150,8 +155,8 @@ export default function PlaylistsListPage() {
           <Input label="Nome do Programa *" value={form.programName} onChange={f('programName')} placeholder="JORNAL DA MANHÃ" />
           <div className="grid grid-cols-2 gap-4">
             <Input label="Data *" type="date" value={form.date} onChange={f('date')} />
-            <Select label="Canal *" value={form.channelId} onChange={f('channelId')}>
-              <option value="">Selecione...</option>
+            <Select label="Canal" value={form.channelId} onChange={f('channelId')}>
+              <option value="">Ambos os canais</option>
               {channels.map((ch) => <option key={ch.id} value={ch.id}>{ch.number} — {ch.name}</option>)}
             </Select>
           </div>
@@ -185,12 +190,14 @@ export default function PlaylistsListPage() {
           <div className="flex gap-3 justify-end pt-2">
             <Button variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button>
             <Button loading={save.isPending} onClick={() => save.mutate()}
-              disabled={!form.programName || !form.date || !form.channelId}>
+              disabled={!form.programName || !form.date}>
               Salvar
             </Button>
           </div>
         </div>
       </Modal>
+
+      <PlaylistImportModal open={importOpen} onClose={() => setImportOpen(false)} />
     </div>
   )
 }
