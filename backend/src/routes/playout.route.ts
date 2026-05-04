@@ -76,6 +76,18 @@ export default async function playoutRoutes(app: FastifyInstance) {
     )
   })
 
+  // Define fallback do canal e aplica imediatamente se idle/stopped
+  app.post('/:channelId/set-fallback', auth, async (request: any, reply) => {
+    const { fallbackType, fallbackSourceId } = request.body as {
+      fallbackType: 'BLACK' | 'COLORBARS' | 'INPUT_SOURCE'
+      fallbackSourceId?: string | null
+    }
+    if (!fallbackType) return reply.status(400).send({ error: 'fallbackType é obrigatório' })
+    return playout.setFallback(request.params.channelId, fallbackType, fallbackSourceId)
+      .then(() => ({ ok: true }))
+      .catch((e) => reply.status(400).send({ error: e.message }))
+  })
+
   // Saídas do canal com status de streaming em tempo real
   app.get('/:channelId/outputs', auth, async (request: any) => {
     const { channelId } = request.params

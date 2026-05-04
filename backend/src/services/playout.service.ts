@@ -29,7 +29,7 @@ export interface PlayoutState {
   channelId: string
   status: PlayoutStatus
   playlistId: string | null
-  programName: string | null
+  name: string | null
   currentIndex: number
   currentItem: CurrentItem | null
   position: number              // segundos decorridos no clip atual
@@ -91,7 +91,7 @@ function defaultState(channelId: string): PlayoutState {
     channelId,
     status: 'IDLE',
     playlistId: null,
-    programName: null,
+    name: null,
     currentIndex: 0,
     currentItem: null,
     position: 0,
@@ -268,7 +268,7 @@ function startTimer(channelId: string) {
         if (state.currentItem) {
           await prisma.log.create({
             data: {
-              program: state.programName ?? 'Sem Programa',
+              program: state.name ?? 'Sem Programa',
               title: state.currentItem.title,
               duration: state.currentItem.duration,
               exhibited: true,
@@ -330,7 +330,7 @@ export async function play(channelId: string, playlistId: string): Promise<Playo
     channelId,
     status: 'PLAYING',
     playlistId,
-    programName: playlist.programName,
+    name: playlist.name,
     currentIndex: startIndex,
     currentItem: firstItem,
     position: 0,
@@ -558,6 +558,32 @@ export async function removeItem(channelId: string, itemId: string): Promise<Pla
   return state
 }
 
+// Define fallback do canal — aplica imediatamente se o canal estiver idle/stopped
+export async function setFallback(
+  channelId: string,
+  fallbackType: 'BLACK' | 'COLORBARS' | 'INPUT_SOURCE',
+  fallbackSourceId?: string | null,
+): Promise<void> {
+  await prisma.channel.update({
+    where: { id: channelId },
+    data: { fallbackType, fallbackSourceId: fallbackSourceId ?? null },
+  })
+
+  const state = states.get(channelId) ?? defaultState(channelId)
+  if (state.status === 'PLAYING' || state.status === 'PAUSED') return // apenas salva para depois
+
+  if (fallbackType === 'INPUT_SOURCE' && fallbackSourceId) {
+    const source = await prisma.inputSource.findUnique({ where: { id: fallbackSourceId } })
+    if (source) {
+      resolveInputUrl(source).then((url) => {
+        if (url) streamService.startStreamingFromUrl(channelId, url).catch(() => {})
+      }).catch(() => {})
+    }
+  } else {
+    streamService.stopStreaming(channelId)
+  }
+}
+
 // Restaura estado dos canais que estavam em PLAYING ou PAUSED antes do restart
 export async function initFromDb(): Promise<void> {
   const channels = await prisma.channel.findMany({
@@ -586,7 +612,7 @@ export async function initFromDb(): Promise<void> {
       channelId: ch.id,
       status: ch.status as PlayoutStatus,
       playlistId: ch.activePlaylistId,
-      programName: playlist.programName,
+      name: playlist.name,
       currentIndex: ch.playlistIndex,
       currentItem: item,
       position: 0,
@@ -602,6 +628,6 @@ export async function initFromDb(): Promise<void> {
       streamService.startStreaming(ch.id, item?.mediaId ?? null, item?.cueIn ?? 0).catch(() => {})
     }
 
-    console.log(`[playout] Canal ${ch.id} restaurado: status=${ch.status} playlist=${playlist.programName} idx=${ch.playlistIndex}`)
+    console.log(`[playout] Canal ${ch.id} restaurado: status=${ch.status} playlist=${playlist.name} idx=${ch.playlistIndex}`)
   }
 }

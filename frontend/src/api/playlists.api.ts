@@ -20,7 +20,7 @@ export interface PlaylistItem {
 export interface Playlist {
   id: string
   date: string
-  programName: string
+  name: string
   channelId?: string | null
   channel?: { id: string; name: string; number: number }
   locked: boolean
@@ -41,7 +41,7 @@ export const playlistsApi = {
   get: (id: string) =>
     api.get<Playlist>(`/playlists/${id}`).then((r) => r.data),
 
-  create: (data: { date: string; programName: string; channelId?: string | null; notes?: string; autoStart?: boolean; startTime?: string | null }) =>
+  create: (data: { date: string; name: string; channelId?: string | null; notes?: string; autoStart?: boolean; startTime?: string | null }) =>
     api.post<Playlist>('/playlists', data).then((r) => r.data),
 
   update: (id: string, data: Partial<Playlist>) =>

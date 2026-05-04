@@ -4,14 +4,17 @@ import { StreamOutputType } from '@prisma/client'
 import { prisma } from '../lib/prisma'
 
 const schema = z.object({
-  name:        z.string().min(1),
-  description: z.string().optional().nullable(),
-  type:        z.nativeEnum(StreamOutputType),
-  url:         z.string().optional().nullable(),
-  streamKey:   z.string().optional().nullable(),
-  device:      z.string().optional().nullable(),
-  channelId:   z.string().min(1),
-  active:      z.boolean().optional(),
+  name:            z.string().min(1),
+  description:     z.string().optional().nullable(),
+  type:            z.nativeEnum(StreamOutputType),
+  url:             z.string().optional().nullable(),
+  streamKey:       z.string().optional().nullable(),
+  device:          z.string().optional().nullable(),
+  videoResolution: z.string().optional().nullable(),
+  videoBitrate:    z.number().int().positive().optional().nullable(),
+  audioBitrate:    z.number().int().positive().optional().nullable(),
+  channelId:       z.string().min(1),
+  active:          z.boolean().optional(),
 })
 
 const include = { channel: { select: { id: true, name: true, number: true } } }

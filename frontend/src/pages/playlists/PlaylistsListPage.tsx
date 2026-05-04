@@ -12,7 +12,7 @@ import { Table, Thead, Th, Tbody, Tr, Td } from '../../components/ui/Table'
 import PlaylistImportModal from './PlaylistImportModal'
 
 const today = new Date().toISOString().slice(0, 10)
-const empty = { programName: '', date: today, channelId: '', notes: '', autoStart: false, startTime: '' }
+const empty = { name: '', date: today, channelId: '', notes: '', autoStart: false, startTime: '' }
 
 export default function PlaylistsListPage() {
   const qc = useQueryClient()
@@ -32,10 +32,10 @@ export default function PlaylistsListPage() {
   const save = useMutation({
     mutationFn: () => {
       const payload = {
-        programName: form.programName,
-        date: form.date,
+        name:      form.name || undefined,
+        date:      form.date,
         channelId: form.channelId,
-        notes: form.notes || undefined,
+        notes:     form.notes || undefined,
         autoStart: form.autoStart,
         startTime: form.autoStart && form.startTime ? form.startTime : null,
       }
@@ -64,10 +64,10 @@ export default function PlaylistsListPage() {
   function openEdit(pl: Playlist) {
     setEditing(pl)
     setForm({
-      programName: pl.programName,
-      date: pl.date.slice(0, 10),
+      name:      pl.name,
+      date:      pl.date.slice(0, 10),
       channelId: pl.channelId ?? '',
-      notes: pl.notes ?? '',
+      notes:     pl.notes ?? '',
       autoStart: pl.autoStart ?? false,
       startTime: pl.startTime ?? '',
     })
@@ -101,7 +101,7 @@ export default function PlaylistsListPage() {
       <div className="card">
         <Table>
           <Thead>
-            <Th>Programa</Th>
+            <Th>Playlist</Th>
             <Th>Canal</Th>
             <Th>Data</Th>
             <Th>Clipes</Th>
@@ -115,7 +115,7 @@ export default function PlaylistsListPage() {
                 <Td>
                   <div className="flex items-center gap-2">
                     <ListVideo className="h-4 w-4 text-gray-600 shrink-0" />
-                    <span className="font-medium text-white">{pl.programName}</span>
+                    <span className="font-medium text-white font-mono">{pl.name}</span>
                     {pl.locked && <span className="text-[10px] bg-gray-700 text-gray-400 px-1.5 py-0.5 rounded">Bloqueada</span>}
                     {pl.autoStart && pl.startTime && (
                       <span className="flex items-center gap-1 text-[10px] bg-brand-900/40 text-brand-300 px-1.5 py-0.5 rounded">
@@ -159,7 +159,17 @@ export default function PlaylistsListPage() {
 
       <Modal open={open} onClose={() => setOpen(false)} title={editing ? 'Editar Playlist' : 'Nova Playlist'}>
         <div className="space-y-4">
-          <Input label="Nome do Programa *" value={form.programName} onChange={f('programName')} placeholder="JORNAL DA MANHÃ" />
+          <div className="space-y-1">
+            <Input
+              label="Playlist (ID)"
+              value={form.name}
+              onChange={f('name')}
+              placeholder="Deixe em branco para gerar automaticamente (ex: 040526-1)"
+            />
+            <p className="text-[11px] text-gray-600">
+              Se não informado, será gerado automaticamente no formato DDMMAA-N baseado na data.
+            </p>
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <Input label="Data *" type="date" value={form.date} onChange={f('date')} />
             <Select label="Canal" value={form.channelId} onChange={f('channelId')}>
@@ -169,7 +179,6 @@ export default function PlaylistsListPage() {
           </div>
           <Input label="Observações" value={form.notes} onChange={f('notes')} placeholder="Opcional" />
 
-          {/* Auto-start */}
           <div className="space-y-2">
             <label className="flex items-center gap-3 cursor-pointer select-none">
               <div
@@ -183,21 +192,14 @@ export default function PlaylistsListPage() {
             {form.autoStart && (
               <div className="flex items-center gap-2 pl-12">
                 <Clock className="h-4 w-4 text-gray-500 shrink-0" />
-                <Input
-                  label="Horário (HH:MM)"
-                  type="time"
-                  value={form.startTime}
-                  onChange={f('startTime')}
-                  className="w-36"
-                />
+                <Input label="Horário (HH:MM)" type="time" value={form.startTime} onChange={f('startTime')} className="w-36" />
               </div>
             )}
           </div>
 
           <div className="flex gap-3 justify-end pt-2">
             <Button variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button>
-            <Button loading={save.isPending} onClick={() => save.mutate()}
-              disabled={!form.programName || !form.date}>
+            <Button loading={save.isPending} onClick={() => save.mutate()} disabled={!form.date}>
               Salvar
             </Button>
           </div>

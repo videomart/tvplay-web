@@ -86,7 +86,7 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
     mutationFn: async ({ channelId, clipId, name }: { channelId: string; clipId: string; name: string }) => {
       const playlist = await playlistsApi.create({
         date: todayISO(),
-        programName: name,
+        name,
         channelId,
       })
       await playlistsApi.addItem(playlist.id, { clipId, order: 0 })
@@ -94,7 +94,7 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
       return playlist
     },
     onSuccess: (playlist, { channelId }) => {
-      toast.success(`Playlist "${playlist.programName}" criada e iniciada`)
+      toast.success(`Playlist "${playlist.name}" criada e iniciada`)
       qc.invalidateQueries({ queryKey: ['playout-items', channelId] })
       qc.invalidateQueries({ queryKey: ['playout-state', channelId] })
       qc.invalidateQueries({ queryKey: ['playlists-all'] })
@@ -162,7 +162,7 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
         )}>
           <span className={clsx('h-1.5 w-1.5 rounded-full', hasActivePlaylist ? 'bg-emerald-400' : 'bg-amber-400')} />
           {hasActivePlaylist
-            ? `Playlist: ${playoutState.programName ?? '—'}`
+            ? `Playlist: ${playoutState.name ?? '—'}`
             : 'Sem playlist ativa — clique + para criar'}
         </div>
       )}

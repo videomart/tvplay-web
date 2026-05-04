@@ -3,14 +3,24 @@ import { z } from 'zod'
 import { prisma } from '../lib/prisma'
 
 const playlistSchema = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  programName: z.string().min(1),
+  date:      z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  name:      z.string().optional().nullable(),
   channelId: z.string().optional().nullable(),
-  locked: z.boolean().optional(),
+  locked:    z.boolean().optional(),
   autoStart: z.boolean().optional(),
   startTime: z.string().regex(/^\d{2}:\d{2}$/).optional().nullable(),
-  notes: z.string().optional(),
+  notes:     z.string().optional(),
 })
+
+// Gera identificador automático no formato DDMMYY-N (ex: 040526-1)
+async function generateName(date: Date): Promise<string> {
+  const dd = String(date.getUTCDate()).padStart(2, '0')
+  const mm = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const yy = String(date.getUTCFullYear()).slice(-2)
+  const prefix = `${dd}${mm}${yy}`
+  const count = await prisma.playlist.count({ where: { name: { startsWith: prefix } } })
+  return `${prefix}-${count + 1}`
+}
 
 async function assertNotLocked(playlistId: string, reply: any): Promise<boolean> {
   const pl = await prisma.playlist.findUnique({ where: { id: playlistId }, select: { locked: true } })
@@ -22,14 +32,14 @@ async function assertNotLocked(playlistId: string, reply: any): Promise<boolean>
 }
 
 const itemSchema = z.object({
-  clipId: z.string().min(1),
-  order: z.number().int().min(0).optional(),
-  breakNum: z.number().int().min(1).optional(),
-  blockOrder: z.number().int().min(1).optional(),
-  scheduledAt: z.string().datetime().optional().nullable(),
-  overrideCueIn: z.number().min(0).optional().nullable(),
+  clipId:        z.string().min(1),
+  order:         z.number().int().min(0).optional(),
+  breakNum:      z.number().int().min(1).optional(),
+  blockOrder:    z.number().int().min(1).optional(),
+  scheduledAt:   z.string().datetime().optional().nullable(),
+  overrideCueIn:  z.number().min(0).optional().nullable(),
   overrideCueOut: z.number().min(0).optional().nullable(),
-  loop: z.boolean().optional(),
+  loop:          z.boolean().optional(),
 })
 
 const reorderSchema = z.array(z.object({ id: z.string(), order: z.number().int() }))
@@ -51,10 +61,9 @@ export default async function playlistRoutes(app: FastifyInstance) {
         channel: { select: { id: true, name: true, number: true } },
         _count: { select: { items: true } },
       },
-      orderBy: [{ date: 'desc' }, { programName: 'asc' }],
+      orderBy: [{ date: 'desc' }, { name: 'asc' }],
     })
 
-    // Contagem de itens sem arquivo de mídia por playlist
     const ids = playlists.map((p) => p.id)
     const noMediaItems = ids.length > 0
       ? await prisma.playlistItem.findMany({
@@ -96,9 +105,11 @@ export default async function playlistRoutes(app: FastifyInstance) {
   app.post('/', auth, async (request, reply) => {
     const body = playlistSchema.safeParse(request.body)
     if (!body.success) return reply.status(400).send({ error: body.error.flatten() })
-    const { date, programName, channelId, notes } = body.data
+    const { date, name, channelId, notes, autoStart, startTime, locked } = body.data
+    const dateObj = new Date(date)
+    const resolvedName = name?.trim() ? name.trim() : await generateName(dateObj)
     const playlist = await prisma.playlist.create({
-      data: { date: new Date(date), programName, channelId, notes },
+      data: { date: dateObj, name: resolvedName, channelId, notes, autoStart, startTime, locked },
       include: { channel: { select: { id: true, name: true, number: true } } },
     })
     return reply.status(201).send(playlist)
@@ -188,7 +199,6 @@ export default async function playlistRoutes(app: FastifyInstance) {
     return reply.status(204).send()
   })
 
-  // Reordenar itens em massa (drag-and-drop)
   app.put('/:id/reorder', auth, async (request: any, reply) => {
     if (await assertNotLocked(request.params.id, reply)) return
     const body = reorderSchema.safeParse(request.body)

@@ -41,6 +41,18 @@ services:
       MINIO_ROOT_PASSWORD: minioadmin123
     volumes:
       - miniodata:/data
+      # ── OPÇÃO A: pasta local no host (ex: disco externo ou NAS via SMB montado no host) ──
+      # Comente o volume "miniodata:/data" acima e descomente a linha abaixo:
+      # - /mnt/nas/tvplay-media:/data
+      #
+      # ── OPÇÃO B: NFS diretamente pelo Docker (sem montar no host) ──
+      # Substitua o volume "miniodata" na seção volumes abaixo por:
+      #   miniodata:
+      #     driver: local
+      #     driver_opts:
+      #       type: nfs
+      #       o: addr=192.168.1.100,rw,nfsvers=4,hard
+      #       device: ":/caminho/no/servidor/nfs"
     ports:
       - '9000:9000'
       - '9001:9001'
@@ -49,6 +61,17 @@ services:
       interval: 30s
       timeout: 20s
       retries: 3
+  # ── OPÇÃO C: MinIO externo / S3 ──────────────────────────────────────────────
+  # Se usar MinIO externo na LAN ou serviço S3 (AWS, Wasabi, Backblaze B2),
+  # remova o serviço "minio" acima e ajuste no serviço "api" as variáveis:
+  #   MINIO_ENDPOINT: 192.168.1.200       # IP ou hostname do MinIO/S3
+  #   MINIO_PORT: '9000'                  # porta do serviço
+  #   MINIO_ACCESS_KEY: seu-access-key
+  #   MINIO_SECRET_KEY: seu-secret-key
+  #   MINIO_USE_SSL: 'false'              # 'true' para HTTPS
+  #   MINIO_BUCKET: tvplay-media
+  # Para AWS S3: MINIO_ENDPOINT: s3.amazonaws.com · MINIO_USE_SSL: 'true'
+  # ─────────────────────────────────────────────────────────────────────────────
 
   api:
     build:
@@ -56,7 +79,6 @@ services:
       dockerfile: Dockerfile
     container_name: tvplay_api
     restart: unless-stopped
-    env_file: .env
     environment:
       DATABASE_URL: postgresql://tvplay:tvplay123@postgres:5432/tvplay
       REDIS_URL: redis://redis:6379
@@ -67,6 +89,8 @@ services:
       MINIO_USE_SSL: 'false'
       MINIO_BUCKET: tvplay-media
       NODE_ENV: production
+      JWT_SECRET: tvplay-dev-secret-change-in-production
+      JWT_EXPIRES_IN: 8h
     ports:
       - '3001:3001'
       - '4000-4020:4000-4020/udp'  # SRT / UDP listener (21 portas — suficiente para múltiplos streams)

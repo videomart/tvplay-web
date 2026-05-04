@@ -61,6 +61,7 @@ enum InputSourceType {
   SRT
   SDI
   USB
+  LOCAL_DEVICE
 }
 
 // ─── Usuários ────────────────────────────────────────────────────────────────
@@ -203,9 +204,9 @@ model Clip {
 // ─── Playlists ────────────────────────────────────────────────────────────────
 
 model Playlist {
-  id          String   @id @default(cuid())
-  date        DateTime @db.Date
-  programName String
+  id    String   @id @default(cuid())
+  date  DateTime @db.Date
+  name  String
   locked      Boolean  @default(false)
   autoStart   Boolean  @default(false)
   startTime   String?
@@ -219,7 +220,7 @@ model Playlist {
   items PlaylistItem[]
   logs  Log[]
 
-  @@unique([channelId, date, programName])
+  @@unique([channelId, date, name])
   @@map("playlists")
 }
 
@@ -255,7 +256,10 @@ model StreamOutput {
   type        StreamOutputType
   url         String?
   streamKey   String?
-  device      String?
+  device          String?
+  videoResolution String?
+  videoBitrate    Int?
+  audioBitrate    Int?
   active      Boolean          @default(true)
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
@@ -269,12 +273,15 @@ model StreamOutput {
 // ─── Fontes de Entrada ────────────────────────────────────────────────────────
 
 model InputSource {
-  id        String          @id @default(cuid())
-  name      String
-  type      InputSourceType
-  url       String?
-  device    String?
-  active    Boolean         @default(true)
+  id           String          @id @default(cuid())
+  name         String
+  type         InputSourceType
+  url          String?
+  device       String?
+  deviceOs     String?   // WINDOWS | LINUX (para LOCAL_DEVICE)
+  deviceDriver String?   // DSHOW | V4L2 | DECKLINK (para LOCAL_DEVICE)
+  deviceName   String?   // nome/caminho do dispositivo no host (para LOCAL_DEVICE)
+  active       Boolean         @default(true)
   createdAt DateTime        @default(now())
   updatedAt DateTime        @updatedAt
 

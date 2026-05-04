@@ -10,6 +10,9 @@ export interface StreamOutput {
   url?: string
   streamKey?: string
   device?: string
+  videoResolution?: string | null
+  videoBitrate?: number | null
+  audioBitrate?: number | null
   channelId?: string
   channel?: { id: string; name: string; number: number }
   active: boolean

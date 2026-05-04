@@ -1,6 +1,6 @@
 import { api } from './client'
 
-export type InputSourceType = 'IP' | 'YOUTUBE' | 'SRT' | 'SDI' | 'USB'
+export type InputSourceType = 'IP' | 'YOUTUBE' | 'SRT' | 'SDI' | 'USB' | 'LOCAL_DEVICE'
 
 export interface InputSource {
   id: string
@@ -8,6 +8,9 @@ export interface InputSource {
   type: InputSourceType
   url?: string
   device?: string
+  deviceOs?: string | null
+  deviceDriver?: string | null
+  deviceName?: string | null
   channelId?: string
   channel?: { id: string; name: string; number: number }
   active: boolean
@@ -15,11 +18,12 @@ export interface InputSource {
 }
 
 export const SOURCE_TYPE_LABELS: Record<InputSourceType, string> = {
-  IP:      'IP (HTTP / RTSP / RTMP)',
-  YOUTUBE: 'YouTube',
-  SRT:     'SRT',
-  SDI:     'SDI',
-  USB:     'USB / Captura Local',
+  IP:           'IP (HTTP / RTSP / RTMP)',
+  YOUTUBE:      'YouTube',
+  SRT:          'SRT',
+  SDI:          'SDI',
+  USB:          'USB / Captura Local',
+  LOCAL_DEVICE: 'Dispositivo no Host (Agent)',
 }
 
 export const inputSourcesApi = {

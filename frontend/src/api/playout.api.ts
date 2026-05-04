@@ -23,7 +23,7 @@ export interface PlayoutState {
   channelId: string
   status: 'IDLE' | 'PLAYING' | 'PAUSED' | 'STOPPED'
   playlistId: string | null
-  programName: string | null
+  name: string | null
   currentIndex: number
   currentItem: CurrentItem | null
   position: number
@@ -90,4 +90,6 @@ export const playoutApi = {
     api.post<PlayoutState>(`/playout/${channelId}/insert`, { clipId }).then((r) => r.data),
   removeItem: (channelId: string, itemId: string) =>
     api.delete<PlayoutState>(`/playout/${channelId}/items/${itemId}`).then((r) => r.data),
+  setFallback: (channelId: string, fallbackType: 'BLACK' | 'COLORBARS' | 'INPUT_SOURCE', fallbackSourceId?: string | null) =>
+    api.post(`/playout/${channelId}/set-fallback`, { fallbackType, fallbackSourceId }).then((r) => r.data),
 }

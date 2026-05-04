@@ -193,9 +193,9 @@ export default function PlaylistImportModal({ open, onClose }: { open: boolean; 
         if (prog.items.length === 0) continue
 
         const playlist = await playlistsApi.create({
-          date: parsed.date,
-          programName: prog.name,
+          date:      parsed.date,
           channelId: channelId || null,
+          // name omitido: backend gera DDMMAA-N baseado na data do roteiro
         })
 
         for (let i = 0; i < prog.items.length; i++) {

@@ -10,7 +10,19 @@ import { Modal } from '../../components/ui/Modal'
 import { Table, Thead, Th, Tbody, Tr, Td } from '../../components/ui/Table'
 import { StatusBadge } from '../../components/ui/Badge'
 
-const empty = { name: '', description: '', type: 'RTMP' as StreamOutputType, url: '', streamKey: '', device: '', channelId: '' }
+const RESOLUTION_PRESETS = [
+  { value: '',          label: 'Resolução original da fonte' },
+  { value: '1920x1080', label: '1920×1080 — Full HD' },
+  { value: '1280x720',  label: '1280×720 — HD' },
+  { value: '854x480',   label: '854×480 — SD' },
+  { value: '640x360',   label: '640×360 — Low' },
+]
+
+const empty = {
+  name: '', description: '', type: 'RTMP' as StreamOutputType,
+  url: '', streamKey: '', device: '', channelId: '',
+  videoResolution: '', videoBitrate: '', audioBitrate: '',
+}
 
 type SrtConfig = { host: string; port: string; mode: 'caller' | 'listener'; passphrase: string }
 type UdpConfig = { address: string; port: string }
@@ -72,14 +84,18 @@ export default function StreamOutputsPage() {
 
   const save = useMutation({
     mutationFn: () => {
+      const transcoding = !['HLS_PUSH', 'SDI'].includes(form.type)
       const payload = {
-        name:        form.name,
-        description: form.description || undefined,
-        type:        form.type,
-        url:         getUrlForSave(),
-        streamKey:   (form.type !== 'SRT' && form.streamKey) ? form.streamKey : undefined,
-        device:      form.device || undefined,
-        channelId:   form.channelId,
+        name:            form.name,
+        description:     form.description || undefined,
+        type:            form.type,
+        url:             getUrlForSave(),
+        streamKey:       (form.type !== 'SRT' && form.streamKey) ? form.streamKey : undefined,
+        device:          form.device || undefined,
+        channelId:       form.channelId,
+        videoResolution: (transcoding && form.videoResolution) ? form.videoResolution : null,
+        videoBitrate:    (transcoding && form.videoBitrate)    ? parseInt(form.videoBitrate, 10) : null,
+        audioBitrate:    (transcoding && form.audioBitrate)    ? parseInt(form.audioBitrate, 10) : null,
       }
       return editing ? streamOutputsApi.update(editing.id, payload) : streamOutputsApi.create(payload)
     },
@@ -104,7 +120,11 @@ export default function StreamOutputsPage() {
   function openNew() { setEditing(null); setForm(empty); setSrtCfg(emptySrt); setUdpCfg(emptyUdp); setOpen(true) }
   function openEdit(o: StreamOutput) {
     setEditing(o)
-    setForm({ name: o.name, description: o.description ?? '', type: o.type, url: o.url ?? '', streamKey: o.streamKey ?? '', device: o.device ?? '', channelId: o.channelId ?? '' })
+    setForm({
+      name: o.name, description: o.description ?? '', type: o.type,
+      url: o.url ?? '', streamKey: o.streamKey ?? '', device: o.device ?? '', channelId: o.channelId ?? '',
+      videoResolution: o.videoResolution ?? '', videoBitrate: o.videoBitrate?.toString() ?? '', audioBitrate: o.audioBitrate?.toString() ?? '',
+    })
     if (o.type === 'SRT' && o.url)  setSrtCfg(parseSrtUrl(o.url, o.streamKey))
     else setSrtCfg(emptySrt)
     if (o.type === 'UDP' && o.url)  setUdpCfg(parseUdpUrl(o.url))
@@ -167,15 +187,16 @@ export default function StreamOutputsPage() {
             <Th>Nome</Th>
             <Th>Tipo</Th>
             <Th>Destino</Th>
+            <Th>Codificação</Th>
             <Th>Canal</Th>
             <Th>Situação</Th>
             <Th className="w-24 text-right">Ações</Th>
           </Thead>
           <Tbody>
             {isLoading ? (
-              <Tr><Td colSpan={6} className="text-center text-gray-500 py-8">Carregando...</Td></Tr>
+              <Tr><Td colSpan={7} className="text-center text-gray-500 py-8">Carregando...</Td></Tr>
             ) : data.length === 0 ? (
-              <Tr><Td colSpan={6} className="text-center text-gray-500 py-8">Nenhuma saída configurada.</Td></Tr>
+              <Tr><Td colSpan={7} className="text-center text-gray-500 py-8">Nenhuma saída configurada.</Td></Tr>
             ) : data.map((o) => (
               <Tr key={o.id}>
                 <Td>
@@ -191,6 +212,17 @@ export default function StreamOutputsPage() {
                   <span className="font-mono text-xs text-gray-400 truncate max-w-xs block">
                     {displayUrl(o)}
                   </span>
+                </Td>
+                <Td>
+                  {(o.videoResolution || o.videoBitrate || o.audioBitrate) ? (
+                    <div className="text-[11px] text-gray-500 font-mono space-y-0.5">
+                      {o.videoResolution && <div>{o.videoResolution}</div>}
+                      {o.videoBitrate && <div>{o.videoBitrate}k v</div>}
+                      {o.audioBitrate && <div>{o.audioBitrate}k a</div>}
+                    </div>
+                  ) : (
+                    <span className="text-gray-700 text-xs">automático</span>
+                  )}
                 </Td>
                 <Td>{o.channel ? `Canal ${o.channel.number} — ${o.channel.name}` : <span className="text-gray-600">—</span>}</Td>
                 <Td>
@@ -323,6 +355,52 @@ export default function StreamOutputsPage() {
           {/* SDI */}
           {showDevice && (
             <Input label="Dispositivo SDI" value={form.device} onChange={f('device')} placeholder="/dev/video0 ou nome do dispositivo" />
+          )}
+
+          {/* Codificação de vídeo — apenas para saídas com transcodificação (não HLS_PUSH, não SDI) */}
+          {!['HLS_PUSH', 'SDI'].includes(form.type) && (
+            <div className="space-y-3 border-t border-gray-800 pt-3">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Codificação de Vídeo</p>
+
+              <Select
+                label="Resolução de saída"
+                value={form.videoResolution}
+                onChange={f('videoResolution')}
+              >
+                {RESOLUTION_PRESETS.map((p) => (
+                  <option key={p.value} value={p.value}>{p.label}</option>
+                ))}
+              </Select>
+
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  label="Taxa de vídeo (kbps)"
+                  type="number"
+                  min={200}
+                  max={50000}
+                  value={form.videoBitrate}
+                  onChange={f('videoBitrate')}
+                  placeholder="ex: 2000 (vazio = automático)"
+                />
+                <Input
+                  label="Taxa de áudio (kbps)"
+                  type="number"
+                  min={32}
+                  max={320}
+                  value={form.audioBitrate}
+                  onChange={f('audioBitrate')}
+                  placeholder="128"
+                />
+              </div>
+
+              {(form.videoResolution || form.videoBitrate) && (
+                <p className="text-[11px] text-gray-600 bg-gray-800/50 rounded px-2.5 py-1.5">
+                  FFmpeg: {form.videoResolution ? `-vf scale=${form.videoResolution} ` : ''}
+                  {form.videoBitrate ? `-b:v ${form.videoBitrate}k -maxrate ${Math.round(parseInt(form.videoBitrate) * 1.5)}k ` : ''}
+                  -c:a aac -b:a {form.audioBitrate || 128}k
+                </p>
+              )}
+            </div>
           )}
 
           <div className="flex gap-3 justify-end pt-2">

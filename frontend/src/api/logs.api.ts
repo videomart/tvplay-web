@@ -15,7 +15,7 @@ export interface LogEntry {
   user:     { id: string; name: string } | null
   playlist: {
     id: string
-    programName: string
+    name: string
     channel: { id: string; name: string; number: number }
   } | null
 }

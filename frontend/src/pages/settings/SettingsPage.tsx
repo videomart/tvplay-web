@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Settings, Building2, Tv2, LayoutDashboard, Save } from 'lucide-react'
+import { Settings, Building2, Tv2, LayoutDashboard, Save, Upload } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
 import { settingsApi } from '../../api/settings.api'
@@ -48,6 +48,8 @@ export default function SettingsPage() {
   // ─── Estado local dos formulários ──────────────────────────────────────────
 
   const [empresa, setEmpresa] = useState({ companyName: '', logoUrl: '', email: '' })
+  const [logoUploading, setLogoUploading] = useState(false)
+  const logoInputRef = useRef<HTMLInputElement>(null)
   const [playoutDefaults, setPlayoutDefaults] = useState({
     defaultMonitorOpen: true,
     defaultFallbackOpen: true,
@@ -79,6 +81,23 @@ export default function SettingsPage() {
       setChannelNames(initial)
     }
   }, [channels])
+
+  async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setLogoUploading(true)
+    try {
+      const { logoUrl } = await settingsApi.uploadLogo(file)
+      setEmpresa((s) => ({ ...s, logoUrl }))
+      toast.success('Logo carregado')
+      qc.invalidateQueries({ queryKey: ['settings'] })
+    } catch {
+      toast.error('Erro ao enviar logo')
+    } finally {
+      setLogoUploading(false)
+      if (logoInputRef.current) logoInputRef.current.value = ''
+    }
+  }
 
   // ─── Tabs ─────────────────────────────────────────────────────────────────
 
@@ -126,19 +145,48 @@ export default function SettingsPage() {
             placeholder="Ex.: TV Exemplo"
           />
 
-          <div className="space-y-1.5">
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-300">Logotipo</label>
+
+            {/* Upload a partir de arquivo local */}
+            <div className="flex items-center gap-2">
+              <input
+                ref={logoInputRef}
+                type="file"
+                accept="image/png,image/svg+xml,image/jpeg,image/webp"
+                className="hidden"
+                onChange={handleLogoUpload}
+              />
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={<Upload className="h-3.5 w-3.5" />}
+                loading={logoUploading}
+                onClick={() => logoInputRef.current?.click()}
+              >
+                Enviar arquivo local
+              </Button>
+              <span className="text-[11px] text-gray-600">PNG, SVG, JPEG ou WebP</span>
+            </div>
+
+            {/* Separador */}
+            <div className="flex items-center gap-2">
+              <div className="flex-1 h-px bg-gray-700" />
+              <span className="text-[11px] text-gray-600">ou informe URL</span>
+              <div className="flex-1 h-px bg-gray-700" />
+            </div>
+
             <Input
-              label="URL do logotipo (PNG/SVG com fundo transparente)"
               value={empresa.logoUrl}
               onChange={(e) => setEmpresa((s) => ({ ...s, logoUrl: e.target.value }))}
               placeholder="https://..."
             />
             <p className="text-[11px] text-gray-600">
-              Recomendado: PNG ou SVG com fundo transparente, quadrado, mínimo 128×128 px.
-              O logo aparece na barra lateral com altura de 28 px.
+              Recomendado: fundo transparente, quadrado, mínimo 128×128 px.
+              Aparece na barra lateral com altura de 28 px.
             </p>
             {empresa.logoUrl && (
-              <div className="mt-2 flex items-center gap-3">
+              <div className="mt-1 flex items-center gap-3">
                 <img
                   src={empresa.logoUrl}
                   alt="preview"

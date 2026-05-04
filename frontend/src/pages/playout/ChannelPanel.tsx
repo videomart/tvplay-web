@@ -543,8 +543,14 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
 
   const fallbackMut = useMutation({
     mutationFn: (data: { fallbackType: FallbackType; fallbackSourceId?: string | null }) =>
-      channelsApi.update(channel.id, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['channels'] }),
+      playoutApi.setFallback(channel.id, data.fallbackType, data.fallbackSourceId),
+    onSuccess: () => {
+      toast.success('Sinal de fallback atualizado')
+      setFallbackOpen(true)
+      setSignalSelectorOpen(false)
+      qc.invalidateQueries({ queryKey: ['channels'] })
+    },
+    onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao definir fallback'),
   })
 
   const cutToInputMut = useMutation({
@@ -956,7 +962,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
             {/* Info da playlist */}
             <ListVideo className="h-3 w-3 text-gray-600 flex-shrink-0" />
             <span className="text-[10px] text-gray-500 font-semibold truncate flex-1 min-w-0">
-              {state.programName}
+              {state.name}
             </span>
 
             {/* Trocar playlist */}
@@ -991,6 +997,20 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
               {totalPlaylistDuration > 0 && (
                 <PlaylistProgressBar elapsed={totalElapsed} total={totalPlaylistDuration} />
               )}
+            </div>
+          )}
+
+          {/* Cabeçalho das colunas do grid */}
+          {playlistOpen && (
+            <div className="flex items-center gap-1.5 px-2 py-2 border-b-2 border-gray-600 bg-gray-800 select-none">
+              <span className="w-3.5 flex-shrink-0" />
+              <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-200 w-5 text-right flex-shrink-0">#</span>
+              <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-200 w-8 flex-shrink-0">Tipo</span>
+              <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-200 flex-1 min-w-0">Título</span>
+              <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-200 w-10 text-right flex-shrink-0">Dur.</span>
+              <span className="w-8 flex-shrink-0" />
+              <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-200 flex-shrink-0 px-0.5">Loop</span>
+              <span className="w-4 flex-shrink-0" />
             </div>
           )}
 
@@ -1067,7 +1087,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                       : 'hover:bg-white/5 text-gray-300'
                   )}
                 >
-                  <p className="font-medium">{pl.programName}</p>
+                  <p className="font-medium">{pl.name}</p>
                   <p className="text-[11px] text-gray-500 mt-0.5">
                     {new Date(pl.date).toLocaleDateString('pt-BR')}
                     {pl._count && ` · ${pl._count.items} clipes`}

@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Antenna, Play, Youtube, RefreshCw, ChevronDown } from 'lucide-react'
+import { Plus, Pencil, Trash2, Antenna, Play, Youtube, RefreshCw, ChevronDown, Copy, Check, Monitor } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
 import { inputSourcesApi, type InputSource, type InputSourceType, SOURCE_TYPE_LABELS } from '../../api/input-sources.api'
@@ -15,8 +15,49 @@ import { VideoPlayer } from '../../components/ui/VideoPlayer'
 const empty = { name: '', type: 'IP' as InputSourceType, url: '', device: '', channelId: '' }
 type SrtConfig = { host: string; port: string; mode: 'caller' | 'listener' }
 type UdpConfig = { address: string; port: string }
+type LocalDeviceConfig = {
+  os: 'WINDOWS' | 'LINUX'
+  driver: 'DSHOW' | 'V4L2' | 'DECKLINK'
+  deviceName: string
+  srtPort: string
+  serverIp: string
+}
 const emptySrt: SrtConfig = { host: '', port: '', mode: 'caller' }
 const emptyUdp: UdpConfig = { address: '', port: '' }
+const emptyLocalDevice: LocalDeviceConfig = { os: 'WINDOWS', driver: 'DSHOW', deviceName: '', srtPort: '', serverIp: '' }
+
+function buildLocalDeviceCommand(cfg: LocalDeviceConfig): string {
+  if (!cfg.deviceName || !cfg.srtPort) return ''
+  const dest = cfg.serverIp
+    ? `srt://${cfg.serverIp}:${cfg.srtPort}?mode=caller`
+    : `srt://IP_DO_SERVIDOR:${cfg.srtPort}?mode=caller`
+  const encode = '-c:v libx264 -preset ultrafast -tune zerolatency -b:v 2000k -c:a aac -ar 48000 -b:a 128k -f mpegts'
+  if (cfg.driver === 'DSHOW') {
+    return `ffmpeg -f dshow -i video="${cfg.deviceName}" ${encode} "${dest}"`
+  }
+  if (cfg.driver === 'V4L2') {
+    return `ffmpeg -f v4l2 -i ${cfg.deviceName} ${encode} "${dest}"`
+  }
+  // DECKLINK
+  return `ffmpeg -f decklink -i "${cfg.deviceName}" ${encode} "${dest}"`
+}
+
+const DRIVER_OPTIONS: Record<'WINDOWS' | 'LINUX', { value: string; label: string }[]> = {
+  WINDOWS: [
+    { value: 'DSHOW',   label: 'DirectShow — USB / Webcam / Capturadora' },
+    { value: 'DECKLINK', label: 'Decklink — Blackmagic Design (DeckLink SDK)' },
+  ],
+  LINUX: [
+    { value: 'V4L2',    label: 'V4L2 — USB / Webcam / Capturadora (/dev/video*)' },
+    { value: 'DECKLINK', label: 'Decklink — Blackmagic Design (DeckLink SDK)' },
+  ],
+}
+
+const DEVICE_PLACEHOLDER: Record<string, string> = {
+  DSHOW:    'USB Video Capture · Integrated Webcam · HDMI Capture Card',
+  V4L2:     '/dev/video0',
+  DECKLINK: 'Intensity Shuttle · DeckLink Mini Recorder · UltraStudio',
+}
 
 function buildSrtUrl(c: SrtConfig): string {
   if (!c.port) return ''
@@ -50,13 +91,14 @@ function parseUdpUrl(url: string): UdpConfig {
 }
 
 const TYPE_ICONS: Record<InputSourceType, string> = {
-  IP: '🌐', YOUTUBE: '▶️', SRT: '📡', SDI: '🎬', USB: '🔌',
+  IP: '🌐', YOUTUBE: '▶️', SRT: '📡', SDI: '🎬', USB: '🔌', LOCAL_DEVICE: '🖥️',
 }
 
-const needsUrl    = (t: InputSourceType) => t === 'IP' || t === 'YOUTUBE'
-const needsSrt    = (t: InputSourceType) => t === 'SRT'
-const needsUdp    = (t: InputSourceType) => false  // UDP não é tipo de entrada, mas mantemos pronto
-const needsDevice = (t: InputSourceType) => t === 'SDI' || t === 'USB'
+const needsUrl         = (t: InputSourceType) => t === 'IP' || t === 'YOUTUBE'
+const needsSrt         = (t: InputSourceType) => t === 'SRT'
+const needsUdp         = (t: InputSourceType) => false
+const needsDevice      = (t: InputSourceType) => t === 'SDI' || t === 'USB'
+const needsLocalDevice = (t: InputSourceType) => t === 'LOCAL_DEVICE'
 
 export default function InputSourcesPage() {
   const qc = useQueryClient()
@@ -65,6 +107,9 @@ export default function InputSourcesPage() {
   const [form, setForm] = useState(empty)
   const [srtCfg, setSrtCfg] = useState<SrtConfig>(emptySrt)
   const [udpCfg, setUdpCfg] = useState<UdpConfig>(emptyUdp)
+  const [localDeviceCfg, setLocalDeviceCfg] = useState<LocalDeviceConfig>(emptyLocalDevice)
+  const [cmdCopied, setCmdCopied] = useState(false)
+  const cmdRef = useRef<HTMLTextAreaElement>(null)
   const [previewSource, setPreviewSource] = useState<InputSource | null>(null)
   const [previewStreamUrl, setPreviewStreamUrl] = useState<string | null>(null)
   const [resolving, setResolving] = useState(false)
@@ -88,12 +133,18 @@ export default function InputSourcesPage() {
 
   const save = useMutation({
     mutationFn: () => {
+      const isLocal = form.type === 'LOCAL_DEVICE'
       const payload = {
-        name:      form.name,
-        type:      form.type,
-        url:       getUrlForSave(),
-        device:    form.device || undefined,
-        channelId: form.channelId || undefined,
+        name:         form.name,
+        type:         form.type,
+        url:          isLocal
+          ? (localDeviceCfg.srtPort ? `srt://:${localDeviceCfg.srtPort}?mode=listener&timeout=15000000` : undefined)
+          : getUrlForSave(),
+        device:       (!isLocal && form.device) ? form.device : undefined,
+        deviceOs:     isLocal ? localDeviceCfg.os : undefined,
+        deviceDriver: isLocal ? localDeviceCfg.driver : undefined,
+        deviceName:   isLocal ? localDeviceCfg.deviceName || undefined : undefined,
+        channelId:    form.channelId || undefined,
       }
       return editing ? inputSourcesApi.update(editing.id, payload) : inputSourcesApi.create(payload)
     },
@@ -115,20 +166,31 @@ export default function InputSourcesPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['input-sources'] }),
   })
 
-  function openNew() { setEditing(null); setForm(empty); setSrtCfg(emptySrt); setUdpCfg(emptyUdp); setOpen(true) }
+  function openNew() {
+    setEditing(null); setForm(empty); setSrtCfg(emptySrt); setUdpCfg(emptyUdp)
+    setLocalDeviceCfg(emptyLocalDevice); setCmdCopied(false); setOpen(true)
+  }
   function openEdit(s: InputSource) {
     setEditing(s)
     setForm({ name: s.name, type: s.type, url: s.url ?? '', device: s.device ?? '', channelId: s.channelId ?? '' })
-    if (s.type === 'SRT' && s.url)  setSrtCfg(parseSrtUrl(s.url))
+    if (s.type === 'SRT' && s.url) setSrtCfg(parseSrtUrl(s.url))
     else setSrtCfg(emptySrt)
     setUdpCfg(emptyUdp)
+    if (s.type === 'LOCAL_DEVICE') {
+      const os = (s.deviceOs as LocalDeviceConfig['os']) || 'WINDOWS'
+      const driver = (s.deviceDriver as LocalDeviceConfig['driver']) || 'DSHOW'
+      const port = s.url ? (s.url.match(/^srt:\/\/:(\d+)/) ?? [])[1] ?? '' : ''
+      setLocalDeviceCfg({ os, driver, deviceName: s.deviceName ?? '', srtPort: port, serverIp: '' })
+    } else {
+      setLocalDeviceCfg(emptyLocalDevice)
+    }
+    setCmdCopied(false)
     setOpen(true)
   }
 
   function handleTypeChange(type: InputSourceType) {
     setForm((v) => ({ ...v, type, url: '', device: '' }))
-    setSrtCfg(emptySrt)
-    setUdpCfg(emptyUdp)
+    setSrtCfg(emptySrt); setUdpCfg(emptyUdp); setLocalDeviceCfg(emptyLocalDevice)
   }
 
   const f = (k: keyof typeof empty) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
@@ -371,6 +433,115 @@ export default function InputSourcesPage() {
               )}
               <Input value={form.device} onChange={f('device')} placeholder="/dev/video0" />
               <p className="text-[10px] text-gray-600">Ou digite o caminho do dispositivo manualmente.</p>
+            </div>
+          )}
+
+          {/* LOCAL_DEVICE — Host Agent */}
+          {needsLocalDevice(form.type) && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <Select
+                  label="Sistema operacional do host"
+                  value={localDeviceCfg.os}
+                  onChange={(e) => {
+                    const os = e.target.value as LocalDeviceConfig['os']
+                    const driver = os === 'WINDOWS' ? 'DSHOW' : 'V4L2'
+                    setLocalDeviceCfg((v) => ({ ...v, os, driver }))
+                  }}
+                >
+                  <option value="WINDOWS">Windows</option>
+                  <option value="LINUX">Linux</option>
+                </Select>
+                <Select
+                  label="Driver / Interface de captura"
+                  value={localDeviceCfg.driver}
+                  onChange={(e) => setLocalDeviceCfg((v) => ({ ...v, driver: e.target.value as LocalDeviceConfig['driver'] }))}
+                >
+                  {DRIVER_OPTIONS[localDeviceCfg.os].map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </Select>
+              </div>
+
+              <Input
+                label={localDeviceCfg.driver === 'V4L2' ? 'Caminho do dispositivo *' : 'Nome do dispositivo *'}
+                value={localDeviceCfg.deviceName}
+                onChange={(e) => setLocalDeviceCfg((v) => ({ ...v, deviceName: e.target.value }))}
+                placeholder={DEVICE_PLACEHOLDER[localDeviceCfg.driver]}
+              />
+
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  label="Porta SRT (listener no TVPlay) *"
+                  type="number"
+                  min={4000}
+                  max={4020}
+                  value={localDeviceCfg.srtPort}
+                  onChange={(e) => setLocalDeviceCfg((v) => ({ ...v, srtPort: e.target.value }))}
+                  placeholder="4010"
+                />
+                <Input
+                  label="IP do servidor TVPlay"
+                  value={localDeviceCfg.serverIp}
+                  onChange={(e) => setLocalDeviceCfg((v) => ({ ...v, serverIp: e.target.value }))}
+                  placeholder="192.168.1.100"
+                />
+              </div>
+
+              {localDeviceCfg.srtPort && (
+                <div className="text-[11px] font-mono text-gray-500 bg-gray-800/60 rounded px-2.5 py-1.5">
+                  TVPlay escutará em: <span className="text-gray-300">srt://:{localDeviceCfg.srtPort}?mode=listener</span>
+                  <p className="text-gray-600 mt-0.5">Porta {localDeviceCfg.srtPort} deve estar mapeada no docker-compose (range 4000–4020/udp).</p>
+                </div>
+              )}
+
+              {/* Comando FFmpeg gerado */}
+              {buildLocalDeviceCommand(localDeviceCfg) && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-gray-400">Comando FFmpeg para executar no host</p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const cmd = buildLocalDeviceCommand(localDeviceCfg)
+                        navigator.clipboard.writeText(cmd).then(() => {
+                          setCmdCopied(true)
+                          setTimeout(() => setCmdCopied(false), 2000)
+                        })
+                      }}
+                      className="flex items-center gap-1 text-[11px] text-gray-500 hover:text-brand-400 transition-colors"
+                    >
+                      {cmdCopied
+                        ? <><Check className="h-3 w-3 text-emerald-400" /><span className="text-emerald-400">Copiado!</span></>
+                        : <><Copy className="h-3 w-3" />Copiar</>}
+                    </button>
+                  </div>
+                  <textarea
+                    ref={cmdRef}
+                    readOnly
+                    rows={3}
+                    value={buildLocalDeviceCommand(localDeviceCfg)}
+                    className="w-full text-[11px] font-mono text-emerald-300 bg-gray-900 border border-gray-700 rounded px-3 py-2 resize-none focus:outline-none"
+                  />
+                  {!localDeviceCfg.serverIp && (
+                    <p className="text-[10px] text-amber-500/80">
+                      Substitua <span className="font-mono">IP_DO_SERVIDOR</span> pelo IP da máquina que executa o TVPlay (docker host).
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <div className="p-3 bg-gray-800/50 rounded-lg text-xs text-gray-500 space-y-1.5">
+                <p className="font-medium text-gray-400 flex items-center gap-1.5">
+                  <Monitor className="h-3.5 w-3.5" /> Como funciona o Host Agent
+                </p>
+                <p>O TVPlay abre um listener SRT na porta indicada. Execute o comando FFmpeg acima no host Windows ou Linux para capturar o dispositivo e enviar o stream via SRT.</p>
+                <p className="text-gray-600">
+                  {localDeviceCfg.driver === 'DSHOW' && 'Para listar câmeras no Windows: ffmpeg -list_devices true -f dshow -i dummy'}
+                  {localDeviceCfg.driver === 'V4L2'  && 'Para listar câmeras no Linux: v4l2-ctl --list-devices'}
+                  {localDeviceCfg.driver === 'DECKLINK' && 'Para listar placas Decklink: ffmpeg -f decklink -list_devices 1 -i dummy'}
+                </p>
+              </div>
             </div>
           )}
 

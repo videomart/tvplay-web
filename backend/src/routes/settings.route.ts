@@ -1,5 +1,7 @@
 import { FastifyInstance } from 'fastify'
+import path from 'path'
 import { prisma } from '../lib/prisma'
+import { storageService } from '../services/storage.service'
 
 export default async function settingsRoutes(app: FastifyInstance) {
   const auth = { preHandler: [app.authenticate] }
@@ -49,5 +51,57 @@ export default async function settingsRoutes(app: FastifyInstance) {
         ...(defaultPlaylistOpen !== undefined && { defaultPlaylistOpen }),
       },
     })
+  })
+
+  // Upload de logo a partir de arquivo local
+  app.post('/upload-logo', auth, async (request: any, reply) => {
+    const data = await request.file()
+    if (!data) return reply.status(400).send({ error: 'Nenhum arquivo enviado' })
+
+    const allowedMimes = ['image/png', 'image/svg+xml', 'image/jpeg', 'image/webp']
+    if (!allowedMimes.includes(data.mimetype)) {
+      return reply.status(415).send({ error: 'Formato não suportado. Use PNG, SVG, JPEG ou WebP.' })
+    }
+
+    const ext = path.extname(data.filename).toLowerCase() || '.png'
+    const objectName = `logos/logo-${Date.now()}${ext}`
+    const buffer = await data.toBuffer()
+
+    await storageService.uploadBuffer(objectName, buffer, data.mimetype)
+
+    const logoUrl = `/api/settings/logo/${path.basename(objectName)}`
+
+    await prisma.systemSettings.upsert({
+      where: { id: 'singleton' },
+      create: { id: 'singleton', logoUrl },
+      update: { logoUrl },
+    })
+
+    return { logoUrl }
+  })
+
+  // Serve o arquivo de logo do MinIO (sem auth — usado pela sidebar)
+  app.get('/logo/:filename', async (request: any, reply) => {
+    const objectName = `logos/${request.params.filename}`
+    try {
+      const stat = await storageService.getObjectStat(objectName)
+      const stream = await storageService.getObjectStream(objectName)
+
+      const ext = path.extname(request.params.filename).toLowerCase()
+      const mime: Record<string, string> = {
+        '.png': 'image/png',
+        '.svg': 'image/svg+xml',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.webp': 'image/webp',
+      }
+
+      reply.header('Content-Type', mime[ext] ?? 'image/png')
+      reply.header('Content-Length', stat.size)
+      reply.header('Cache-Control', 'public, max-age=86400')
+      return reply.send(stream)
+    } catch {
+      return reply.status(404).send({ error: 'Logo não encontrado' })
+    }
   })
 }

@@ -22,6 +22,7 @@ function appendSrtPassphrase(url: string, passphrase: string | null | undefined)
 
 function buildArgs(inputUrl: string, cueIn: number, output: {
   type: string; url?: string | null; streamKey?: string | null; device?: string | null
+  videoResolution?: string | null; videoBitrate?: number | null; audioBitrate?: number | null
 }, isLive = false): string[] | null {
   // -re só para arquivos (controla velocidade de leitura); fontes ao vivo já são real-time
   const input: string[] = [
@@ -31,9 +32,17 @@ function buildArgs(inputUrl: string, cueIn: number, output: {
     '-i', inputUrl,
   ]
   // Para fontes ao vivo usamos -c copy (passthrough sem transcodar)
+  const scaleFilter = (!isLive && output.videoResolution)
+    ? ['-vf', `scale=${output.videoResolution}`] : []
+  const videoBitrateArgs = (!isLive && output.videoBitrate)
+    ? ['-b:v', `${output.videoBitrate}k`,
+       '-maxrate', `${Math.round(output.videoBitrate * 1.5)}k`,
+       '-bufsize', `${output.videoBitrate * 2}k`] : []
+  const aBitrate = output.audioBitrate ?? 128
   const videoCodec = isLive
     ? ['-c', 'copy']
-    : ['-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency', '-c:a', 'aac', '-ar', '44100', '-b:a', '128k']
+    : [...scaleFilter, '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
+       ...videoBitrateArgs, '-c:a', 'aac', '-ar', '44100', '-b:a', `${aBitrate}k`]
 
   switch (output.type) {
     case 'RTMP': {
@@ -76,7 +85,7 @@ function hlsUrlForMedia(mediaId: string): string {
 
 function spawnOutput(
   channelId: string,
-  output: { id: string; name: string; type: string; url?: string | null; streamKey?: string | null; device?: string | null },
+  output: { id: string; name: string; type: string; url?: string | null; streamKey?: string | null; device?: string | null; videoResolution?: string | null; videoBitrate?: number | null; audioBitrate?: number | null },
   hlsUrl: string,
   cueIn: number,
   isLive = false,

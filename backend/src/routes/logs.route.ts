@@ -52,7 +52,7 @@ export default async function logsRoutes(app: FastifyInstance) {
         take: limit,
         orderBy: { startedAt: 'desc' },
         include: {
-          playlist: { select: { id: true, programName: true, channel: { select: { id: true, name: true, number: true } } } },
+          playlist: { select: { id: true, name: true, channel: { select: { id: true, name: true, number: true } } } },
           user:     { select: { id: true, name: true } },
         },
       }),

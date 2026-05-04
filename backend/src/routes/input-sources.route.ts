@@ -11,12 +11,15 @@ import * as previewService from '../services/preview.service'
 const execFileAsync = promisify(execFile)
 
 const schema = z.object({
-  name:      z.string().min(1),
-  type:      z.nativeEnum(InputSourceType),
-  url:       z.string().optional().nullable(),
-  device:    z.string().optional().nullable(),
-  channelId: z.string().optional().nullable(),
-  active:    z.boolean().optional(),
+  name:         z.string().min(1),
+  type:         z.nativeEnum(InputSourceType),
+  url:          z.string().optional().nullable(),
+  device:       z.string().optional().nullable(),
+  deviceOs:     z.string().optional().nullable(),
+  deviceDriver: z.string().optional().nullable(),
+  deviceName:   z.string().optional().nullable(),
+  channelId:    z.string().optional().nullable(),
+  active:       z.boolean().optional(),
 })
 
 const include = { channel: { select: { id: true, name: true, number: true } } }

@@ -145,7 +145,7 @@ export default function PlaylistEditorPage() {
           </Button>
           <ChevronRight className="h-4 w-4 text-gray-600" />
           <div>
-            <h1 className="text-base font-bold text-white">{playlist.programName}</h1>
+            <h1 className="text-base font-bold text-white">{playlist.name}</h1>
             <p className="text-[11px] text-gray-500">
               {playlist.channel ? `Canal ${playlist.channel.number} — ` : ''}
               {new Date(playlist.date).toLocaleDateString('pt-BR')}
