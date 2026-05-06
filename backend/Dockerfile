@@ -5,7 +5,9 @@ FROM node:20-alpine
 COPY --from=ffmpeg-static /ffmpeg /usr/local/bin/ffmpeg
 COPY --from=ffmpeg-static /ffprobe /usr/local/bin/ffprobe
 
-RUN apk add --no-cache python3 py3-pip make g++ openssl openssl-dev libc6-compat v4l-utils && \
+RUN apk add --no-cache python3 py3-pip make g++ openssl openssl-dev libc6-compat v4l-utils \
+        fontconfig ttf-freefont && \
+    fc-cache -f && \
     pip3 install --no-cache-dir --break-system-packages yt-dlp
 
 WORKDIR /app

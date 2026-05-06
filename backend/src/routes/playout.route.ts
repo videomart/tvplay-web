@@ -165,6 +165,7 @@ export default async function playoutRoutes(app: FastifyInstance) {
             client: { select: { name: true } },
             type: { select: { code: true, fontColor: true, fontBackColor: true } },
             media: { select: { duration: true, ingestStatus: true } },
+            graphic: { select: { name: true } },
           },
         },
       },
@@ -190,6 +191,7 @@ export default async function playoutRoutes(app: FastifyInstance) {
         clientName: clip.client?.name ?? null,
         breakNum: item.breakNum,
         mediaReady: clip.media?.ingestStatus === 'READY',
+        graphicName: clip.graphic?.name ?? null,
       }
     })
   })

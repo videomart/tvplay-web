@@ -2,6 +2,7 @@ import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { prisma } from '../lib/prisma'
 import * as streamService from './stream.service'
+import type { GraphicConfig } from './stream.service'
 
 const execFileAsync = promisify(execFile)
 
@@ -25,6 +26,13 @@ async function resolveInputUrl(src: { type: string; url: string | null; device: 
 
 export type PlayoutStatus = 'IDLE' | 'PLAYING' | 'PAUSED' | 'STOPPED'
 
+export interface ActiveGraphic {
+  logoUrl?: string | null
+  logoPosition?: string | null
+  showClock?: boolean
+  lowerText?: string | null
+}
+
 export interface PlayoutState {
   channelId: string
   status: PlayoutStatus
@@ -37,6 +45,7 @@ export interface PlayoutState {
   totalPlaylistDuration: number // soma das durações de todos os itens
   itemCount: number             // total de itens na playlist
   updatedAt: number             // timestamp epoch ms
+  activeGraphic: ActiveGraphic | null
 }
 
 export interface CurrentItem {
@@ -99,6 +108,7 @@ function defaultState(channelId: string): PlayoutState {
     totalPlaylistDuration: 0,
     itemCount: 0,
     updatedAt: Date.now(),
+    activeGraphic: null,
   }
 }
 
@@ -234,6 +244,41 @@ async function findNextReadyFrom(
   return null
 }
 
+// Resolve o gráfico ativo por cascata: clip → playlist → saída de streaming
+async function resolveGraphic(
+  clipId: string | null,
+  playlistId: string | null,
+  channelId: string,
+): Promise<GraphicConfig | null> {
+  if (clipId) {
+    const clip = await prisma.clip.findUnique({
+      where: { id: clipId },
+      select: { graphic: { select: { logoUrl: true, logoPosition: true, showClock: true, lowerText: true, active: true } } },
+    })
+    if (clip?.graphic?.active) {
+      console.log(`[playout] resolveGraphic ch=${channelId} → CLIP logo=${clip.graphic.logoUrl} clk=${clip.graphic.showClock}`)
+      return clip.graphic
+    }
+  }
+  if (playlistId) {
+    const pl = await prisma.playlist.findUnique({
+      where: { id: playlistId },
+      select: { graphic: { select: { logoUrl: true, logoPosition: true, showClock: true, lowerText: true, active: true } } },
+    })
+    if (pl?.graphic?.active) {
+      console.log(`[playout] resolveGraphic ch=${channelId} → PLAYLIST logo=${pl.graphic.logoUrl} clk=${pl.graphic.showClock}`)
+      return pl.graphic
+    }
+  }
+  const output = await prisma.streamOutput.findFirst({
+    where: { channelId, active: true, graphicId: { not: null } },
+    select: { graphic: { select: { logoUrl: true, logoPosition: true, showClock: true, lowerText: true, active: true } } },
+  })
+  const result = (output?.graphic?.active ? output.graphic : null) ?? null
+  console.log(`[playout] resolveGraphic ch=${channelId} → ${result ? `SAIDA logo=${result.logoUrl} clk=${result.showClock}` : 'NENHUM GRAFICO'}`)
+  return result
+}
+
 function stopTimer(channelId: string) {
   const t = timers.get(channelId)
   if (t) { clearInterval(t); timers.delete(channelId) }
@@ -282,7 +327,10 @@ function startTimer(channelId: string) {
         state.position = 0
         state.currentItem = next.item
         persistState(channelId, state.playlistId!, next.index)
-        streamService.restartStreaming(channelId, next.item.mediaId, next.item.cueIn).catch(() => {})
+        resolveGraphic(next.item.clipId, state.playlistId, channelId).then((g) => {
+          state.activeGraphic = g
+          return streamService.restartStreaming(channelId, next.item.mediaId, next.item.cueIn, g)
+        }).catch(() => {})
       } else {
         // Fim da playlist
         state.status = 'STOPPED'
@@ -316,6 +364,7 @@ function startTimer(channelId: string) {
 }
 
 export async function play(channelId: string, playlistId: string): Promise<PlayoutState> {
+  console.log(`[playout] play ch=${channelId} playlist=${playlistId}`)
   stopTimer(channelId)
   const playlist = await prisma.playlist.findUnique({ where: { id: playlistId } })
   if (!playlist) throw new Error('Playlist não encontrada')
@@ -325,7 +374,8 @@ export async function play(channelId: string, playlistId: string): Promise<Playo
     computePlaylistMeta(playlistId),
   ])
   const startIndex = firstReady?.index ?? 0
-  const firstItem  = firstReady?.item ?? await loadItem(playlistId, 0) // fallback: carrega mesmo sem mídia
+  const firstItem  = firstReady?.item ?? await loadItem(playlistId, 0)
+  const activeGraphic = await resolveGraphic(firstItem?.clipId ?? null, playlistId, channelId).catch(() => null)
   const state: PlayoutState = {
     channelId,
     status: 'PLAYING',
@@ -338,12 +388,13 @@ export async function play(channelId: string, playlistId: string): Promise<Playo
     totalPlaylistDuration: totalDuration,
     itemCount: count,
     updatedAt: Date.now(),
+    activeGraphic,
   }
   states.set(channelId, state)
   await prisma.channel.update({ where: { id: channelId }, data: { status: 'PLAYING' } }).catch(() => {})
   persistState(channelId, playlistId, startIndex)
   startTimer(channelId)
-  streamService.startStreaming(channelId, firstItem?.mediaId ?? null, firstItem?.cueIn ?? 0).catch(() => {})
+  streamService.startStreaming(channelId, firstItem?.mediaId ?? null, firstItem?.cueIn ?? 0, activeGraphic).catch(() => {})
   broadcast(channelId, state)
   return state
 }
@@ -408,7 +459,9 @@ export async function nextClip(channelId: string): Promise<PlayoutState> {
   state.currentItem = await loadItem(state.playlistId, nextIndex)
   state.updatedAt = Date.now()
   persistState(channelId, state.playlistId, nextIndex)
-  streamService.restartStreaming(channelId, state.currentItem?.mediaId ?? null, state.currentItem?.cueIn ?? 0).catch(() => {})
+  const g_next = await resolveGraphic(state.currentItem?.clipId ?? null, state.playlistId, channelId).catch(() => null)
+  state.activeGraphic = g_next
+  streamService.restartStreaming(channelId, state.currentItem?.mediaId ?? null, state.currentItem?.cueIn ?? 0, g_next).catch(() => {})
   broadcast(channelId, state)
   return state
 }
@@ -422,7 +475,9 @@ export async function prevClip(channelId: string): Promise<PlayoutState> {
   state.currentItem = await loadItem(state.playlistId, prevIndex)
   state.updatedAt = Date.now()
   persistState(channelId, state.playlistId, prevIndex)
-  streamService.restartStreaming(channelId, state.currentItem?.mediaId ?? null, state.currentItem?.cueIn ?? 0).catch(() => {})
+  const g_prev = await resolveGraphic(state.currentItem?.clipId ?? null, state.playlistId, channelId).catch(() => null)
+  state.activeGraphic = g_prev
+  streamService.restartStreaming(channelId, state.currentItem?.mediaId ?? null, state.currentItem?.cueIn ?? 0, g_prev).catch(() => {})
   broadcast(channelId, state)
   return state
 }
@@ -437,7 +492,9 @@ export async function jumpTo(channelId: string, itemIndex: number): Promise<Play
   state.currentItem = await loadItem(state.playlistId, itemIndex)
   state.updatedAt = Date.now()
   persistState(channelId, state.playlistId, itemIndex)
-  streamService.restartStreaming(channelId, state.currentItem?.mediaId ?? null, state.currentItem?.cueIn ?? 0).catch(() => {})
+  const g_jump = await resolveGraphic(state.currentItem?.clipId ?? null, state.playlistId, channelId).catch(() => null)
+  state.activeGraphic = g_jump
+  streamService.restartStreaming(channelId, state.currentItem?.mediaId ?? null, state.currentItem?.cueIn ?? 0, g_jump).catch(() => {})
   broadcast(channelId, state)
   return state
 }
@@ -547,7 +604,9 @@ export async function removeItem(channelId: string, itemId: string): Promise<Pla
     state.position = 0
     state.currentItem = await loadItem(state.playlistId, newIndex)
     persistState(channelId, state.playlistId, newIndex)
-    streamService.restartStreaming(channelId, state.currentItem?.mediaId ?? null, state.currentItem?.cueIn ?? 0).catch(() => {})
+    const g_rem = await resolveGraphic(state.currentItem?.clipId ?? null, state.playlistId, channelId).catch(() => null)
+    state.activeGraphic = g_rem
+    streamService.restartStreaming(channelId, state.currentItem?.mediaId ?? null, state.currentItem?.cueIn ?? 0, g_rem).catch(() => {})
   }
 
   const { totalDuration, count } = await computePlaylistMeta(state.playlistId)
@@ -608,6 +667,9 @@ export async function initFromDb(): Promise<void> {
       loadItem(ch.activePlaylistId, ch.playlistIndex),
       computePlaylistMeta(ch.activePlaylistId),
     ])
+    const activeGraphic = ch.status === 'PLAYING'
+      ? await resolveGraphic(item?.clipId ?? null, ch.activePlaylistId, ch.id).catch(() => null)
+      : null
     const state: PlayoutState = {
       channelId: ch.id,
       status: ch.status as PlayoutStatus,
@@ -620,12 +682,13 @@ export async function initFromDb(): Promise<void> {
       totalPlaylistDuration: totalDuration,
       itemCount: count,
       updatedAt: Date.now(),
+      activeGraphic,
     }
     states.set(ch.id, state)
 
     if (ch.status === 'PLAYING') {
       startTimer(ch.id)
-      streamService.startStreaming(ch.id, item?.mediaId ?? null, item?.cueIn ?? 0).catch(() => {})
+      streamService.startStreaming(ch.id, item?.mediaId ?? null, item?.cueIn ?? 0, activeGraphic).catch(() => {})
     }
 
     console.log(`[playout] Canal ${ch.id} restaurado: status=${ch.status} playlist=${playlist.name} idx=${ch.playlistIndex}`)

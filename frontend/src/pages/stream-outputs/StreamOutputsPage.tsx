@@ -4,6 +4,7 @@ import { Plus, Pencil, Trash2, Cast } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { streamOutputsApi, type StreamOutput, type StreamOutputType, TYPE_LABELS, TYPE_DESCRIPTIONS } from '../../api/stream-outputs.api'
 import { channelsApi } from '../../api/channels.api'
+import { graphicsApi } from '../../api/graphics.api'
 import { Button } from '../../components/ui/Button'
 import { Input, Select } from '../../components/ui/Input'
 import { Modal } from '../../components/ui/Modal'
@@ -18,10 +19,18 @@ const RESOLUTION_PRESETS = [
   { value: '640x360',   label: '640×360 — Low' },
 ]
 
+const LOGO_POSITIONS = [
+  { value: 'top-right',    label: 'Superior direito' },
+  { value: 'top-left',     label: 'Superior esquerdo' },
+  { value: 'bottom-right', label: 'Inferior direito' },
+  { value: 'bottom-left',  label: 'Inferior esquerdo' },
+]
+
 const empty = {
   name: '', description: '', type: 'RTMP' as StreamOutputType,
   url: '', streamKey: '', device: '', channelId: '',
   videoResolution: '', videoBitrate: '', audioBitrate: '',
+  graphicId: '',
 }
 
 type SrtConfig = { host: string; port: string; mode: 'caller' | 'listener'; passphrase: string }
@@ -75,6 +84,7 @@ export default function StreamOutputsPage() {
 
   const { data = [], isLoading } = useQuery({ queryKey: ['stream-outputs'], queryFn: streamOutputsApi.list })
   const { data: channels = [] } = useQuery({ queryKey: ['channels'], queryFn: channelsApi.list })
+  const { data: graphics = [] } = useQuery({ queryKey: ['graphics'], queryFn: graphicsApi.list })
 
   function getUrlForSave(): string | undefined {
     if (form.type === 'SRT') return buildSrtUrl(srtCfg) || undefined
@@ -96,6 +106,7 @@ export default function StreamOutputsPage() {
         videoResolution: (transcoding && form.videoResolution) ? form.videoResolution : null,
         videoBitrate:    (transcoding && form.videoBitrate)    ? parseInt(form.videoBitrate, 10) : null,
         audioBitrate:    (transcoding && form.audioBitrate)    ? parseInt(form.audioBitrate, 10) : null,
+        graphicId:       form.graphicId || null,
       }
       return editing ? streamOutputsApi.update(editing.id, payload) : streamOutputsApi.create(payload)
     },
@@ -124,6 +135,7 @@ export default function StreamOutputsPage() {
       name: o.name, description: o.description ?? '', type: o.type,
       url: o.url ?? '', streamKey: o.streamKey ?? '', device: o.device ?? '', channelId: o.channelId ?? '',
       videoResolution: o.videoResolution ?? '', videoBitrate: o.videoBitrate?.toString() ?? '', audioBitrate: o.audioBitrate?.toString() ?? '',
+      graphicId: o.graphicId ?? '',
     })
     if (o.type === 'SRT' && o.url)  setSrtCfg(parseSrtUrl(o.url, o.streamKey))
     else setSrtCfg(emptySrt)
@@ -223,6 +235,11 @@ export default function StreamOutputsPage() {
                   ) : (
                     <span className="text-gray-700 text-xs">automático</span>
                   )}
+                  {o.graphic && (
+                    <span className="text-[10px] bg-violet-900/50 text-violet-300 px-1.5 py-0.5 rounded font-mono mt-1 inline-block">
+                      {o.graphic.name}
+                    </span>
+                  )}
                 </Td>
                 <Td>{o.channel ? `Canal ${o.channel.number} — ${o.channel.name}` : <span className="text-gray-600">—</span>}</Td>
                 <Td>
@@ -242,168 +259,128 @@ export default function StreamOutputsPage() {
         </Table>
       </div>
 
-      <Modal open={open} onClose={() => setOpen(false)} title={editing ? 'Editar Saída' : 'Nova Saída'} size="md">
-        <div className="space-y-4">
-          <Input label="Nome *" value={form.name} onChange={f('name')} placeholder="YouTube Live Show" />
-          <Input label="Identificação / Descrição" value={form.description} onChange={f('description')} placeholder="Transmissão Live Show, Canal 2 Backup..." />
-          <div className="grid grid-cols-2 gap-4">
-            <Select label="Tipo *" value={form.type} onChange={(e) => handleTypeChange(e.target.value as StreamOutputType)}>
-              {(Object.keys(TYPE_LABELS) as StreamOutputType[]).map((k) => (
-                <option key={k} value={k}>{TYPE_LABELS[k]}</option>
-              ))}
-            </Select>
-            <Select label="Canal *" value={form.channelId} onChange={f('channelId')}>
-              <option value="" disabled>Selecione o canal</option>
-              {channels.filter((c) => c.active).map((c) => (
-                <option key={c.id} value={c.id}>Canal {c.number} — {c.name}</option>
-              ))}
-            </Select>
-          </div>
+      <Modal open={open} onClose={() => setOpen(false)} title={editing ? 'Editar Saída' : 'Nova Saída'} size="2xl">
+        <div className="flex flex-col">
+          {/* Área rolável */}
+          <div className="overflow-y-auto max-h-[78vh] pr-3 space-y-3">
 
-          {form.type && TYPE_DESCRIPTIONS[form.type] && (
-            <p className="text-xs text-gray-500 -mt-1">{TYPE_DESCRIPTIONS[form.type]}</p>
-          )}
-
-          {/* RTMP / HLS_PUSH / RTP */}
-          {showUrl && (
-            <Input
-              label="URL de destino *"
-              value={form.url}
-              onChange={f('url')}
-              placeholder={urlPlaceholder[form.type] ?? 'URL...'}
-            />
-          )}
-          {showKey && (
-            <Input label="Stream Key" value={form.streamKey} onChange={f('streamKey')} placeholder="xxxx-xxxx-xxxx-xxxx" />
-          )}
-
-          {/* SRT */}
-          {form.type === 'SRT' && (
-            <div className="space-y-3">
-              <Select
-                label="Modo"
-                value={srtCfg.mode}
-                onChange={(e) => setSrtCfg((v) => ({ ...v, mode: e.target.value as 'caller' | 'listener' }))}
-              >
-                <option value="caller">Caller — conecta ao receptor SRT remoto</option>
-                <option value="listener">Listener — aguarda o receptor conectar-se à porta</option>
-              </Select>
-              <div className="grid grid-cols-5 gap-3">
-                <div className="col-span-3">
-                  <Input
-                    label={srtCfg.mode === 'listener' ? 'Host / IP (não usado no listener)' : 'Host / IP *'}
-                    value={srtCfg.mode === 'listener' ? '' : srtCfg.host}
-                    onChange={(e) => setSrtCfg((v) => ({ ...v, host: e.target.value }))}
-                    placeholder={srtCfg.mode === 'listener' ? '0.0.0.0 (todas as interfaces)' : '192.168.1.100'}
-                    disabled={srtCfg.mode === 'listener'}
-                  />
-                </div>
-                <div className="col-span-2">
-                  <Input
-                    label="Porta *"
-                    value={srtCfg.port}
-                    onChange={(e) => setSrtCfg((v) => ({ ...v, port: e.target.value }))}
-                    placeholder="4000"
-                  />
-                </div>
-              </div>
-              {srtCfg.mode === 'listener' && (
-                <p className="text-[11px] text-amber-400/80 bg-amber-950/30 border border-amber-800/40 rounded px-2.5 py-1.5">
-                  Listener: o servidor aguarda o receptor conectar nesta porta. A porta deve estar mapeada no docker-compose (range 4000–4100 já configurado).
-                </p>
-              )}
-              <Input
-                label="Passphrase (criptografia SRT)"
-                value={srtCfg.passphrase}
-                onChange={(e) => setSrtCfg((v) => ({ ...v, passphrase: e.target.value }))}
-                placeholder="Deixe vazio para sem criptografia"
-              />
-              <div className="text-[11px] font-mono text-gray-500 bg-gray-800/60 rounded px-2.5 py-1.5 break-all">
-                {buildSrtUrl(srtCfg) || <span className="text-gray-600">Preencha a porta para ver a URL</span>}
-              </div>
+            {/* Nome + Descrição */}
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="Nome *" value={form.name} onChange={f('name')} placeholder="YouTube Live Show" />
+              <Input label="Descrição" value={form.description} onChange={f('description')} placeholder="Canal 2 Backup..." />
             </div>
-          )}
 
-          {/* UDP */}
-          {form.type === 'UDP' && (
-            <div className="space-y-3">
-              <div className="grid grid-cols-5 gap-3">
-                <div className="col-span-3">
-                  <Input
-                    label="Endereço de destino *"
-                    value={udpCfg.address}
-                    onChange={(e) => setUdpCfg((v) => ({ ...v, address: e.target.value }))}
-                    placeholder="239.0.0.1"
-                  />
-                </div>
-                <div className="col-span-2">
-                  <Input
-                    label="Porta *"
-                    value={udpCfg.port}
-                    onChange={(e) => setUdpCfg((v) => ({ ...v, port: e.target.value }))}
-                    placeholder="1234"
-                  />
-                </div>
-              </div>
-              <div className="text-[11px] font-mono text-gray-500 bg-gray-800/60 rounded px-2.5 py-1.5">
-                {buildUdpUrl(udpCfg) || <span className="text-gray-600">Preencha endereço e porta para ver a URL</span>}
-              </div>
-              <p className="text-xs text-gray-600">Use endereço multicast (ex: 239.x.x.x) ou unicast.</p>
-            </div>
-          )}
-
-          {/* SDI */}
-          {showDevice && (
-            <Input label="Dispositivo SDI" value={form.device} onChange={f('device')} placeholder="/dev/video0 ou nome do dispositivo" />
-          )}
-
-          {/* Codificação de vídeo — apenas para saídas com transcodificação (não HLS_PUSH, não SDI) */}
-          {!['HLS_PUSH', 'SDI'].includes(form.type) && (
-            <div className="space-y-3 border-t border-gray-800 pt-3">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Codificação de Vídeo</p>
-
-              <Select
-                label="Resolução de saída"
-                value={form.videoResolution}
-                onChange={f('videoResolution')}
-              >
-                {RESOLUTION_PRESETS.map((p) => (
-                  <option key={p.value} value={p.value}>{p.label}</option>
+            {/* Tipo + Canal */}
+            <div className="grid grid-cols-2 gap-3">
+              <Select label="Tipo *" value={form.type} onChange={(e) => handleTypeChange(e.target.value as StreamOutputType)}>
+                {(Object.keys(TYPE_LABELS) as StreamOutputType[]).map((k) => (
+                  <option key={k} value={k}>{TYPE_LABELS[k]}</option>
                 ))}
               </Select>
-
-              <div className="grid grid-cols-2 gap-3">
-                <Input
-                  label="Taxa de vídeo (kbps)"
-                  type="number"
-                  min={200}
-                  max={50000}
-                  value={form.videoBitrate}
-                  onChange={f('videoBitrate')}
-                  placeholder="ex: 2000 (vazio = automático)"
-                />
-                <Input
-                  label="Taxa de áudio (kbps)"
-                  type="number"
-                  min={32}
-                  max={320}
-                  value={form.audioBitrate}
-                  onChange={f('audioBitrate')}
-                  placeholder="128"
-                />
-              </div>
-
-              {(form.videoResolution || form.videoBitrate) && (
-                <p className="text-[11px] text-gray-600 bg-gray-800/50 rounded px-2.5 py-1.5">
-                  FFmpeg: {form.videoResolution ? `-vf scale=${form.videoResolution} ` : ''}
-                  {form.videoBitrate ? `-b:v ${form.videoBitrate}k -maxrate ${Math.round(parseInt(form.videoBitrate) * 1.5)}k ` : ''}
-                  -c:a aac -b:a {form.audioBitrate || 128}k
-                </p>
-              )}
+              <Select label="Canal *" value={form.channelId} onChange={f('channelId')}>
+                <option value="" disabled>Selecione o canal</option>
+                {channels.filter((c) => c.active).map((c) => (
+                  <option key={c.id} value={c.id}>Canal {c.number} — {c.name}</option>
+                ))}
+              </Select>
             </div>
-          )}
 
-          <div className="flex gap-3 justify-end pt-2">
+            {form.type && TYPE_DESCRIPTIONS[form.type] && (
+              <p className="text-xs text-gray-500 -mt-1">{TYPE_DESCRIPTIONS[form.type]}</p>
+            )}
+
+            {/* RTMP: URL + Key na mesma linha */}
+            {showUrl && showKey && (
+              <div className="grid grid-cols-2 gap-3">
+                <Input label="URL de destino *" value={form.url} onChange={f('url')} placeholder={urlPlaceholder[form.type] ?? 'URL...'} />
+                <Input label="Stream Key" value={form.streamKey} onChange={f('streamKey')} placeholder="xxxx-xxxx-xxxx-xxxx" />
+              </div>
+            )}
+            {showUrl && !showKey && (
+              <Input label="URL de destino *" value={form.url} onChange={f('url')} placeholder={urlPlaceholder[form.type] ?? 'URL...'} />
+            )}
+
+            {/* SRT */}
+            {form.type === 'SRT' && (
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-3">
+                  <Select label="Modo" value={srtCfg.mode} onChange={(e) => setSrtCfg((v) => ({ ...v, mode: e.target.value as 'caller' | 'listener' }))}>
+                    <option value="caller">Caller</option>
+                    <option value="listener">Listener</option>
+                  </Select>
+                  <Input label="Passphrase (criptografia)" value={srtCfg.passphrase} onChange={(e) => setSrtCfg((v) => ({ ...v, passphrase: e.target.value }))} placeholder="Vazio = sem criptografia" />
+                </div>
+                <div className="grid grid-cols-5 gap-3">
+                  <div className="col-span-3">
+                    <Input
+                      label={srtCfg.mode === 'listener' ? 'Host / IP (não usado)' : 'Host / IP *'}
+                      value={srtCfg.mode === 'listener' ? '' : srtCfg.host}
+                      onChange={(e) => setSrtCfg((v) => ({ ...v, host: e.target.value }))}
+                      placeholder={srtCfg.mode === 'listener' ? '0.0.0.0' : '192.168.1.100'}
+                      disabled={srtCfg.mode === 'listener'}
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <Input label="Porta *" value={srtCfg.port} onChange={(e) => setSrtCfg((v) => ({ ...v, port: e.target.value }))} placeholder="4000" />
+                  </div>
+                </div>
+                {buildSrtUrl(srtCfg) && (
+                  <div className="text-[11px] font-mono text-gray-500 bg-gray-800/60 rounded px-2.5 py-1">{buildSrtUrl(srtCfg)}</div>
+                )}
+              </div>
+            )}
+
+            {/* UDP */}
+            {form.type === 'UDP' && (
+              <div className="space-y-2">
+                <div className="grid grid-cols-5 gap-3">
+                  <div className="col-span-3">
+                    <Input label="Endereço *" value={udpCfg.address} onChange={(e) => setUdpCfg((v) => ({ ...v, address: e.target.value }))} placeholder="239.0.0.1" />
+                  </div>
+                  <div className="col-span-2">
+                    <Input label="Porta *" value={udpCfg.port} onChange={(e) => setUdpCfg((v) => ({ ...v, port: e.target.value }))} placeholder="1234" />
+                  </div>
+                </div>
+                {buildUdpUrl(udpCfg) && (
+                  <div className="text-[11px] font-mono text-gray-500 bg-gray-800/60 rounded px-2.5 py-1">{buildUdpUrl(udpCfg)}</div>
+                )}
+              </div>
+            )}
+
+            {/* SDI */}
+            {showDevice && (
+              <Input label="Dispositivo SDI" value={form.device} onChange={f('device')} placeholder="/dev/video0" />
+            )}
+
+            {/* Codificação + Overlay — só para tipos com transcodificação */}
+            {!['HLS_PUSH', 'SDI'].includes(form.type) && (
+              <div className="border-t border-gray-800 pt-3 space-y-3">
+                <div className="grid grid-cols-3 gap-3">
+                  <Select label="Resolução" value={form.videoResolution} onChange={f('videoResolution')}>
+                    {RESOLUTION_PRESETS.map((p) => (
+                      <option key={p.value} value={p.value}>{p.label}</option>
+                    ))}
+                  </Select>
+                  <Input label="Vídeo (kbps)" type="number" min={200} max={50000} value={form.videoBitrate} onChange={f('videoBitrate')} placeholder="2000" />
+                  <Input label="Áudio (kbps)" type="number" min={32} max={320} value={form.audioBitrate} onChange={f('audioBitrate')} placeholder="128" />
+                </div>
+              </div>
+            )}
+
+            {/* Gráfico de sobreposição */}
+            <div className="border-t border-gray-800 pt-3">
+              <Select label="Gráfico padrão desta saída" value={form.graphicId} onChange={f('graphicId')}>
+                <option value="">Nenhum</option>
+                {graphics.filter(g => g.active).map((g) => (
+                  <option key={g.id} value={g.id}>{g.name}</option>
+                ))}
+              </Select>
+              <p className="text-[11px] text-gray-600 mt-1">Aplicado quando o clipe/playlist não tiver gráfico próprio.</p>
+            </div>
+          </div>
+
+          {/* Botões fixos fora da área de scroll */}
+          <div className="flex gap-3 justify-end pt-3 mt-3 border-t border-gray-800">
             <Button variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button>
             <Button loading={save.isPending} onClick={() => {
               if (!form.channelId) { toast.error('Canal é obrigatório'); return }

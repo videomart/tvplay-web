@@ -13,11 +13,15 @@ const schema = z.object({
   videoResolution: z.string().optional().nullable(),
   videoBitrate:    z.number().int().positive().optional().nullable(),
   audioBitrate:    z.number().int().positive().optional().nullable(),
+  graphicId:       z.string().optional().nullable(),
   channelId:       z.string().min(1),
   active:          z.boolean().optional(),
 })
 
-const include = { channel: { select: { id: true, name: true, number: true } } }
+const include = {
+  channel: { select: { id: true, name: true, number: true } },
+  graphic: true,
+}
 
 export default async function streamOutputRoutes(app: FastifyInstance) {
   const auth = { preHandler: [app.authenticate] }

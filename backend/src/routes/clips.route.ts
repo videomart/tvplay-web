@@ -13,8 +13,9 @@ const clipSchema = z.object({
   isLive: z.boolean().optional(),
   notes: z.string().optional().nullable(),
   clientId: z.string().optional().nullable(),
-  typeId: z.string().optional().nullable(),
-  mediaId: z.string().optional().nullable(),
+  typeId:    z.string().optional().nullable(),
+  mediaId:   z.string().optional().nullable(),
+  graphicId: z.string().optional().nullable(),
 })
 
 export default async function clipRoutes(app: FastifyInstance) {
@@ -49,7 +50,7 @@ export default async function clipRoutes(app: FastifyInstance) {
     const [items, total] = await prisma.$transaction([
       prisma.clip.findMany({
         where,
-        include: { client: true, type: true, media: { select: { duration: true, hlsPath: true, ingestStatus: true } } },
+        include: { client: true, type: true, media: { select: { duration: true, hlsPath: true, ingestStatus: true } }, graphic: { select: { id: true, name: true, logoUrl: true, logoPosition: true, showClock: true, lowerText: true } } },
         orderBy,
         skip,
         take,
@@ -82,7 +83,7 @@ export default async function clipRoutes(app: FastifyInstance) {
   app.get('/:id', auth, async (request: any, reply) => {
     const clip = await prisma.clip.findUnique({
       where: { id: request.params.id },
-      include: { client: true, type: true, media: { select: { id: true, hlsPath: true, duration: true, ingestStatus: true } } },
+      include: { client: true, type: true, media: { select: { id: true, hlsPath: true, duration: true, ingestStatus: true } }, graphic: { select: { id: true, name: true, logoUrl: true, logoPosition: true, showClock: true, lowerText: true } } },
     })
     if (!clip) return reply.status(404).send({ error: 'Clipe não encontrado' })
     return clip

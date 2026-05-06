@@ -261,7 +261,7 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
             return (
               <div
                 key={clip.id}
-                className="flex items-center gap-2 px-3 py-2 hover:bg-gray-800/30 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-2 hover:bg-gray-800/30 transition-colors"
               >
                 {clip.type ? (
                   <Badge
@@ -275,15 +275,26 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
                   <span className="w-6 flex-shrink-0" />
                 )}
 
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-gray-200 truncate leading-tight">{clip.title}</p>
-                  <p className="text-[10px] text-gray-600 font-mono">
-                    {clip.code}
-                    {clip.media?.duration != null && (
-                      <span className="ml-1 text-gray-700">· {formatTime(clip.media.duration)}</span>
-                    )}
-                  </p>
-                </div>
+                <span className="text-[10px] font-mono text-gray-500 flex-shrink-0 w-16 truncate" title={clip.code}>
+                  {clip.code}
+                </span>
+
+                <p className="flex-1 text-xs text-gray-200 truncate leading-tight min-w-0">{clip.title}</p>
+
+                {(clip as any).graphic && (
+                  <span
+                    title={`Gráfico: ${(clip as any).graphic.name}`}
+                    className="text-[9px] bg-violet-900/50 text-violet-400 px-1 py-0.5 rounded font-mono flex-shrink-0 border border-violet-700/40"
+                  >
+                    GFX
+                  </span>
+                )}
+
+                {clip.media?.duration != null && (
+                  <span className="text-[10px] font-mono text-gray-600 flex-shrink-0">
+                    {formatTime(clip.media.duration)}
+                  </span>
+                )}
 
                 <button
                   onClick={() => handleInsertClick(clip.id)}

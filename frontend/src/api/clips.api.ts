@@ -30,6 +30,8 @@ export interface Clip {
   type?: ClipType
   mediaId?: string | null
   media?: { duration?: number; hlsPath?: string; ingestStatus: string }
+  graphicId?: string | null
+  graphic?: { id: string; name: string; logoUrl?: string | null; logoPosition?: string | null; showClock: boolean; lowerText?: string | null }
   createdAt: string
 }
 

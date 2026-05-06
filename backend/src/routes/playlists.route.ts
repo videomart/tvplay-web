@@ -10,6 +10,7 @@ const playlistSchema = z.object({
   autoStart: z.boolean().optional(),
   startTime: z.string().regex(/^\d{2}:\d{2}$/).optional().nullable(),
   notes:     z.string().optional(),
+  graphicId: z.string().optional().nullable(),
 })
 
 // Gera identificador automático no formato DDMMYY-N (ex: 040526-1)
@@ -59,6 +60,7 @@ export default async function playlistRoutes(app: FastifyInstance) {
       where,
       include: {
         channel: { select: { id: true, name: true, number: true } },
+        graphic: { select: { id: true, name: true } },
         _count: { select: { items: true } },
       },
       orderBy: [{ date: 'desc' }, { name: 'asc' }],
@@ -105,12 +107,12 @@ export default async function playlistRoutes(app: FastifyInstance) {
   app.post('/', auth, async (request, reply) => {
     const body = playlistSchema.safeParse(request.body)
     if (!body.success) return reply.status(400).send({ error: body.error.flatten() })
-    const { date, name, channelId, notes, autoStart, startTime, locked } = body.data
+    const { date, name, channelId, notes, autoStart, startTime, locked, graphicId } = body.data
     const dateObj = new Date(date)
     const resolvedName = name?.trim() ? name.trim() : await generateName(dateObj)
     const playlist = await prisma.playlist.create({
-      data: { date: dateObj, name: resolvedName, channelId, notes, autoStart, startTime, locked },
-      include: { channel: { select: { id: true, name: true, number: true } } },
+      data: { date: dateObj, name: resolvedName, channelId, notes, autoStart, startTime, locked, graphicId },
+      include: { channel: { select: { id: true, name: true, number: true } }, graphic: { select: { id: true, name: true } } },
     })
     return reply.status(201).send(playlist)
   })
@@ -123,7 +125,7 @@ export default async function playlistRoutes(app: FastifyInstance) {
     const playlist = await prisma.playlist.update({
       where: { id: request.params.id },
       data,
-      include: { channel: { select: { id: true, name: true, number: true } } },
+      include: { channel: { select: { id: true, name: true, number: true } }, graphic: { select: { id: true, name: true } } },
     }).catch(() => null)
     if (!playlist) return reply.status(404).send({ error: 'Playlist não encontrada' })
     return playlist

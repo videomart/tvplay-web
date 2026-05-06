@@ -7,7 +7,8 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
-import { playoutApi, type ChannelOutput, type PlaylistItemRow } from '../../api/playout.api'
+import { playoutApi, type ChannelOutput, type PlaylistItemRow, type ActiveGraphic } from '../../api/playout.api'
+import { GraphicOverlay } from '../../components/ui/GraphicOverlay'
 import { playlistsApi } from '../../api/playlists.api'
 import { channelsApi, type Channel, type FallbackType } from '../../api/channels.api'
 import { inputSourcesApi } from '../../api/input-sources.api'
@@ -224,6 +225,7 @@ function PlaylistItemRow({
   clipPlayPending: boolean
   clipStopPending: boolean
   deletePending: boolean
+  graphicName: string | null
   onDragStart: () => void
   onDragOver: (e: React.DragEvent) => void
   onDragEnd: () => void
@@ -276,12 +278,17 @@ function PlaylistItemRow({
         <span className="w-6 flex-shrink-0" />
       )}
 
+      {/* Código */}
+      <span className="text-[10px] font-mono text-gray-600 flex-shrink-0 w-14 truncate pl-2" title={item.code}>
+        {item.code}
+      </span>
+
       {/* Título — clicável para pular */}
       <button
         onClick={onJump}
         title="Ir para este clipe"
         className={clsx(
-          'flex-1 text-left text-xs truncate transition-colors min-w-0',
+          'flex-1 text-left text-xs truncate transition-colors min-w-0 pl-1',
           isCurrent ? 'text-white font-medium' : isPlayed ? 'text-gray-500' : 'text-gray-300 hover:text-white'
         )}
       >
@@ -292,6 +299,16 @@ function PlaylistItemRow({
       {!item.mediaReady && (
         <span className="text-[9px] px-1 py-0.5 rounded bg-orange-900/50 text-orange-400 border border-orange-700/40 flex-shrink-0 font-medium">
           SEM ARQ
+        </span>
+      )}
+
+      {/* Indicador de gráfico */}
+      {item.graphicName && (
+        <span
+          title={`Gráfico: ${item.graphicName}`}
+          className="text-[9px] px-1 py-0.5 rounded bg-violet-900/50 text-violet-400 border border-violet-700/40 flex-shrink-0 font-mono"
+        >
+          GFX
         </span>
       )}
 
@@ -729,10 +746,13 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
       {/* ── Monitor de vídeo ──────────────────────────────────────────────── */}
       {monitorOpen && (
         <div className="px-3 pt-3 pb-2 border-b border-gray-800">
-          <div className="w-full aspect-video rounded-lg overflow-hidden bg-black">
+          <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-black">
             {status === 'PLAYING' || status === 'PAUSED' ? (
               monitorSrc
-                ? <VideoPlayer src={monitorSrc} startAt={monitorStartAt} autoPlay muted className="w-full h-full" />
+                ? <>
+                    <VideoPlayer src={monitorSrc} startAt={monitorStartAt} autoPlay muted className="w-full h-full" />
+                    {state?.activeGraphic && <GraphicOverlay graphic={state.activeGraphic} />}
+                  </>
                 : <div className="w-full h-full flex items-center justify-center"><Radio className="h-6 w-6 text-gray-700" /></div>
             ) : (
               (() => {
@@ -1006,7 +1026,9 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
               <span className="w-3.5 flex-shrink-0" />
               <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-200 w-5 text-right flex-shrink-0">#</span>
               <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-200 w-8 flex-shrink-0">Tipo</span>
-              <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-200 flex-1 min-w-0">Título</span>
+              <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-500 w-14 flex-shrink-0 pl-2">Cód.</span>
+              <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-200 flex-1 min-w-0 pl-1">Título</span>
+              <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-500 flex-shrink-0">GFX</span>
               <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-200 w-10 text-right flex-shrink-0">Dur.</span>
               <span className="w-8 flex-shrink-0" />
               <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-200 flex-shrink-0 px-0.5">Loop</span>
@@ -1036,6 +1058,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                       onDelete={() => deleteItemMut.mutate(pi.id)}
                       loopPending={toggleLoopMut.isPending && toggleLoopMut.variables === pi.id}
                       deletePending={deleteItemMut.isPending && deleteItemMut.variables === pi.id}
+                      graphicName={pi.graphicName}
                       clipPlayPending={(jumpMut.isPending || pauseMut.isPending || resumeMut.isPending) && idx === currentIndex}
                       clipStopPending={stopMut.isPending}
                       onDragStart={() => handleDragStart(idx)}

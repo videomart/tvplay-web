@@ -1,21 +1,25 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Tv2, Users, Tag, Film, LogOut, Radio, ListVideo, Cast, Antenna, ClipboardList, UserCog, Settings } from 'lucide-react'
+import { LayoutDashboard, Tv2, Users, Tag, Film, LogOut, Radio, ListVideo, Cast, Antenna, ClipboardList, UserCog, Settings, Layers } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '../../stores/auth.store'
 import { settingsApi } from '../../api/settings.api'
 import { clsx } from 'clsx'
 
-const nav = [
-  { to: '/dashboard',      icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/playout',        icon: Radio,            label: 'Playout' },
-  { to: '/playlists',      icon: ListVideo,        label: 'Playlists' },
-  { to: '/channels',       icon: Tv2,              label: 'Canais' },
-  { to: '/clips',          icon: Film,             label: 'Clipes' },
-  { to: '/clients',        icon: Users,            label: 'Clientes' },
-  { to: '/clip-types',     icon: Tag,              label: 'Tipos' },
-  { to: '/stream-outputs', icon: Cast,             label: 'Saídas' },
-  { to: '/input-sources',  icon: Antenna,          label: 'Entradas' },
-  { to: '/logs',           icon: ClipboardList,    label: 'Logs' },
+const primaryNav = [
+  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/playout',   icon: Radio,           label: 'Playout' },
+  { to: '/playlists', icon: ListVideo,       label: 'Playlists' },
+  { to: '/clips',     icon: Film,            label: 'Clipes' },
+  { to: '/graphics',  icon: Layers,          label: 'Gráficos' },
+]
+
+const setupNav = [
+  { to: '/channels',       icon: Tv2,           label: 'Canais' },
+  { to: '/stream-outputs', icon: Cast,          label: 'Saídas' },
+  { to: '/input-sources',  icon: Antenna,       label: 'Entradas' },
+  { to: '/clients',        icon: Users,         label: 'Clientes' },
+  { to: '/clip-types',     icon: Tag,           label: 'Tipos' },
+  { to: '/logs',           icon: ClipboardList, label: 'Logs' },
 ]
 
 const adminNav = [
@@ -56,36 +60,56 @@ export default function Sidebar() {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto">
-        {nav.map(({ to, icon: Icon, label }) => (
-          <NavLink
-            key={to}
-            to={to}
-            className={({ isActive }) =>
-              clsx('sidebar-item', isActive && 'active')
-            }
-          >
-            <Icon className="h-4 w-4 flex-shrink-0" />
-            {label}
-          </NavLink>
-        ))}
+      <nav className="flex-1 p-2 overflow-y-auto">
+        {/* Área principal */}
+        <div className="space-y-0.5">
+          {primaryNav.map(({ to, icon: Icon, label }) => (
+            <NavLink
+              key={to}
+              to={to}
+              className={({ isActive }) => clsx('sidebar-item', isActive && 'active')}
+            >
+              <Icon className="h-4 w-4 flex-shrink-0" />
+              {label}
+            </NavLink>
+          ))}
+        </div>
+
+        {/* Divisor — Configuração */}
+        <div className="pt-4 pb-1 px-2">
+          <span className="text-[10px] uppercase tracking-widest text-gray-600 font-semibold">Configuração</span>
+        </div>
+        <div className="space-y-0.5">
+          {setupNav.map(({ to, icon: Icon, label }) => (
+            <NavLink
+              key={to}
+              to={to}
+              className={({ isActive }) => clsx('sidebar-item', isActive && 'active')}
+            >
+              <Icon className="h-4 w-4 flex-shrink-0" />
+              {label}
+            </NavLink>
+          ))}
+        </div>
+
+        {/* Admin */}
         {isAdmin && (
           <>
-            <div className="pt-2 pb-1 px-2">
+            <div className="pt-4 pb-1 px-2">
               <span className="text-[10px] uppercase tracking-widest text-gray-600 font-semibold">Admin</span>
             </div>
-            {adminNav.map(({ to, icon: Icon, label }) => (
-              <NavLink
-                key={to}
-                to={to}
-                className={({ isActive }) =>
-                  clsx('sidebar-item', isActive && 'active')
-                }
-              >
-                <Icon className="h-4 w-4 flex-shrink-0" />
-                {label}
-              </NavLink>
-            ))}
+            <div className="space-y-0.5">
+              {adminNav.map(({ to, icon: Icon, label }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  className={({ isActive }) => clsx('sidebar-item', isActive && 'active')}
+                >
+                  <Icon className="h-4 w-4 flex-shrink-0" />
+                  {label}
+                </NavLink>
+              ))}
+            </div>
           </>
         )}
       </nav>

@@ -196,6 +196,9 @@ model Clip {
   mediaId String?
   media   MediaFile? @relation(fields: [mediaId], references: [id])
 
+  graphicId String?
+  graphic   Graphic? @relation(fields: [graphicId], references: [id])
+
   playlistItems PlaylistItem[]
 
   @@map("clips")
@@ -216,6 +219,9 @@ model Playlist {
 
   channelId String?
   channel   Channel? @relation(fields: [channelId], references: [id])
+
+  graphicId String?
+  graphic   Graphic? @relation(fields: [graphicId], references: [id])
 
   items PlaylistItem[]
   logs  Log[]
@@ -247,6 +253,26 @@ model PlaylistItem {
   @@map("playlist_items")
 }
 
+// ─── Gráficos de Sobreposição ─────────────────────────────────────────────────
+
+model Graphic {
+  id           String   @id @default(cuid())
+  name         String
+  logoUrl      String?
+  logoPosition String?
+  showClock    Boolean  @default(false)
+  lowerText    String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  streamOutputs StreamOutput[]
+  clips         Clip[]
+  playlists     Playlist[]
+
+  @@map("graphics")
+}
+
 // ─── Saídas de Streaming ─────────────────────────────────────────────────────
 
 model StreamOutput {
@@ -266,6 +292,9 @@ model StreamOutput {
 
   channelId String
   channel   Channel @relation(fields: [channelId], references: [id])
+
+  graphicId String?
+  graphic   Graphic? @relation(fields: [graphicId], references: [id])
 
   @@map("stream_outputs")
 }

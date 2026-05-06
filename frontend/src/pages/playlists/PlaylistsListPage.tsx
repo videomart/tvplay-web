@@ -5,6 +5,7 @@ import { Plus, Pencil, Trash2, ListVideo, CalendarDays, Clock, Upload } from 'lu
 import toast from 'react-hot-toast'
 import { playlistsApi, type Playlist } from '../../api/playlists.api'
 import { channelsApi } from '../../api/channels.api'
+import { graphicsApi } from '../../api/graphics.api'
 import { Button } from '../../components/ui/Button'
 import { Input, Select } from '../../components/ui/Input'
 import { Modal } from '../../components/ui/Modal'
@@ -12,7 +13,7 @@ import { Table, Thead, Th, Tbody, Tr, Td } from '../../components/ui/Table'
 import PlaylistImportModal from './PlaylistImportModal'
 
 const today = new Date().toISOString().slice(0, 10)
-const empty = { name: '', date: today, channelId: '', notes: '', autoStart: false, startTime: '' }
+const empty = { name: '', date: today, channelId: '', notes: '', autoStart: false, startTime: '', graphicId: '' }
 
 export default function PlaylistsListPage() {
   const qc = useQueryClient()
@@ -24,6 +25,7 @@ export default function PlaylistsListPage() {
   const [form, setForm] = useState(empty)
 
   const { data: channels = [] } = useQuery({ queryKey: ['channels'], queryFn: channelsApi.list })
+  const { data: graphics = [] } = useQuery({ queryKey: ['graphics'], queryFn: graphicsApi.list })
   const { data = [], isLoading } = useQuery({
     queryKey: ['playlists', filterChannel],
     queryFn: () => playlistsApi.list(filterChannel ? { channelId: filterChannel } : undefined),
@@ -34,10 +36,11 @@ export default function PlaylistsListPage() {
       const payload = {
         name:      form.name || undefined,
         date:      form.date,
-        channelId: form.channelId,
+        channelId: form.channelId || null,
         notes:     form.notes || undefined,
         autoStart: form.autoStart,
         startTime: form.autoStart && form.startTime ? form.startTime : null,
+        graphicId: form.graphicId || null,
       }
       return editing
         ? playlistsApi.update(editing.id, payload)
@@ -70,6 +73,7 @@ export default function PlaylistsListPage() {
       notes:     pl.notes ?? '',
       autoStart: pl.autoStart ?? false,
       startTime: pl.startTime ?? '',
+      graphicId: (pl as any).graphicId ?? '',
     })
     setOpen(true)
   }
@@ -105,11 +109,12 @@ export default function PlaylistsListPage() {
             <Th>Canal</Th>
             <Th>Data</Th>
             <Th>Clipes</Th>
+            <Th>Gráfico</Th>
             <Th className="w-24 text-right">Ações</Th>
           </Thead>
           <Tbody>
             {isLoading ? (
-              <Tr><Td colSpan={5} className="text-center text-gray-500 py-8">Carregando...</Td></Tr>
+              <Tr><Td colSpan={6} className="text-center text-gray-500 py-8">Carregando...</Td></Tr>
             ) : data.map((pl) => (
               <Tr key={pl.id} onClick={() => navigate(`/playlists/${pl.id}`)}>
                 <Td>
@@ -145,6 +150,11 @@ export default function PlaylistsListPage() {
                     )}
                   </div>
                 </Td>
+                <Td>
+                  {pl.graphic
+                    ? <span className="text-[10px] bg-violet-900/50 text-violet-300 px-1.5 py-0.5 rounded font-mono">{pl.graphic.name}</span>
+                    : <span className="text-gray-700 text-xs">—</span>}
+                </Td>
                 <Td className="text-right">
                   <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                     <Button size="sm" variant="ghost" icon={<Pencil className="h-3.5 w-3.5" />} onClick={() => openEdit(pl)} />
@@ -177,7 +187,15 @@ export default function PlaylistsListPage() {
               {channels.map((ch) => <option key={ch.id} value={ch.id}>{ch.number} — {ch.name}</option>)}
             </Select>
           </div>
-          <Input label="Observações" value={form.notes} onChange={f('notes')} placeholder="Opcional" />
+          <div className="grid grid-cols-2 gap-4">
+            <Input label="Observações" value={form.notes} onChange={f('notes')} placeholder="Opcional" />
+            <Select label="Gráfico" value={form.graphicId} onChange={f('graphicId')}>
+              <option value="">Nenhum</option>
+              {graphics.filter(g => g.active).map((g) => (
+                <option key={g.id} value={g.id}>{g.name}</option>
+              ))}
+            </Select>
+          </div>
 
           <div className="space-y-2">
             <label className="flex items-center gap-3 cursor-pointer select-none">

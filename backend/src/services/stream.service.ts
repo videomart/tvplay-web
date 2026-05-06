@@ -2,47 +2,152 @@ import { spawn, ChildProcess } from 'child_process'
 import { prisma } from '../lib/prisma'
 import { config } from '../config'
 
+export type GraphicConfig = {
+  logoUrl?: string | null
+  logoPosition?: string | null
+  showClock?: boolean
+  lowerText?: string | null
+}
+
 interface StreamProcess {
-  proc:     ChildProcess
-  outputId: string
-  type:     string
-  name:     string
-  stopped:  boolean   // true quando parado manualmente — cancela auto-reconexão
+  proc:           ChildProcess
+  outputId:       string
+  type:           string
+  name:           string
+  stopped:        boolean
+  contentGraphic: GraphicConfig | null
+}
+
+type OutputConfig = {
+  id: string
+  name: string
+  type: string
+  url?: string | null
+  streamKey?: string | null
+  device?: string | null
+  videoResolution?: string | null
+  videoBitrate?: number | null
+  audioBitrate?: number | null
+  graphic?: GraphicConfig | null
 }
 
 // Map: channelId → Map<outputId, StreamProcess>
 const channelProcs = new Map<string, Map<string, StreamProcess>>()
 
-// Adiciona passphrase na query string da URL SRT (evita duplicar ? quando já há params)
 function appendSrtPassphrase(url: string, passphrase: string | null | undefined): string {
   if (!passphrase) return url
   const sep = url.includes('?') ? '&' : '?'
   return `${url}${sep}passphrase=${encodeURIComponent(passphrase)}`
 }
 
-function buildArgs(inputUrl: string, cueIn: number, output: {
-  type: string; url?: string | null; streamKey?: string | null; device?: string | null
-  videoResolution?: string | null; videoBitrate?: number | null; audioBitrate?: number | null
-}, isLive = false): string[] | null {
-  // -re só para arquivos (controla velocidade de leitura); fontes ao vivo já são real-time
+// Garante URL absoluta acessível pelo FFmpeg dentro do container
+function resolveLogoUrl(url: string | null | undefined): string {
+  if (!url) return ''
+  if (url.startsWith('/')) return `http://localhost:${config.port}${url}`
+  return url
+}
+
+function logoPositionExpr(pos: string): string {
+  switch (pos) {
+    case 'top-left':     return '10:10'
+    case 'bottom-left':  return '10:H-h-10'
+    case 'bottom-right': return 'W-w-10:H-h-10'
+    default:             return 'W-w-10:10'   // top-right (padrão)
+  }
+}
+
+// Constrói o filtro de vídeo. hasLogoInput=true significa que o logo já foi
+// adicionado como segundo input (-i logo), disponível como [1:v].
+function buildVideoFilter(
+  videoResolution: string | null | undefined,
+  graphic: GraphicConfig | null | undefined,
+  hasLogoInput: boolean,
+): { filterArgs: string[]; mapArgs: string[] } {
+  const hasScale = !!videoResolution
+  const hasLogo  = hasLogoInput
+  const hasClock = graphic?.showClock === true
+  const hasText  = !!(graphic?.lowerText?.trim())
+
+  if (!hasScale && !hasLogo && !hasClock && !hasText) return { filterArgs: [], mapArgs: [] }
+
+  const escapeText = (t: string) => t.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+  const clockFilter = `drawtext=text='%{localtime\\:%T}':fontsize=48:fontcolor=white:box=1:boxcolor=black@0.5:boxborderw=8:x=w-tw-20:y=20`
+  const lowerFilter = hasText
+    ? `drawtext=text='${escapeText(graphic!.lowerText!.trim())}':fontsize=32:fontcolor=white:box=1:boxcolor=black@0.6:boxborderw=8:x=(w-tw)/2:y=h-th-30`
+    : null
+
+  if (!hasLogo) {
+    const parts: string[] = []
+    if (hasScale)    parts.push(`scale=${videoResolution}`)
+    if (hasClock)    parts.push(clockFilter)
+    if (lowerFilter) parts.push(lowerFilter)
+    return { filterArgs: ['-vf', parts.join(',')], mapArgs: [] }
+  }
+
+  // filter_complex: logo como [1:v] (segundo input, com -stream_loop -1)
+  const segs: string[] = []
+  let cur = '[0:v]'
+  let n = 0
+  const nxt = () => `[v${n++}]`
+
+  if (hasScale) {
+    const out = nxt()
+    segs.push(`${cur}scale=${videoResolution}${out}`)
+    cur = out
+  }
+
+  const overOut = nxt()
+  segs.push(`${cur}[1:v]overlay=${logoPositionExpr(graphic!.logoPosition ?? 'top-right')}${overOut}`)
+  cur = overOut
+
+  if (hasClock) { const out = nxt(); segs.push(`${cur}${clockFilter}${out}`); cur = out }
+  if (lowerFilter) { const out = nxt(); segs.push(`${cur}${lowerFilter}${out}`); cur = out }
+
+  return {
+    filterArgs: ['-filter_complex', segs.join(';')],
+    mapArgs:    ['-map', cur, '-map', '0:a?'],
+  }
+}
+
+function buildArgs(
+  inputUrl: string,
+  cueIn: number,
+  output: OutputConfig,
+  isLive = false,
+  effectiveGraphic: GraphicConfig | null = null,
+): string[] | null {
+  // Resolve URL do logo: relativa → http://localhost:PORT/... (acessível dentro do container)
+  const logoUrl = (!isLive && effectiveGraphic?.logoUrl) ? resolveLogoUrl(effectiveGraphic.logoUrl) : null
+
   const input: string[] = [
     '-hide_banner', '-loglevel', 'warning',
     ...(isLive ? [] : ['-re']),
     ...(cueIn > 0 && !isLive ? ['-ss', String(Math.floor(cueIn))] : []),
     '-i', inputUrl,
+    // Logo como segundo input com loop infinito (imagem estática)
+    ...(logoUrl ? ['-stream_loop', '-1', '-i', logoUrl] : []),
   ]
-  // Para fontes ao vivo usamos -c copy (passthrough sem transcodar)
-  const scaleFilter = (!isLive && output.videoResolution)
-    ? ['-vf', `scale=${output.videoResolution}`] : []
+
+  const aBitrate = output.audioBitrate ?? 128
   const videoBitrateArgs = (!isLive && output.videoBitrate)
     ? ['-b:v', `${output.videoBitrate}k`,
        '-maxrate', `${Math.round(output.videoBitrate * 1.5)}k`,
-       '-bufsize', `${output.videoBitrate * 2}k`] : []
-  const aBitrate = output.audioBitrate ?? 128
-  const videoCodec = isLive
-    ? ['-c', 'copy']
-    : [...scaleFilter, '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
-       ...videoBitrateArgs, '-c:a', 'aac', '-ar', '44100', '-b:a', `${aBitrate}k`]
+       '-bufsize', `${output.videoBitrate * 2}k`]
+    : []
+
+  let videoCodec: string[]
+  if (isLive) {
+    videoCodec = ['-c', 'copy']
+  } else {
+    const { filterArgs, mapArgs } = buildVideoFilter(output.videoResolution, effectiveGraphic, !!logoUrl)
+    videoCodec = [
+      ...filterArgs,
+      '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
+      ...videoBitrateArgs,
+      '-c:a', 'aac', '-ar', '44100', '-b:a', `${aBitrate}k`,
+      ...mapArgs,
+    ]
+  }
 
   switch (output.type) {
     case 'RTMP': {
@@ -61,8 +166,7 @@ function buildArgs(inputUrl: string, cueIn: number, output: {
     }
     case 'SRT': {
       if (!output.url) return null
-      const url = appendSrtPassphrase(output.url, output.streamKey)
-      return [...input, ...videoCodec, '-f', 'mpegts', url]
+      return [...input, ...videoCodec, '-f', 'mpegts', appendSrtPassphrase(output.url, output.streamKey)]
     }
     case 'UDP': {
       if (!output.url) return null
@@ -72,8 +176,6 @@ function buildArgs(inputUrl: string, cueIn: number, output: {
       if (!output.url) return null
       return [...input, ...videoCodec, '-f', 'rtp', output.url]
     }
-    case 'SDI':
-      return null
     default:
       return null
   }
@@ -85,18 +187,22 @@ function hlsUrlForMedia(mediaId: string): string {
 
 function spawnOutput(
   channelId: string,
-  output: { id: string; name: string; type: string; url?: string | null; streamKey?: string | null; device?: string | null; videoResolution?: string | null; videoBitrate?: number | null; audioBitrate?: number | null },
+  output: OutputConfig,
   hlsUrl: string,
   cueIn: number,
   isLive = false,
+  contentGraphic: GraphicConfig | null = null,
 ): StreamProcess | null {
-  const args = buildArgs(hlsUrl, cueIn, output, isLive)
+  // Prioridade: gráfico do conteúdo (clip/playlist) > gráfico da saída
+  const effectiveGraphic = contentGraphic ?? output.graphic ?? null
+  const args = buildArgs(hlsUrl, cueIn, output, isLive, effectiveGraphic)
   if (!args) return null
 
   const proc = spawn(config.ffmpeg.path, args, { stdio: ['ignore', 'pipe', 'pipe'] })
-
-  // sp é criado antes dos handlers para que o closure o capture por referência
-  const sp: StreamProcess = { proc, outputId: output.id, type: output.type, name: output.name, stopped: false }
+  const sp: StreamProcess = {
+    proc, outputId: output.id, type: output.type, name: output.name,
+    stopped: false, contentGraphic,
+  }
 
   proc.stdout?.on('data', () => {})
   proc.stderr?.on('data', (d: Buffer) => {
@@ -105,19 +211,18 @@ function spawnOutput(
   })
 
   proc.on('exit', (code) => {
-    // Remove do map independente do motivo
     channelProcs.get(channelId)?.delete(output.id)
-
     const isError = code !== null && code !== 0 && code !== 255
     if (isError && !sp.stopped) {
-      // Auto-reconexão: aguarda 5s e reinicia (útil para SRT listener aguardando peer)
       console.warn(`[stream/${channelId}/${output.name}] Saiu com código ${code} — reconectando em 5s...`)
       setTimeout(async () => {
-        if (sp.stopped) return   // cancelado durante a espera
-        const dbOutput = await prisma.streamOutput.findUnique({ where: { id: output.id } })
-        if (!dbOutput?.active) return  // saída foi desativada
-
-        const newSp = spawnOutput(channelId, dbOutput, hlsUrl, 0)
+        if (sp.stopped) return
+        const dbOutput = await prisma.streamOutput.findUnique({
+          where: { id: output.id },
+          include: { graphic: true },
+        })
+        if (!dbOutput?.active) return
+        const newSp = spawnOutput(channelId, dbOutput, hlsUrl, 0, false, sp.contentGraphic)
         if (!newSp) return
         if (!channelProcs.has(channelId)) channelProcs.set(channelId, new Map())
         channelProcs.get(channelId)!.set(output.id, newSp)
@@ -125,27 +230,34 @@ function spawnOutput(
     }
   })
 
-  console.log(`[stream/${channelId}] Iniciando ${output.type} → ${output.name}`)
+  console.log(`[stream/${channelId}] Iniciando ${output.type} → ${output.name}${contentGraphic?.logoUrl ? ` | logo: ${resolveLogoUrl(contentGraphic.logoUrl)}` : ''}`)
+  console.log(`[stream/${channelId}] FFmpeg args: ${args.join(' ')}`)
   return sp
 }
 
 // ─── Controle por canal ───────────────────────────────────────────────────────
 
-export async function startStreaming(channelId: string, mediaId: string | null, cueIn = 0) {
+export async function startStreaming(
+  channelId: string,
+  mediaId: string | null,
+  cueIn = 0,
+  contentGraphic: GraphicConfig | null = null,
+) {
   await stopStreaming(channelId)
   if (!mediaId) return
 
-  const outputs = await prisma.streamOutput.findMany({ where: { channelId, active: true } })
+  const outputs = await prisma.streamOutput.findMany({
+    where: { channelId, active: true },
+    include: { graphic: true },
+  })
   if (!outputs.length) return
 
   const hlsUrl = hlsUrlForMedia(mediaId)
   const map = new Map<string, StreamProcess>()
-
   for (const output of outputs) {
-    const sp = spawnOutput(channelId, output, hlsUrl, cueIn)
+    const sp = spawnOutput(channelId, output, hlsUrl, cueIn, false, contentGraphic)
     if (sp) map.set(output.id, sp)
   }
-
   if (map.size) channelProcs.set(channelId, map)
 }
 
@@ -153,7 +265,7 @@ export function stopStreaming(channelId: string) {
   const map = channelProcs.get(channelId)
   if (!map?.size) return Promise.resolve()
   for (const sp of map.values()) {
-    sp.stopped = true   // cancela auto-reconexão pendente
+    sp.stopped = true
     try { sp.proc.kill('SIGTERM') } catch {}
     console.log(`[stream/${channelId}] Parando ${sp.type}/${sp.name}`)
   }
@@ -161,49 +273,62 @@ export function stopStreaming(channelId: string) {
   return Promise.resolve()
 }
 
-export async function restartStreaming(channelId: string, mediaId: string | null, cueIn = 0) {
-  await startStreaming(channelId, mediaId, cueIn)
+export async function restartStreaming(
+  channelId: string,
+  mediaId: string | null,
+  cueIn = 0,
+  contentGraphic: GraphicConfig | null = null,
+) {
+  await startStreaming(channelId, mediaId, cueIn, contentGraphic)
 }
 
 // ─── Controle por output individual ──────────────────────────────────────────
 
 export function stopOutput(channelId: string, outputId: string) {
-  const map = channelProcs.get(channelId)
-  const sp = map?.get(outputId)
+  const sp = channelProcs.get(channelId)?.get(outputId)
   if (!sp) return
-  sp.stopped = true   // cancela auto-reconexão pendente
+  sp.stopped = true
   try { sp.proc.kill('SIGTERM') } catch {}
-  map?.delete(outputId)
+  channelProcs.get(channelId)?.delete(outputId)
   console.log(`[stream/${channelId}] Output ${sp.name} parado manualmente`)
 }
 
-export async function startOutput(channelId: string, outputId: string, mediaId: string, cueIn = 0) {
+export async function startOutput(
+  channelId: string,
+  outputId: string,
+  mediaId: string,
+  cueIn = 0,
+  contentGraphic: GraphicConfig | null = null,
+) {
   stopOutput(channelId, outputId)
-
-  const output = await prisma.streamOutput.findUnique({ where: { id: outputId } })
+  const output = await prisma.streamOutput.findUnique({
+    where: { id: outputId },
+    include: { graphic: true },
+  })
   if (!output || !output.active) return
-
-  const hlsUrl = hlsUrlForMedia(mediaId)
-  const sp = spawnOutput(channelId, output, hlsUrl, cueIn)
+  const sp = spawnOutput(channelId, output, hlsUrlForMedia(mediaId), cueIn, false, contentGraphic)
   if (!sp) return
-
   if (!channelProcs.has(channelId)) channelProcs.set(channelId, new Map())
   channelProcs.get(channelId)!.set(outputId, sp)
 }
 
-export async function reconnectOutput(channelId: string, outputId: string, mediaId: string, cueIn = 0) {
-  await startOutput(channelId, outputId, mediaId, cueIn)
+export async function reconnectOutput(
+  channelId: string, outputId: string, mediaId: string, cueIn = 0,
+  contentGraphic: GraphicConfig | null = null,
+) {
+  await startOutput(channelId, outputId, mediaId, cueIn, contentGraphic)
 }
 
-// Passthrough ao vivo — inicia streaming a partir de uma URL de entrada (SRT, YouTube, IP, etc.)
 export async function startStreamingFromUrl(channelId: string, inputUrl: string) {
   await stopStreaming(channelId)
-  const outputs = await prisma.streamOutput.findMany({ where: { channelId, active: true } })
+  const outputs = await prisma.streamOutput.findMany({
+    where: { channelId, active: true },
+    include: { graphic: true },
+  })
   if (!outputs.length) return
-
   const map = new Map<string, StreamProcess>()
   for (const output of outputs) {
-    const sp = spawnOutput(channelId, output, inputUrl, 0, true)
+    const sp = spawnOutput(channelId, output, inputUrl, 0, true, null)
     if (sp) map.set(output.id, sp)
   }
   if (map.size) channelProcs.set(channelId, map)

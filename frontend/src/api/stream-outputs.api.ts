@@ -13,6 +13,8 @@ export interface StreamOutput {
   videoResolution?: string | null
   videoBitrate?: number | null
   audioBitrate?: number | null
+  graphicId?: string | null
+  graphic?: { id: string; name: string; logoUrl?: string | null; showClock?: boolean; lowerText?: string | null } | null
   channelId?: string
   channel?: { id: string; name: string; number: number }
   active: boolean

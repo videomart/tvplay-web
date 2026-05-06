@@ -19,6 +19,13 @@ export interface CurrentItem {
   breakNum: number
 }
 
+export interface ActiveGraphic {
+  logoUrl?: string | null
+  logoPosition?: string | null
+  showClock?: boolean
+  lowerText?: string | null
+}
+
 export interface PlayoutState {
   channelId: string
   status: 'IDLE' | 'PLAYING' | 'PAUSED' | 'STOPPED'
@@ -31,6 +38,7 @@ export interface PlayoutState {
   totalPlaylistDuration: number
   itemCount: number
   updatedAt: number
+  activeGraphic: ActiveGraphic | null
 }
 
 export interface PlaylistItemRow {
@@ -47,6 +55,7 @@ export interface PlaylistItemRow {
   clientName: string | null
   breakNum: number
   mediaReady: boolean
+  graphicName: string | null
 }
 
 export interface ChannelOutput {

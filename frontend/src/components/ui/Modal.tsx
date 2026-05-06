@@ -7,10 +7,10 @@ interface ModalProps {
   onClose: () => void
   title: string
   children: React.ReactNode
-  size?: 'sm' | 'md' | 'lg' | 'xl'
+  size?: 'sm' | 'md' | 'lg' | '2xl' | 'xl'
 }
 
-const sizes = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-5xl' }
+const sizes = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-2xl', '2xl': 'max-w-3xl', xl: 'max-w-5xl' }
 
 export function Modal({ open, onClose, title, children, size = 'md' }: ModalProps) {
   useEffect(() => {

@@ -30,6 +30,8 @@ export interface Playlist {
   createdAt: string
   updatedAt: string
   items?: PlaylistItem[]
+  graphicId?: string | null
+  graphic?: { id: string; name: string }
   _count?: { items: number }
   _noMediaCount?: number
 }
