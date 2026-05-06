@@ -334,6 +334,82 @@ export async function startStreamingFromUrl(channelId: string, inputUrl: string)
   if (map.size) channelProcs.set(channelId, map)
 }
 
+// Inicia streaming com fonte gerada (BLACK ou COLORBARS) para manter saída ativa enquanto parado
+export async function startStreamingFromFallback(channelId: string, fallbackType: 'BLACK' | 'COLORBARS' | string) {
+  await stopStreaming(channelId)
+  const outputs = await prisma.streamOutput.findMany({
+    where: { channelId, active: true },
+    include: { graphic: true },
+  })
+  if (!outputs.length) return
+
+  const pattern = fallbackType === 'COLORBARS' ? 'smptehdbars' : 'color=c=black'
+  const inputUrl = `lavfi:${pattern}=size=1280x720:rate=25`
+
+  const map = new Map<string, StreamProcess>()
+  for (const output of outputs) {
+    const effectiveGraphic = output.graphic ?? null
+    const args = buildFallbackArgs(inputUrl, output, effectiveGraphic)
+    if (!args) continue
+    const proc = spawn(config.ffmpeg.path, args, { stdio: ['ignore', 'pipe', 'pipe'] })
+    const sp: StreamProcess = { proc, outputId: output.id, type: output.type, name: output.name, stopped: false, contentGraphic: null }
+    proc.stdout?.on('data', () => {})
+    proc.stderr?.on('data', (d: Buffer) => {
+      const msg = d.toString().trim()
+      if (msg) console.log(`[stream/${channelId}/${output.name}/fallback] ${msg}`)
+    })
+    proc.on('exit', (code) => {
+      channelProcs.get(channelId)?.delete(output.id)
+      if (code !== null && code !== 0 && code !== 255 && !sp.stopped) {
+        console.warn(`[stream/${channelId}/${output.name}/fallback] Saiu com código ${code} — reconectando em 5s...`)
+        setTimeout(() => {
+          if (sp.stopped) return
+          startStreamingFromFallback(channelId, fallbackType).catch(() => {})
+        }, 5000)
+      }
+    })
+    console.log(`[stream/${channelId}] Fallback ${fallbackType} → ${output.name}`)
+    map.set(output.id, sp)
+  }
+  if (map.size) channelProcs.set(channelId, map)
+}
+
+function buildFallbackArgs(inputUrl: string, output: OutputConfig, graphic: GraphicConfig | null): string[] | null {
+  const aBitrate = output.audioBitrate ?? 128
+  const { filterArgs, mapArgs } = buildVideoFilter(output.videoResolution, graphic, false)
+  const videoCodec = [
+    ...filterArgs,
+    '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
+    ...(output.videoBitrate ? ['-b:v', `${output.videoBitrate}k`, '-maxrate', `${Math.round(output.videoBitrate * 1.5)}k`, '-bufsize', `${output.videoBitrate * 2}k`] : []),
+    '-c:a', 'aac', '-ar', '44100', '-b:a', `${aBitrate}k`,
+    ...mapArgs,
+  ]
+  // Fonte lavfi: vídeo e áudio silencioso gerados pelo FFmpeg
+  const inputArgs = ['-hide_banner', '-loglevel', 'warning', '-f', 'lavfi', '-i', inputUrl, '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo']
+
+  switch (output.type) {
+    case 'RTMP': {
+      if (!output.url) return null
+      const dest = output.streamKey ? `${output.url}/${output.streamKey}` : output.url
+      return [...inputArgs, ...videoCodec, '-f', 'flv', dest]
+    }
+    case 'SRT': {
+      if (!output.url) return null
+      return [...inputArgs, ...videoCodec, '-f', 'mpegts', appendSrtPassphrase(output.url, output.streamKey)]
+    }
+    case 'UDP': {
+      if (!output.url) return null
+      return [...inputArgs, ...videoCodec, '-f', 'mpegts', output.url]
+    }
+    case 'RTP': {
+      if (!output.url) return null
+      return [...inputArgs, ...videoCodec, '-f', 'rtp', output.url]
+    }
+    default:
+      return null
+  }
+}
+
 // ─── Status ───────────────────────────────────────────────────────────────────
 
 export function isStreaming(channelId: string): boolean {

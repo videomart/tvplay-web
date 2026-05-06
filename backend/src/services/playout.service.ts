@@ -38,6 +38,7 @@ export interface PlayoutState {
   status: PlayoutStatus
   playlistId: string | null
   name: string | null
+  loop: boolean
   currentIndex: number
   currentItem: CurrentItem | null
   position: number              // segundos decorridos no clip atual
@@ -101,6 +102,7 @@ function defaultState(channelId: string): PlayoutState {
     status: 'IDLE',
     playlistId: null,
     name: null,
+    loop: false,
     currentIndex: 0,
     currentItem: null,
     position: 0,
@@ -305,9 +307,18 @@ function startTimer(channelId: string) {
       // Avança para o próximo clip com arquivo pronto
       const total = state.playlistId ? await countItems(state.playlistId) : 0
       const nextIndex = state.currentIndex + 1
-      const next = state.playlistId && nextIndex < total
+
+      // Tenta próximo clip dentro da playlist
+      let next = state.playlistId && nextIndex < total
         ? await findNextReadyFrom(state.playlistId, nextIndex)
         : null
+
+      // Fim da playlist + loop ativo → reinicia do primeiro clip
+      if (!next && state.loop && state.playlistId) {
+        next = await findNextReadyFrom(state.playlistId, 0)
+        if (next) state.totalElapsed = 0 // reseta o elapsed ao loopear
+      }
+
       if (next) {
         // Registra log do clip que terminou
         if (state.currentItem) {
@@ -327,12 +338,12 @@ function startTimer(channelId: string) {
         state.position = 0
         state.currentItem = next.item
         persistState(channelId, state.playlistId!, next.index)
-        resolveGraphic(next.item.clipId, state.playlistId, channelId).then((g) => {
-          state.activeGraphic = g
-          return streamService.restartStreaming(channelId, next.item.mediaId, next.item.cueIn, g)
-        }).catch(() => {})
+        // Resolve gráfico e reinicia streaming — streaming sempre ocorre mesmo se resolveGraphic falhar
+        const newGraphic = await resolveGraphic(next.item.clipId, state.playlistId, channelId).catch(() => state.activeGraphic)
+        state.activeGraphic = newGraphic
+        streamService.restartStreaming(channelId, next.item.mediaId, next.item.cueIn, newGraphic).catch(() => {})
       } else {
-        // Fim da playlist
+        // Fim da playlist sem loop
         state.status = 'STOPPED'
         state.position = 0
         state.currentItem = null
@@ -352,7 +363,7 @@ function startTimer(channelId: string) {
             if (url) streamService.startStreamingFromUrl(channelId, url).catch(() => {})
           }).catch(() => {})
         } else {
-          streamService.stopStreaming(channelId)
+          streamService.startStreamingFromFallback(channelId, channel?.fallbackType ?? 'BLACK').catch(() => {})
         }
         return   // broadcast já foi feito acima
       }
@@ -381,6 +392,7 @@ export async function play(channelId: string, playlistId: string): Promise<Playo
     status: 'PLAYING',
     playlistId,
     name: playlist.name,
+    loop: playlist.loop,
     currentIndex: startIndex,
     currentItem: firstItem,
     position: 0,
@@ -443,6 +455,8 @@ export async function stop(channelId: string): Promise<PlayoutState> {
     resolveInputUrl(channel.fallbackSource).then((url) => {
       if (url) streamService.startStreamingFromUrl(channelId, url).catch(() => {})
     }).catch(() => {})
+  } else {
+    streamService.startStreamingFromFallback(channelId, channel?.fallbackType ?? 'BLACK').catch(() => {})
   }
 
   return state
@@ -534,6 +548,12 @@ export function updateCurrentItemLoop(channelId: string, itemId: string, loop: b
   if (state?.currentItem?.playlistItemId === itemId) {
     state.currentItem.loop = loop
   }
+}
+
+// Atualiza o loop da playlist ativa em memória (chamado após toggle no DB)
+export function updatePlaylistLoop(channelId: string, loop: boolean) {
+  const state = states.get(channelId)
+  if (state) state.loop = loop
 }
 
 // Insere um clipe imediatamente após o item atual na playlist ativa
@@ -639,7 +659,7 @@ export async function setFallback(
       }).catch(() => {})
     }
   } else {
-    streamService.stopStreaming(channelId)
+    streamService.startStreamingFromFallback(channelId, fallbackType).catch(() => {})
   }
 }
 
@@ -675,6 +695,7 @@ export async function initFromDb(): Promise<void> {
       status: ch.status as PlayoutStatus,
       playlistId: ch.activePlaylistId,
       name: playlist.name,
+      loop: playlist.loop,
       currentIndex: ch.playlistIndex,
       currentItem: item,
       position: 0,

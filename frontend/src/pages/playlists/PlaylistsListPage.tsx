@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Pencil, Trash2, ListVideo, CalendarDays, Clock, Upload } from 'lucide-react'
+import { Plus, Pencil, Trash2, ListVideo, CalendarDays, Clock, Upload, Repeat } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { playlistsApi, type Playlist } from '../../api/playlists.api'
 import { channelsApi } from '../../api/channels.api'
@@ -13,7 +13,7 @@ import { Table, Thead, Th, Tbody, Tr, Td } from '../../components/ui/Table'
 import PlaylistImportModal from './PlaylistImportModal'
 
 const today = new Date().toISOString().slice(0, 10)
-const empty = { name: '', date: today, channelId: '', notes: '', autoStart: false, startTime: '', graphicId: '' }
+const empty = { name: '', date: today, channelId: '', notes: '', autoStart: false, loop: false, startTime: '', graphicId: '' }
 
 export default function PlaylistsListPage() {
   const qc = useQueryClient()
@@ -39,6 +39,7 @@ export default function PlaylistsListPage() {
         channelId: form.channelId || null,
         notes:     form.notes || undefined,
         autoStart: form.autoStart,
+        loop:      form.loop,
         startTime: form.autoStart && form.startTime ? form.startTime : null,
         graphicId: form.graphicId || null,
       }
@@ -72,6 +73,7 @@ export default function PlaylistsListPage() {
       channelId: pl.channelId ?? '',
       notes:     pl.notes ?? '',
       autoStart: pl.autoStart ?? false,
+      loop:      (pl as any).loop ?? false,
       startTime: pl.startTime ?? '',
       graphicId: (pl as any).graphicId ?? '',
     })
@@ -122,6 +124,11 @@ export default function PlaylistsListPage() {
                     <ListVideo className="h-4 w-4 text-gray-600 shrink-0" />
                     <span className="font-medium text-white font-mono">{pl.name}</span>
                     {pl.locked && <span className="text-[10px] bg-gray-700 text-gray-400 px-1.5 py-0.5 rounded">Bloqueada</span>}
+                    {(pl as any).loop && (
+                      <span className="flex items-center gap-1 text-[10px] bg-emerald-900/40 text-emerald-400 px-1.5 py-0.5 rounded">
+                        <Repeat className="h-2.5 w-2.5" />Loop
+                      </span>
+                    )}
                     {pl.autoStart && pl.startTime && (
                       <span className="flex items-center gap-1 text-[10px] bg-brand-900/40 text-brand-300 px-1.5 py-0.5 rounded">
                         <Clock className="h-2.5 w-2.5" />{pl.startTime}
@@ -198,6 +205,18 @@ export default function PlaylistsListPage() {
           </div>
 
           <div className="space-y-2">
+            <label className="flex items-center gap-3 cursor-pointer select-none">
+              <div
+                onClick={() => setForm((v) => ({ ...v, loop: !v.loop }))}
+                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${form.loop ? 'bg-emerald-600' : 'bg-gray-700'}`}
+              >
+                <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${form.loop ? 'translate-x-4' : 'translate-x-0.5'}`} />
+              </div>
+              <span className="flex items-center gap-1.5 text-sm text-gray-300">
+                <Repeat className="h-3.5 w-3.5 text-emerald-500" />
+                Repetir playlist em loop
+              </span>
+            </label>
             <label className="flex items-center gap-3 cursor-pointer select-none">
               <div
                 onClick={() => setForm((v) => ({ ...v, autoStart: !v.autoStart }))}

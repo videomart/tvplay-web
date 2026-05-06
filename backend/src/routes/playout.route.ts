@@ -212,6 +212,22 @@ export default async function playoutRoutes(app: FastifyInstance) {
     )
   )
 
+  // Toggle loop da playlist ativa — atualiza DB e estado em memória
+  app.post('/:channelId/toggle-playlist-loop', auth, async (request: any, reply) => {
+    const { channelId } = request.params
+    const state = playout.getState(channelId)
+    if (!state.playlistId) return reply.status(400).send({ error: 'Nenhuma playlist ativa' })
+
+    const pl = await prisma.playlist.findUnique({ where: { id: state.playlistId } })
+    if (!pl) return reply.status(404).send({ error: 'Playlist não encontrada' })
+
+    const newLoop = !pl.loop
+    await prisma.playlist.update({ where: { id: state.playlistId }, data: { loop: newLoop } })
+    playout.updatePlaylistLoop(channelId, newLoop)
+
+    return { playlistId: state.playlistId, loop: newLoop }
+  })
+
   // Toggle loop de um item da playlist — atualiza DB e estado em memória
   app.post('/:channelId/items/:itemId/toggle-loop', auth, async (request: any, reply) => {
     const { channelId, itemId } = request.params

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Play, Pause, Square, SkipForward, SkipBack,
   Radio, Wifi, WifiOff, ListVideo, MonitorPlay, MonitorOff, Antenna,
-  ChevronDown, ChevronUp, RefreshCw, RotateCcw, GripVertical, ArrowLeftRight, Trash2,
+  ChevronDown, ChevronUp, RefreshCw, RotateCcw, GripVertical, ArrowLeftRight, Trash2, Repeat,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
@@ -445,6 +445,11 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
   const currentIndex = state?.currentIndex ?? 0
   const itemCount = state?.itemCount ?? 0
 
+  // Sincroniza selectedPlaylistId com o estado do WebSocket (restaura após navegar ou após stop)
+  useEffect(() => {
+    if (state?.playlistId) setSelectedPlaylistId(state.playlistId)
+  }, [state?.playlistId])
+
   // Auto-scroll para manter o clipe atual próximo ao centro do grid
   useEffect(() => {
     const container = playlistScrollRef.current
@@ -583,6 +588,11 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
     mutationFn: (itemId: string) => playoutApi.toggleItemLoop(channel.id, itemId),
     onSuccess: () => refetchItems(),
     onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao alterar loop'),
+  })
+
+  const togglePlaylistLoopMut = useMutation({
+    mutationFn: () => playoutApi.togglePlaylistLoop(channel.id),
+    onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao alterar loop da playlist'),
   })
 
   const reorderMut = useMutation({
@@ -984,6 +994,19 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
             <span className="text-[10px] text-gray-500 font-semibold truncate flex-1 min-w-0">
               {state.name}
             </span>
+
+            {/* Loop da playlist */}
+            <button
+              onClick={() => togglePlaylistLoopMut.mutate()}
+              disabled={togglePlaylistLoopMut.isPending}
+              title={state?.loop ? 'Loop ativo — clique para desativar' : 'Ativar loop da playlist'}
+              className={clsx(
+                'flex-shrink-0 p-0.5 rounded transition-colors disabled:opacity-40',
+                state?.loop ? 'text-emerald-400 hover:text-emerald-300' : 'text-gray-600 hover:text-gray-400'
+              )}
+            >
+              <Repeat className="h-3.5 w-3.5" />
+            </button>
 
             {/* Trocar playlist */}
             <button

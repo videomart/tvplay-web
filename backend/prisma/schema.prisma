@@ -211,6 +211,7 @@ model Playlist {
   date  DateTime @db.Date
   name  String
   locked      Boolean  @default(false)
+  loop        Boolean  @default(false)
   autoStart   Boolean  @default(false)
   startTime   String?
   notes       String?
