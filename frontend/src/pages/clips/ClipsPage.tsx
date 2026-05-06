@@ -345,7 +345,7 @@ export default function ClipsPage() {
                 className="w-full h-full"
                 onTimeUpdate={setPlayerTime}
               />
-              {editing.graphic && <GraphicOverlay graphic={editing.graphic} />}
+              {(() => { const g = form.graphicId ? graphics.find(gr => gr.id === form.graphicId) : null; return g ? <GraphicOverlay graphic={g} /> : null })()}
               </div>
 
               {/* Tempo atual */}
