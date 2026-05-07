@@ -18,8 +18,8 @@ export interface InputSource {
 }
 
 export const SOURCE_TYPE_LABELS: Record<InputSourceType, string> = {
-  IP:           'IP (HTTP / RTSP / RTMP)',
-  YOUTUBE:      'YouTube',
+  IP:           'URL (RTMP / RTSP / HTTP / HLS)',
+  YOUTUBE:      'YouTube / Twitch',
   SRT:          'SRT',
   SDI:          'SDI',
   USB:          'USB / Captura Local',

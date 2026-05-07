@@ -6,12 +6,19 @@ import type { GraphicConfig } from './stream.service'
 
 const execFileAsync = promisify(execFile)
 
-// Resolve a URL real de uma fonte de entrada (YouTube via yt-dlp; outros direto)
+// Detecta se uma URL deve ser resolvida via yt-dlp (YouTube, Twitch, etc.)
+function needsYtDlp(type: string, url: string): boolean {
+  if (type === 'YOUTUBE') return true
+  // Tipo IP com URL de plataforma suportada pelo yt-dlp → resolve automaticamente
+  return /youtube\.com|youtu\.be|twitch\.tv/i.test(url)
+}
+
+// Resolve a URL real de uma fonte de entrada (YouTube/Twitch via yt-dlp; outros direto)
 async function resolveInputUrl(src: { type: string; url: string | null; device: string | null }): Promise<string | null> {
   const raw = src.url ?? src.device ?? null
   if (!raw) return null
-  if (src.type !== 'YOUTUBE') return raw
-  // YouTube: resolve via yt-dlp com android client (mais confiável para lives)
+  if (!needsYtDlp(src.type, raw)) return raw
+  // YouTube / Twitch: resolve via yt-dlp com android client (mais confiável para lives)
   const base = ['--no-playlist', '-g', '--no-warnings', '--socket-timeout', '15']
   const fmt  = 'best[protocol=m3u8_native]/best[height<=720]/best'
   for (const extra of [['--extractor-args', 'youtube:player_client=android'], []]) {

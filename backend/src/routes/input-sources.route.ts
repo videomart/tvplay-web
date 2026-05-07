@@ -234,8 +234,11 @@ export default async function inputSourceRoutes(app: FastifyInstance) {
 
     let inputUrl = source.url ?? source.device!
 
-    // YouTube: resolve URL do stream via yt-dlp e passa ao FFmpeg (sem proxy, sem CORS)
-    if (source.type === 'YOUTUBE') {
+    // YouTube / Twitch via yt-dlp — também aplica quando tipo IP tem URL de plataforma compatível
+    const needsYtDlp = source.type === 'YOUTUBE' ||
+      (source.url ? /youtube\.com|youtu\.be|twitch\.tv/i.test(source.url) : false)
+
+    if (needsYtDlp) {
       const base = ['--no-playlist', '-g', '--socket-timeout', '15', '--no-warnings']
       const fmt  = 'best[protocol=m3u8_native]/best[height<=720]/best'
 
@@ -274,8 +277,7 @@ export default async function inputSourceRoutes(app: FastifyInstance) {
     const lowerUrl = inputUrl.toLowerCase()
     const isSrt = lowerUrl.startsWith('srt://')
     const isUdp = lowerUrl.startsWith('udp://')
-    const isYt  = source.type === 'YOUTUBE'
-    const maxAttempts = (isSrt || isYt) ? 40 : isUdp ? 20 : 16   // ×500ms
+    const maxAttempts = (isSrt || needsYtDlp) ? 40 : isUdp ? 20 : 16   // ×500ms
     const hlsFile = path.join('/tmp/tvplay-previews', source.id, 'index.m3u8')
 
     for (let i = 0; i < maxAttempts; i++) {

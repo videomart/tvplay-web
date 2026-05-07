@@ -343,13 +343,15 @@ export async function startStreamingFromFallback(channelId: string, fallbackType
   })
   if (!outputs.length) return
 
-  const pattern = fallbackType === 'COLORBARS' ? 'smptehdbars' : 'color=c=black'
-  const inputUrl = `lavfi:${pattern}=size=1280x720:rate=25`
-
   const map = new Map<string, StreamProcess>()
   for (const output of outputs) {
-    const effectiveGraphic = output.graphic ?? null
-    const args = buildFallbackArgs(inputUrl, output, effectiveGraphic)
+    // Usa resolução configurada da saída ou padrão SD
+    const size = output.videoResolution ?? '1280x720'
+    // Input lavfi correto: sem prefixo 'lavfi:' pois -f lavfi já define o formato
+    const videoInput = fallbackType === 'COLORBARS'
+      ? `smptehdbars=size=${size}:rate=25`
+      : `color=c=black:size=${size}:rate=25`
+    const args = buildFallbackArgs(videoInput, output, output.graphic ?? null)
     if (!args) continue
     const proc = spawn(config.ffmpeg.path, args, { stdio: ['ignore', 'pipe', 'pipe'] })
     const sp: StreamProcess = { proc, outputId: output.id, type: output.type, name: output.name, stopped: false, contentGraphic: null }
@@ -368,42 +370,51 @@ export async function startStreamingFromFallback(channelId: string, fallbackType
         }, 5000)
       }
     })
-    console.log(`[stream/${channelId}] Fallback ${fallbackType} → ${output.name}`)
+    console.log(`[stream/${channelId}] Fallback ${fallbackType} (${size}) → ${output.name}`)
+    console.log(`[stream/${channelId}] FFmpeg args: ${args.join(' ')}`)
     map.set(output.id, sp)
   }
   if (map.size) channelProcs.set(channelId, map)
 }
 
-function buildFallbackArgs(inputUrl: string, output: OutputConfig, graphic: GraphicConfig | null): string[] | null {
+// Dois inputs: [0] padrão de vídeo lavfi, [1] áudio silencioso lavfi
+// Mapeamento explícito -map 0:v -map 1:a para evitar ambiguidade
+function buildFallbackArgs(videoInput: string, output: OutputConfig, graphic: GraphicConfig | null): string[] | null {
   const aBitrate = output.audioBitrate ?? 128
-  const { filterArgs, mapArgs } = buildVideoFilter(output.videoResolution, graphic, false)
-  const videoCodec = [
+  // Sem logo no fallback (não há segundo input de imagem)
+  const { filterArgs } = buildVideoFilter(output.videoResolution, graphic, false)
+
+  const inputArgs = [
+    '-hide_banner', '-loglevel', 'warning',
+    '-f', 'lavfi', '-i', videoInput,
+    '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo',
+  ]
+
+  const encodeArgs = [
     ...filterArgs,
+    '-map', '0:v', '-map', '1:a',
     '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
     ...(output.videoBitrate ? ['-b:v', `${output.videoBitrate}k`, '-maxrate', `${Math.round(output.videoBitrate * 1.5)}k`, '-bufsize', `${output.videoBitrate * 2}k`] : []),
     '-c:a', 'aac', '-ar', '44100', '-b:a', `${aBitrate}k`,
-    ...mapArgs,
   ]
-  // Fonte lavfi: vídeo e áudio silencioso gerados pelo FFmpeg
-  const inputArgs = ['-hide_banner', '-loglevel', 'warning', '-f', 'lavfi', '-i', inputUrl, '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo']
 
   switch (output.type) {
     case 'RTMP': {
       if (!output.url) return null
       const dest = output.streamKey ? `${output.url}/${output.streamKey}` : output.url
-      return [...inputArgs, ...videoCodec, '-f', 'flv', dest]
+      return [...inputArgs, ...encodeArgs, '-f', 'flv', dest]
     }
     case 'SRT': {
       if (!output.url) return null
-      return [...inputArgs, ...videoCodec, '-f', 'mpegts', appendSrtPassphrase(output.url, output.streamKey)]
+      return [...inputArgs, ...encodeArgs, '-f', 'mpegts', appendSrtPassphrase(output.url, output.streamKey)]
     }
     case 'UDP': {
       if (!output.url) return null
-      return [...inputArgs, ...videoCodec, '-f', 'mpegts', output.url]
+      return [...inputArgs, ...encodeArgs, '-f', 'mpegts', output.url]
     }
     case 'RTP': {
       if (!output.url) return null
-      return [...inputArgs, ...videoCodec, '-f', 'rtp', output.url]
+      return [...inputArgs, ...encodeArgs, '-f', 'rtp', output.url]
     }
     default:
       return null

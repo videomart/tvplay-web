@@ -12,6 +12,9 @@ import { Table, Thead, Th, Tbody, Tr, Td } from '../../components/ui/Table'
 import { StatusBadge } from '../../components/ui/Badge'
 import { VideoPlayer } from '../../components/ui/VideoPlayer'
 
+// Tipos disponíveis no seletor (YOUTUBE não aparece como nova opção — URL detecta automaticamente)
+const SELECTABLE_TYPES: InputSourceType[] = ['IP', 'SRT', 'SDI', 'USB', 'LOCAL_DEVICE']
+
 const empty = { name: '', type: 'IP' as InputSourceType, url: '', device: '', channelId: '' }
 type SrtConfig = { host: string; port: string; mode: 'caller' | 'listener' }
 type UdpConfig = { address: string; port: string }
@@ -231,8 +234,11 @@ export default function InputSourcesPage() {
 
   function canPreview(s: InputSource) { return !!(s.url || s.device) }
 
+  // Detecta se a URL precisa de yt-dlp (YouTube/Twitch) para mostrar hint ao usuário
+  const ytDlpDetected = form.type === 'IP' && /youtube\.com|youtu\.be|twitch\.tv/i.test(form.url)
+
   const urlPlaceholders: Partial<Record<InputSourceType, string>> = {
-    IP:      'http://... · rtsp://... · rtmp://...',
+    IP:      'rtmp://... · rtsp://... · http://... · https://youtube.com/...',
     YOUTUBE: 'https://www.youtube.com/watch?v=... · https://youtu.be/...',
   }
 
@@ -323,9 +329,13 @@ export default function InputSourcesPage() {
           <Input label="Nome *" value={form.name} onChange={f('name')} placeholder="YouTube Ao Vivo" />
           <div className="grid grid-cols-2 gap-4">
             <Select label="Tipo *" value={form.type} onChange={(e) => handleTypeChange(e.target.value as InputSourceType)}>
-              {(Object.keys(SOURCE_TYPE_LABELS) as InputSourceType[]).map((k) => (
+              {SELECTABLE_TYPES.map((k) => (
                 <option key={k} value={k}>{SOURCE_TYPE_LABELS[k]}</option>
               ))}
+              {/* Mantém opção YOUTUBE visível apenas quando editando registro legado */}
+              {form.type === 'YOUTUBE' && (
+                <option value="YOUTUBE">{SOURCE_TYPE_LABELS['YOUTUBE']} (legado)</option>
+              )}
             </Select>
             <Select label="Canal" value={form.channelId} onChange={f('channelId')}>
               <option value="">Todos os canais</option>
@@ -337,12 +347,20 @@ export default function InputSourcesPage() {
 
           {/* IP / YOUTUBE */}
           {needsUrl(form.type) && (
-            <Input
-              label={form.type === 'YOUTUBE' ? 'Link do YouTube *' : 'URL *'}
-              value={form.url}
-              onChange={f('url')}
-              placeholder={urlPlaceholders[form.type] ?? ''}
-            />
+            <div className="space-y-1.5">
+              <Input
+                label={form.type === 'YOUTUBE' ? 'Link YouTube/Twitch *' : 'URL *'}
+                value={form.url}
+                onChange={f('url')}
+                placeholder={urlPlaceholders[form.type] ?? ''}
+              />
+              {ytDlpDetected && (
+                <p className="text-[11px] text-amber-400/90 flex items-center gap-1">
+                  <Youtube className="h-3 w-3" />
+                  URL de plataforma detectada — será resolvida automaticamente via yt-dlp (requer stream público).
+                </p>
+              )}
+            </div>
           )}
 
           {/* SRT */}
@@ -545,12 +563,20 @@ export default function InputSourcesPage() {
             </div>
           )}
 
-          {/* Dicas */}
+          {/* Dica: tipo URL (IP) */}
+          {form.type === 'IP' && !ytDlpDetected && (
+            <div className="p-3 bg-gray-800/50 rounded-lg text-xs text-gray-500 space-y-1">
+              <p className="font-medium text-gray-400">Fonte URL — protocolos suportados</p>
+              <p>RTMP · RTSP · HTTP · HLS (m3u8) · MMS</p>
+              <p>Para YouTube ou Twitch, cole o link diretamente — yt-dlp será ativado automaticamente.</p>
+            </div>
+          )}
+          {/* Dica legado YOUTUBE */}
           {form.type === 'YOUTUBE' && (
             <div className="p-3 bg-gray-800/50 rounded-lg text-xs text-gray-500 space-y-1">
-              <p className="font-medium text-gray-400">YouTube via yt-dlp</p>
+              <p className="font-medium text-gray-400">YouTube / Twitch via yt-dlp</p>
               <p>Cole o link do vídeo ou transmissão ao vivo. O servidor resolverá o stream automaticamente.</p>
-              <p className="text-amber-500/80">Atenção: funciona apenas para vídeos e streams públicos.</p>
+              <p className="text-amber-500/80">Atenção: funciona apenas para streams públicos. Ao criar novas fontes, use o tipo URL.</p>
             </div>
           )}
           {form.type === 'SRT' && (

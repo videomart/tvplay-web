@@ -772,14 +772,18 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                   if (!src) return <div className="w-full h-full bg-black" />
                   if (src.type === 'IP' && src.url?.match(/\.m3u8/i))
                     return <VideoPlayer src={src.url} autoPlay muted className="w-full h-full" />
-                  if (serverPreviewLoading) return (
-                    <div className="w-full h-full flex flex-col items-center justify-center gap-2">
-                      <Antenna className="h-5 w-5 text-gray-600 animate-pulse" />
-                      <p className="text-[10px] text-gray-500">
-                        {src.type === 'YOUTUBE' ? 'Resolvendo via yt-dlp...' : 'Iniciando preview...'}
-                      </p>
-                    </div>
-                  )
+                  if (serverPreviewLoading) {
+                    const isYtUrl = /youtube\.com|youtu\.be|twitch\.tv/i.test(src.url ?? '')
+                    const isYt = src.type === 'YOUTUBE' || isYtUrl
+                    return (
+                      <div className="w-full h-full flex flex-col items-center justify-center gap-2">
+                        <Antenna className="h-5 w-5 text-gray-600 animate-pulse" />
+                        <p className="text-[10px] text-gray-500">
+                          {isYt ? 'Resolvendo via yt-dlp...' : 'Iniciando preview...'}
+                        </p>
+                      </div>
+                    )
+                  }
                   if (serverPreviewError) return (
                     <div className="w-full h-full flex flex-col items-center justify-center gap-1 px-4">
                       <Antenna className="h-5 w-5 text-red-500/60" />
