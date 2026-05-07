@@ -59,8 +59,10 @@ export function startPreview(sourceId: string, inputUrl: string): string {
   const hlsPath = path.join(outputDir, 'index.m3u8')
 
   const lowerUrl = inputUrl.toLowerCase()
-  const isSrt = lowerUrl.startsWith('srt://')
-  const isUdp = lowerUrl.startsWith('udp://')
+  const isSrt  = lowerUrl.startsWith('srt://')
+  const isUdp  = lowerUrl.startsWith('udp://')
+  const isRtmp = lowerUrl.startsWith('rtmp://')
+  const isRtsp = lowerUrl.startsWith('rtsp://')
   // HLS source (YouTube live, IP HLS): stream copy — sem transcodar, só remux
   const isHlsSrc = lowerUrl.includes('googlevideo.com') || /\.m3u8/.test(lowerUrl)
 
@@ -74,8 +76,12 @@ export function startPreview(sourceId: string, inputUrl: string): string {
 
   const args = [
     '-hide_banner', '-loglevel', 'warning',
-    ...(isSrt ? ['-rw_timeout', '15000000'] : []),
-    ...(isUdp ? ['-timeout',    '5000000']  : []),
+    ...(isSrt  ? ['-rw_timeout', '15000000'] : []),
+    ...(isUdp  ? ['-timeout',    '5000000']  : []),
+    // RTMP: reconnect automático se a fonte cair
+    ...(isRtmp ? ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5'] : []),
+    // RTSP: força TCP (mais estável que UDP) e define timeout
+    ...(isRtsp ? ['-rtsp_transport', 'tcp', '-stimeout', '10000000'] : []),
     '-i', resolvedUrl,
     ...codecArgs,
     '-f', 'hls',

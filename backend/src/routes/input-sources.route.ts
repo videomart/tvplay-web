@@ -273,11 +273,13 @@ export default async function inputSourceRoutes(app: FastifyInstance) {
 
     previewService.startPreview(source.id, inputUrl)
 
-    // YouTube/SRT: até 20s; UDP: até 10s; outros: 8s
+    // YouTube/SRT: até 20s; RTMP/RTSP: até 15s; UDP: até 10s; outros (HTTP/HLS): 8s
     const lowerUrl = inputUrl.toLowerCase()
-    const isSrt = lowerUrl.startsWith('srt://')
-    const isUdp = lowerUrl.startsWith('udp://')
-    const maxAttempts = (isSrt || needsYtDlp) ? 40 : isUdp ? 20 : 16   // ×500ms
+    const isSrt  = lowerUrl.startsWith('srt://')
+    const isUdp  = lowerUrl.startsWith('udp://')
+    const isRtmp = lowerUrl.startsWith('rtmp://')
+    const isRtsp = lowerUrl.startsWith('rtsp://')
+    const maxAttempts = (isSrt || needsYtDlp) ? 40 : (isRtmp || isRtsp) ? 30 : isUdp ? 20 : 16   // ×500ms
     const hlsFile = path.join('/tmp/tvplay-previews', source.id, 'index.m3u8')
 
     for (let i = 0; i < maxAttempts; i++) {

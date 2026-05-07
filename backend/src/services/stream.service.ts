@@ -119,8 +119,16 @@ function buildArgs(
   // Resolve URL do logo: relativa → http://localhost:PORT/... (acessível dentro do container)
   const logoUrl = (!isLive && effectiveGraphic?.logoUrl) ? resolveLogoUrl(effectiveGraphic.logoUrl) : null
 
+  const lowerInputUrl = inputUrl.toLowerCase()
+  const isRtmpInput = lowerInputUrl.startsWith('rtmp://')
+  const isRtspInput = lowerInputUrl.startsWith('rtsp://')
+
   const input: string[] = [
     '-hide_banner', '-loglevel', 'warning',
+    // RTMP input: reconnect automático se a fonte cair
+    ...(isLive && isRtmpInput ? ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5'] : []),
+    // RTSP input: força TCP (mais estável) e define timeout de 10s
+    ...(isLive && isRtspInput ? ['-rtsp_transport', 'tcp', '-stimeout', '10000000'] : []),
     ...(isLive ? [] : ['-re']),
     ...(cueIn > 0 && !isLive ? ['-ss', String(Math.floor(cueIn))] : []),
     '-i', inputUrl,
