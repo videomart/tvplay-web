@@ -219,7 +219,11 @@ function spawnOutput(
   })
 
   proc.on('exit', (code) => {
-    channelProcs.get(channelId)?.delete(output.id)
+    // Só remove do mapa se este processo ainda for o registrado — evita apagar novo processo ao trocar clipe
+    const registered = channelProcs.get(channelId)?.get(output.id)
+    if (registered?.proc === proc) {
+      channelProcs.get(channelId)?.delete(output.id)
+    }
     const isError = code !== null && code !== 0 && code !== 255
     if (isError && !sp.stopped) {
       console.warn(`[stream/${channelId}/${output.name}] Saiu com código ${code} — reconectando em 5s...`)
@@ -369,7 +373,10 @@ export async function startStreamingFromFallback(channelId: string, fallbackType
       if (msg) console.log(`[stream/${channelId}/${output.name}/fallback] ${msg}`)
     })
     proc.on('exit', (code) => {
-      channelProcs.get(channelId)?.delete(output.id)
+      const registeredFb = channelProcs.get(channelId)?.get(output.id)
+      if (registeredFb?.proc === proc) {
+        channelProcs.get(channelId)?.delete(output.id)
+      }
       if (code !== null && code !== 0 && code !== 255 && !sp.stopped) {
         console.warn(`[stream/${channelId}/${output.name}/fallback] Saiu com código ${code} — reconectando em 5s...`)
         setTimeout(() => {

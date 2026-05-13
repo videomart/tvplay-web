@@ -44,7 +44,7 @@ export default function Sidebar() {
     <aside className="w-56 bg-gray-900 border-r border-gray-800 flex flex-col h-full">
       {/* Logo */}
       <div className="px-4 py-5 border-b border-gray-800">
-        <div className="flex items-center gap-2.5">
+        <NavLink to="/playout" className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
           {logoUrl ? (
             <img src={logoUrl} alt={companyName} className="h-7 w-7 rounded-lg object-contain bg-white/5 p-0.5" />
           ) : (
@@ -56,7 +56,7 @@ export default function Sidebar() {
             <p className="text-sm font-bold text-white leading-tight truncate max-w-[120px]">{companyName}</p>
             <p className="text-[10px] text-gray-500 leading-tight">Web Playout</p>
           </div>
-        </div>
+        </NavLink>
       </div>
 
       {/* Nav */}

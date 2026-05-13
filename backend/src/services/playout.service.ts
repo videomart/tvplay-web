@@ -84,6 +84,8 @@ const wsClients = new Map<string, Set<WSClient>>()
 // Estado em memória por canal
 const states = new Map<string, PlayoutState>()
 const timers = new Map<string, ReturnType<typeof setInterval>>()
+// Guard: impede execução concorrente da lógica de avanço de clipe por canal
+const advancing = new Set<string>()
 
 async function computePlaylistMeta(playlistId: string): Promise<{ totalDuration: number; count: number }> {
   const items = await prisma.playlistItem.findMany({
@@ -291,92 +293,107 @@ async function resolveGraphic(
 function stopTimer(channelId: string) {
   const t = timers.get(channelId)
   if (t) { clearInterval(t); timers.delete(channelId) }
+  advancing.delete(channelId)
 }
 
 function startTimer(channelId: string) {
   stopTimer(channelId)
   const interval = setInterval(async () => {
-    const state = states.get(channelId)
-    if (!state || state.status !== 'PLAYING') return
+    try {
+      const state = states.get(channelId)
+      if (!state || state.status !== 'PLAYING') return
 
-    state.position += 1
-    state.totalElapsed += 1
-    state.updatedAt = Date.now()
+      state.position += 1
+      state.totalElapsed += 1
+      state.updatedAt = Date.now()
 
-    const dur = state.currentItem?.duration ?? Infinity
-    if (state.position >= dur) {
-      // Loop: reinicia o clip atual
-      if (state.currentItem?.loop) {
-        state.position = 0
-        broadcast(channelId, state)
-        return
-      }
-      // Avança para o próximo clip com arquivo pronto
-      const total = state.playlistId ? await countItems(state.playlistId) : 0
-      const nextIndex = state.currentIndex + 1
-
-      // Tenta próximo clip dentro da playlist
-      let next = state.playlistId && nextIndex < total
-        ? await findNextReadyFrom(state.playlistId, nextIndex)
-        : null
-
-      // Fim da playlist + loop ativo → reinicia do primeiro clip
-      if (!next && state.loop && state.playlistId) {
-        next = await findNextReadyFrom(state.playlistId, 0)
-        if (next) state.totalElapsed = 0 // reseta o elapsed ao loopear
-      }
-
-      if (next) {
-        // Registra log do clip que terminou
-        if (state.currentItem) {
-          await prisma.log.create({
-            data: {
-              program: state.name ?? 'Sem Programa',
-              title: state.currentItem.title,
-              duration: state.currentItem.duration,
-              exhibited: true,
-              startedAt: new Date(state.updatedAt - state.position * 1000),
-              finishedAt: new Date(),
-              client: state.currentItem.clientName,
-            },
-          }).catch(() => {})
+      const dur = state.currentItem?.duration ?? Infinity
+      if (state.position >= dur) {
+        // Impede execução concorrente: se outro tick já está avançando, ignora este
+        if (advancing.has(channelId)) {
+          broadcast(channelId, state)
+          return
         }
-        state.currentIndex = next.index
-        state.position = 0
-        state.currentItem = next.item
-        persistState(channelId, state.playlistId!, next.index)
-        // Resolve gráfico e reinicia streaming — streaming sempre ocorre mesmo se resolveGraphic falhar
-        const newGraphic = await resolveGraphic(next.item.clipId, state.playlistId, channelId).catch(() => state.activeGraphic)
-        state.activeGraphic = newGraphic
-        streamService.restartStreaming(channelId, next.item.mediaId, next.item.cueIn, newGraphic).catch(() => {})
-      } else {
-        // Fim da playlist sem loop
-        state.status = 'STOPPED'
-        state.position = 0
-        state.currentItem = null
-        stopTimer(channelId)
-        persistState(channelId, null, 0)
-        await prisma.channel.update({ where: { id: channelId }, data: { status: 'STOPPED' } }).catch(() => {})
-        broadcast(channelId, state)
+        advancing.add(channelId)
+        try {
+          // Loop: reinicia o clip atual
+          if (state.currentItem?.loop) {
+            state.position = 0
+            broadcast(channelId, state)
+            return
+          }
+          // Avança para o próximo clip com arquivo pronto
+          const total = state.playlistId ? await countItems(state.playlistId) : 0
+          const nextIndex = state.currentIndex + 1
 
-        // Auto-switch para entrada de fallback configurada
-        const channel = await prisma.channel.findUnique({
-          where: { id: channelId },
-          include: { fallbackSource: true },
-        }).catch(() => null)
+          // Tenta próximo clip dentro da playlist
+          let next = state.playlistId && nextIndex < total
+            ? await findNextReadyFrom(state.playlistId, nextIndex)
+            : null
 
-        if (channel?.fallbackType === 'INPUT_SOURCE' && channel.fallbackSource) {
-          resolveInputUrl(channel.fallbackSource).then((url) => {
-            if (url) streamService.startStreamingFromUrl(channelId, url).catch(() => {})
-          }).catch(() => {})
-        } else {
-          streamService.startStreamingFromFallback(channelId, channel?.fallbackType ?? 'BLACK').catch(() => {})
+          // Fim da playlist + loop ativo → reinicia do primeiro clip
+          if (!next && state.loop && state.playlistId) {
+            next = await findNextReadyFrom(state.playlistId, 0)
+            if (next) state.totalElapsed = 0 // reseta o elapsed ao loopear
+          }
+
+          if (next) {
+            // Registra log do clip que terminou
+            if (state.currentItem) {
+              await prisma.log.create({
+                data: {
+                  program: state.name ?? 'Sem Programa',
+                  title: state.currentItem.title,
+                  duration: state.currentItem.duration,
+                  exhibited: true,
+                  startedAt: new Date(state.updatedAt - state.position * 1000),
+                  finishedAt: new Date(),
+                  client: state.currentItem.clientName,
+                },
+              }).catch(() => {})
+            }
+            state.currentIndex = next.index
+            state.position = 0
+            state.currentItem = next.item
+            persistState(channelId, state.playlistId!, next.index)
+            // Resolve gráfico e reinicia streaming — streaming sempre ocorre mesmo se resolveGraphic falhar
+            const newGraphic = await resolveGraphic(next.item.clipId, state.playlistId, channelId).catch(() => state.activeGraphic)
+            state.activeGraphic = newGraphic
+            streamService.restartStreaming(channelId, next.item.mediaId, next.item.cueIn, newGraphic).catch(() => {})
+          } else {
+            // Fim da playlist sem loop
+            state.status = 'STOPPED'
+            state.position = 0
+            state.currentItem = null
+            stopTimer(channelId)
+            persistState(channelId, null, 0)
+            await prisma.channel.update({ where: { id: channelId }, data: { status: 'STOPPED' } }).catch(() => {})
+            broadcast(channelId, state)
+
+            // Auto-switch para entrada de fallback configurada
+            const channel = await prisma.channel.findUnique({
+              where: { id: channelId },
+              include: { fallbackSource: true },
+            }).catch(() => null)
+
+            if (channel?.fallbackType === 'INPUT_SOURCE' && channel.fallbackSource) {
+              resolveInputUrl(channel.fallbackSource).then((url) => {
+                if (url) streamService.startStreamingFromUrl(channelId, url).catch(() => {})
+              }).catch(() => {})
+            } else {
+              streamService.startStreamingFromFallback(channelId, channel?.fallbackType ?? 'BLACK').catch(() => {})
+            }
+            return   // broadcast já foi feito acima
+          }
+        } finally {
+          advancing.delete(channelId)
         }
-        return   // broadcast já foi feito acima
       }
+
+      broadcast(channelId, state)
+    } catch (err) {
+      console.error(`[playout] Erro no timer ch=${channelId}:`, err)
     }
-
-    broadcast(channelId, state)
   }, 1000)
   timers.set(channelId, interval)
 }
