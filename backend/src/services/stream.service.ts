@@ -349,6 +349,7 @@ export async function reconnectOutput(
   await startOutput(channelId, outputId, mediaId, cueIn, contentGraphic)
 }
 
+// Modo live (-c copy): para corte de entrada / fallback INPUT_SOURCE — baixa latência
 export async function startStreamingFromUrl(channelId: string, inputUrl: string) {
   await stopStreaming(channelId)
   const outputs = await prisma.streamOutput.findMany({
@@ -359,6 +360,29 @@ export async function startStreamingFromUrl(channelId: string, inputUrl: string)
   const map = new Map<string, StreamProcess>()
   for (const output of outputs) {
     const sp = spawnOutput(channelId, output, inputUrl, 0, true, null)
+    if (sp) map.set(output.id, sp)
+  }
+  if (map.size) channelProcs.set(channelId, map)
+}
+
+// Modo re-encode (-re + libx264): para clips URL na playlist
+// Garante compatibilidade com qualquer codec de entrada (VP9, AV1, etc.)
+// e respeita a velocidade natural do stream (-re)
+export async function startStreamingFromUrlReencode(
+  channelId: string,
+  inputUrl: string,
+  contentGraphic: GraphicConfig | null = null,
+) {
+  await stopStreaming(channelId)
+  const outputs = await prisma.streamOutput.findMany({
+    where: { channelId, active: true },
+    include: { graphic: true },
+  })
+  if (!outputs.length) return
+  const map = new Map<string, StreamProcess>()
+  for (const output of outputs) {
+    // isLive=false → usa -re + re-encode (libx264/aac) em vez de -c copy
+    const sp = spawnOutput(channelId, output, inputUrl, 0, false, contentGraphic)
     if (sp) map.set(output.id, sp)
   }
   if (map.size) channelProcs.set(channelId, map)

@@ -174,7 +174,9 @@ export default async function playoutRoutes(app: FastifyInstance) {
 
     return items.map((item, idx) => {
       const clip = item.clip
-      const isUrlClip = (clip as any).sourceType === 'URL'
+      const YT_PATTERN = /youtube\.com|youtu\.be|twitch\.tv/i
+      const isUrlClip = (clip as any).sourceType === 'URL' ||
+        ((clip as any).sourceUrl && YT_PATTERN.test((clip as any).sourceUrl))
       const cueIn = item.overrideCueIn ?? clip.cueIn
       const cueOut = item.overrideCueOut ?? clip.cueOut ?? clip.media?.duration ?? null
       const duration = cueOut ? cueOut - cueIn : (clip.media?.duration ?? clip.duration ?? (isUrlClip ? 3600 : 30))

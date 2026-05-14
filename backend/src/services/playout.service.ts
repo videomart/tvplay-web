@@ -406,8 +406,8 @@ function startTimer(channelId: string) {
               resolveInputUrl({ type: 'YOUTUBE', url: clipUrl, device: null })
                 .then((url) => {
                   if (url) {
-                    console.log(`[playout] Clip URL ch=${channelId} — URL resolvida, reiniciando streaming`)
-                    streamService.startStreamingFromUrl(channelId, url).catch((err) => {
+                    console.log(`[playout] Clip URL ch=${channelId} — URL resolvida, reiniciando re-encode: ${url.slice(0, 80)}`)
+                    streamService.startStreamingFromUrlReencode(channelId, url, newGraphic).catch((err) => {
                       console.error(`[playout] Clip URL ch=${channelId} — falha ao reiniciar streaming:`, err)
                     })
                   } else {
@@ -496,8 +496,9 @@ export async function play(channelId: string, playlistId: string): Promise<Playo
     resolveInputUrl({ type: 'YOUTUBE', url: clipUrl, device: null })
       .then((url) => {
         if (url) {
-          console.log(`[playout] Clip URL ch=${channelId} — URL resolvida, iniciando streaming`)
-          streamService.startStreamingFromUrl(channelId, url).catch((err) => {
+          console.log(`[playout] Clip URL ch=${channelId} — URL resolvida, iniciando re-encode: ${url.slice(0, 80)}`)
+          // Re-encode garante compatibilidade com VP9/AV1 e aplica overlays de gráficos
+          streamService.startStreamingFromUrlReencode(channelId, url, activeGraphic).catch((err) => {
             console.error(`[playout] Clip URL ch=${channelId} — falha ao iniciar streaming:`, err)
           })
         } else {
