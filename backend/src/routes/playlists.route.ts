@@ -70,7 +70,8 @@ export default async function playlistRoutes(app: FastifyInstance) {
     const ids = playlists.map((p) => p.id)
     const noMediaItems = ids.length > 0
       ? await prisma.playlistItem.findMany({
-          where: { playlistId: { in: ids }, clip: { mediaId: null } },
+          // Só conta clips FILE sem arquivo — clips URL (sourceType=URL) são considerados prontos
+          where: { playlistId: { in: ids }, clip: { mediaId: null, sourceType: 'FILE' } },
           select: { playlistId: true },
         })
       : []

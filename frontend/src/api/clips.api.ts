@@ -11,12 +11,15 @@ export interface OrphanMedia {
 }
 
 export type ClipModality = 'BK' | 'AR' | 'PT' | 'VH' | 'CP' | 'CA' | 'LV' | 'ID' | 'MT'
+export type ClipSourceType = 'FILE' | 'URL'
 
 export interface Clip {
   id: string
   code: string
   title: string
   modality: ClipModality
+  sourceType: ClipSourceType
+  sourceUrl?: string | null
   cueIn: number
   cueOut?: number
   duration?: number

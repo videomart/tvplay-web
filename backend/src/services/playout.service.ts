@@ -63,6 +63,8 @@ export interface CurrentItem {
   code: string
   title: string
   modality: string
+  sourceType: string      // FILE | URL
+  sourceUrl: string | null
   clientName: string | null
   typeName: string | null
   typeCode: string | null
@@ -175,8 +177,10 @@ async function loadItem(playlistId: string, index: number): Promise<CurrentItem 
   const item = items[index]
   const clip = item.clip
   const cueIn = item.overrideCueIn ?? clip.cueIn
+  const isUrlClip = clip.sourceType === 'URL'
   const cueOut = item.overrideCueOut ?? clip.cueOut ?? clip.media?.duration ?? null
-  const duration = cueOut ? cueOut - cueIn : (clip.media?.duration ?? clip.duration ?? 30)
+  // URL clips usam duração manual (clip.duration) ou 3600s (live stream indefinido)
+  const duration = cueOut ? cueOut - cueIn : (clip.media?.duration ?? clip.duration ?? (isUrlClip ? 3600 : 30))
   return {
     playlistItemId: item.id,
     clipId: clip.id,
@@ -184,6 +188,8 @@ async function loadItem(playlistId: string, index: number): Promise<CurrentItem 
     code: clip.code,
     title: clip.title,
     modality: clip.modality,
+    sourceType: clip.sourceType,
+    sourceUrl: clip.sourceUrl ?? null,
     clientName: clip.client?.name ?? null,
     typeName: clip.type?.name ?? null,
     typeCode: clip.type?.code ?? null,
@@ -203,7 +209,8 @@ async function countItems(playlistId: string): Promise<number> {
   return prisma.playlistItem.count({ where: { playlistId } })
 }
 
-// Retorna o primeiro item COM hlsPath a partir de fromIndex (pula clipes sem arquivo)
+// Retorna o primeiro item pronto a partir de fromIndex.
+// Clipes FILE precisam de hlsPath READY. Clipes URL precisam de sourceUrl.
 async function findNextReadyFrom(
   playlistId: string,
   fromIndex: number
@@ -224,19 +231,23 @@ async function findNextReadyFrom(
   for (let i = fromIndex; i < items.length; i++) {
     const item = items[i]
     const clip = item.clip
-    if (!clip.media?.hlsPath) continue // sem arquivo — pula
+    const isUrlClip = clip.sourceType === 'URL'
+    if (!isUrlClip && !clip.media?.hlsPath) continue // FILE sem arquivo — pula
+    if (isUrlClip && !clip.sourceUrl) continue        // URL sem URL — pula
     const cueIn  = item.overrideCueIn  ?? clip.cueIn
-    const cueOut = item.overrideCueOut ?? clip.cueOut ?? clip.media.duration ?? null
-    const duration = cueOut ? cueOut - cueIn : (clip.media.duration ?? clip.duration ?? 30)
+    const cueOut = item.overrideCueOut ?? clip.cueOut ?? clip.media?.duration ?? null
+    const duration = cueOut ? cueOut - cueIn : (clip.media?.duration ?? clip.duration ?? (isUrlClip ? 3600 : 30))
     return {
       index: i,
       item: {
         playlistItemId: item.id,
         clipId: clip.id,
-        mediaId: (clip.media as any).id,
+        mediaId: clip.media ? (clip.media as any).id : null,
         code: clip.code,
         title: clip.title,
         modality: clip.modality,
+        sourceType: clip.sourceType,
+        sourceUrl: clip.sourceUrl ?? null,
         clientName: clip.client?.name ?? null,
         typeName: clip.type?.name ?? null,
         typeCode: clip.type?.code ?? null,
@@ -245,7 +256,7 @@ async function findNextReadyFrom(
         duration,
         cueIn,
         cueOut,
-        hlsPath: clip.media.hlsPath,
+        hlsPath: clip.media?.hlsPath ?? null,
         order: item.order,
         breakNum: item.breakNum,
         loop: item.loop,
@@ -356,10 +367,16 @@ function startTimer(channelId: string) {
             state.position = 0
             state.currentItem = next.item
             persistState(channelId, state.playlistId!, next.index)
-            // Resolve gráfico e reinicia streaming — streaming sempre ocorre mesmo se resolveGraphic falhar
             const newGraphic = await resolveGraphic(next.item.clipId, state.playlistId, channelId).catch(() => state.activeGraphic)
             state.activeGraphic = newGraphic
-            streamService.restartStreaming(channelId, next.item.mediaId, next.item.cueIn, newGraphic).catch(() => {})
+            if (next.item.sourceType === 'URL' && next.item.sourceUrl) {
+              // Clip URL (YouTube/Twitch): resolve via yt-dlp e inicia como live
+              resolveInputUrl({ type: 'YOUTUBE', url: next.item.sourceUrl, device: null })
+                .then((url) => { if (url) streamService.startStreamingFromUrl(channelId, url).catch(() => {}) })
+                .catch(() => {})
+            } else {
+              streamService.restartStreaming(channelId, next.item.mediaId, next.item.cueIn, newGraphic).catch(() => {})
+            }
           } else {
             // Fim da playlist sem loop
             state.status = 'STOPPED'
@@ -430,7 +447,13 @@ export async function play(channelId: string, playlistId: string): Promise<Playo
   await prisma.channel.update({ where: { id: channelId }, data: { status: 'PLAYING' } }).catch(() => {})
   persistState(channelId, playlistId, startIndex)
   startTimer(channelId)
-  streamService.startStreaming(channelId, firstItem?.mediaId ?? null, firstItem?.cueIn ?? 0, activeGraphic).catch(() => {})
+  if (firstItem?.sourceType === 'URL' && firstItem.sourceUrl) {
+    resolveInputUrl({ type: 'YOUTUBE', url: firstItem.sourceUrl, device: null })
+      .then((url) => { if (url) streamService.startStreamingFromUrl(channelId, url).catch(() => {}) })
+      .catch(() => {})
+  } else {
+    streamService.startStreaming(channelId, firstItem?.mediaId ?? null, firstItem?.cueIn ?? 0, activeGraphic).catch(() => {})
+  }
   broadcast(channelId, state)
   return state
 }

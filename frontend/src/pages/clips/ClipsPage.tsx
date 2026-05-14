@@ -1,8 +1,8 @@
 import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Search, Upload, CheckCircle2, Clock, XCircle, Play, Scissors, Film } from 'lucide-react'
+import { Plus, Pencil, Trash2, Search, Upload, CheckCircle2, Clock, XCircle, Play, Scissors, Film, Link, HardDrive } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { clipsApi, type Clip, type OrphanMedia, MODALITY_LABELS, type ClipModality } from '../../api/clips.api'
+import { clipsApi, type Clip, type OrphanMedia, MODALITY_LABELS, type ClipModality, type ClipSourceType } from '../../api/clips.api'
 import { clientsApi } from '../../api/clients.api'
 import { clipTypesApi } from '../../api/clip-types.api'
 import { graphicsApi } from '../../api/graphics.api'
@@ -14,12 +14,34 @@ import { Badge, StatusBadge } from '../../components/ui/Badge'
 import { VideoPlayer } from '../../components/ui/VideoPlayer'
 import { GraphicOverlay } from '../../components/ui/GraphicOverlay'
 
-const emptyForm = { code: '', title: '', modality: 'CP' as ClipModality, cueIn: '0', cueOut: '', clientId: '', typeId: '', notes: '', graphicId: '' }
-type FormErrors = { code?: string; title?: string }
+const emptyForm = {
+  code: '', title: '', modality: 'CP' as ClipModality,
+  sourceType: 'FILE' as ClipSourceType, sourceUrl: '',
+  cueIn: '0', cueOut: '', clientId: '', typeId: '', notes: '', graphicId: '',
+}
+type FormErrors = { code?: string; title?: string; sourceUrl?: string }
 
 function hlsStreamUrl(hlsPath: string) {
   const mediaId = hlsPath.split('/')[1]
   return `/api/media/stream/${mediaId}/index.m3u8`
+}
+
+// Retorna URL de embed para YouTube/Twitch, ou null para outros
+function embedUrl(sourceUrl: string): string | null {
+  try {
+    const u = new URL(sourceUrl)
+    // YouTube
+    const ytMatch = sourceUrl.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([A-Za-z0-9_-]{11})/)
+    if (ytMatch) return `https://www.youtube.com/embed/${ytMatch[1]}?autoplay=1`
+    // YouTube live channels: youtube.com/channel/... ou youtube.com/@...
+    if (u.hostname.includes('youtube.com') && !ytMatch) {
+      return `https://www.youtube.com/embed/live_stream?channel=${u.pathname.split('/').pop()}&autoplay=1`
+    }
+    // Twitch channel
+    const twMatch = sourceUrl.match(/twitch\.tv\/([A-Za-z0-9_]+)/)
+    if (twMatch) return `https://player.twitch.tv/?channel=${twMatch[1]}&parent=${window.location.hostname}&autoplay=true`
+  } catch {}
+  return null
 }
 
 function fmtTime(sec: number) {
@@ -28,7 +50,8 @@ function fmtTime(sec: number) {
   return `${String(m).padStart(2, '0')}:${s.padStart(6, '0')}`
 }
 
-function IngestBadge({ status }: { status: string }) {
+function IngestBadge({ status, sourceType }: { status: string; sourceType?: string }) {
+  if (sourceType === 'URL') return <span className="flex items-center gap-1 text-sky-400 text-xs"><Link className="h-3.5 w-3.5" />YouTube/Twitch</span>
   if (status === 'READY') return <span className="flex items-center gap-1 text-emerald-400 text-xs"><CheckCircle2 className="h-3.5 w-3.5" />Pronto</span>
   if (status === 'PROCESSING') return <span className="flex items-center gap-1 text-amber-400 text-xs"><Clock className="h-3.5 w-3.5" />Transcodificando</span>
   if (status === 'ERROR') return <span className="flex items-center gap-1 text-red-400 text-xs"><XCircle className="h-3.5 w-3.5" />Erro</span>
@@ -45,6 +68,7 @@ export default function ClipsPage() {
   const qc = useQueryClient()
   const [open, setOpen] = useState(false)
   const [previewClip, setPreviewClip] = useState<Clip | null>(null)
+  const [urlPreviewClip, setUrlPreviewClip] = useState<Clip | null>(null)
   const [uploadingClipId, setUploadingClipId] = useState<string | null>(null)
   const [uploadProgress, setUploadProgress] = useState<number>(0)
   const [editing, setEditing] = useState<Clip | null>(null)
@@ -96,14 +120,17 @@ export default function ClipsPage() {
 
   const save = useMutation({
     mutationFn: () => {
+      const isUrl = form.sourceType === 'URL'
       const payload = {
         ...form,
+        sourceType: form.sourceType,
+        sourceUrl:  isUrl ? (form.sourceUrl || null) : null,
         cueIn:    parseFloat(form.cueIn) || 0,
         cueOut:   form.cueOut   ? parseFloat(form.cueOut)   : undefined,
         clientId:  form.clientId  || null,
         typeId:    form.typeId    || null,
         graphicId: form.graphicId || null,
-        mediaId:  selectedOrphanId ?? undefined,
+        mediaId:  isUrl ? null : (selectedOrphanId ?? undefined),
         notes:    form.notes    || undefined,
       }
       return editing ? clipsApi.update(editing.id, payload) : clipsApi.create(payload)
@@ -120,6 +147,8 @@ export default function ClipsPage() {
     const errors: FormErrors = {}
     if (!form.code.trim()) errors.code = 'Código é obrigatório'
     if (!form.title.trim()) errors.title = 'Título é obrigatório'
+    if (form.sourceType === 'URL' && form.sourceUrl && !/^https?:\/\/.+/.test(form.sourceUrl))
+      errors.sourceUrl = 'URL inválida'
     if (Object.keys(errors).length > 0) { setFormErrors(errors); return }
     setFormErrors({})
     save.mutate()
@@ -163,7 +192,12 @@ export default function ClipsPage() {
   }
   function openEdit(c: Clip) {
     setEditing(c)
-    setForm({ code: c.code, title: c.title, modality: c.modality, cueIn: String(c.cueIn), cueOut: c.cueOut ? String(c.cueOut) : '', clientId: c.clientId ?? '', typeId: c.typeId ?? '', notes: c.notes ?? '', graphicId: (c as any).graphicId ?? '' })
+    setForm({
+      code: c.code, title: c.title, modality: c.modality,
+      sourceType: c.sourceType ?? 'FILE', sourceUrl: c.sourceUrl ?? '',
+      cueIn: String(c.cueIn), cueOut: c.cueOut ? String(c.cueOut) : '',
+      clientId: c.clientId ?? '', typeId: c.typeId ?? '', notes: c.notes ?? '', graphicId: (c as any).graphicId ?? '',
+    })
     setFormErrors({})
     setCodeAutoGenerated(false)
     setSelectedOrphanId(null)
@@ -314,7 +348,7 @@ export default function ClipsPage() {
                   </Td>
                   <Td>{c.client?.name ?? <span className="text-gray-600">—</span>}</Td>
                   <Td><span className="font-mono text-xs">{formatDur(c.media?.duration ?? c.duration ?? undefined)}</span></Td>
-                  <Td><IngestBadge status={c.media?.ingestStatus ?? 'NONE'} /></Td>
+                  <Td><IngestBadge status={c.media?.ingestStatus ?? 'NONE'} sourceType={c.sourceType} /></Td>
                   <Td>
                     {c.graphic
                       ? <span className="text-[10px] bg-violet-900/50 text-violet-300 px-1.5 py-0.5 rounded font-mono">{c.graphic.name}</span>
@@ -331,7 +365,15 @@ export default function ClipsPage() {
                           title="Pré-visualizar"
                         />
                       )}
-                      {(!c.media || c.media.ingestStatus === 'ERROR') && (
+                      {c.sourceType === 'URL' && c.sourceUrl && (
+                        <Button
+                          size="sm" variant="ghost"
+                          icon={<Link className="h-3.5 w-3.5 text-sky-400" />}
+                          onClick={() => setUrlPreviewClip(c)}
+                          title="Preview YouTube/Twitch"
+                        />
+                      )}
+                      {c.sourceType !== 'URL' && (!c.media || c.media.ingestStatus === 'ERROR') && (
                         <Button
                           size="sm" variant="ghost"
                           icon={<Upload className="h-3.5 w-3.5 text-blue-400" />}
@@ -465,8 +507,51 @@ export default function ClipsPage() {
                 <option value="">Sem cliente</option>
                 {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </Select>
-              <Input label="Cue-In (s)" type="number" step="0.001" value={form.cueIn} onChange={f('cueIn')} placeholder="0.000" />
-              <Input label="Cue-Out (s)" type="number" step="0.001" value={form.cueOut} onChange={f('cueOut')} placeholder="Fim do arquivo" />
+
+              {/* Toggle FILE / URL */}
+              <div className="col-span-2">
+                <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1.5">Fonte de mídia</p>
+                <div className="flex rounded-lg overflow-hidden border border-gray-700 w-fit">
+                  <button
+                    type="button"
+                    onClick={() => setForm((v) => ({ ...v, sourceType: 'FILE' }))}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${form.sourceType === 'FILE' ? 'bg-brand-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-gray-200'}`}
+                  >
+                    <HardDrive className="h-3.5 w-3.5" />Arquivo físico
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setForm((v) => ({ ...v, sourceType: 'URL' }))}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${form.sourceType === 'URL' ? 'bg-brand-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-gray-200'}`}
+                  >
+                    <Link className="h-3.5 w-3.5" />YouTube / Twitch (URL)
+                  </button>
+                </div>
+              </div>
+
+              {form.sourceType === 'URL' && (
+                <div className="col-span-2 space-y-1">
+                  <Input
+                    label="URL do vídeo *"
+                    value={form.sourceUrl}
+                    onChange={f('sourceUrl')}
+                    placeholder="https://www.youtube.com/watch?v=... ou https://twitch.tv/..."
+                    error={formErrors.sourceUrl}
+                    icon={<Link className="h-4 w-4" />}
+                  />
+                  <p className="text-[10px] text-gray-500">A URL será resolvida via yt-dlp no momento da exibição. Funciona com YouTube e Twitch.</p>
+                </div>
+              )}
+
+              {form.sourceType === 'FILE' && <>
+                <Input label="Cue-In (s)" type="number" step="0.001" value={form.cueIn} onChange={f('cueIn')} placeholder="0.000" />
+                <Input label="Cue-Out (s)" type="number" step="0.001" value={form.cueOut} onChange={f('cueOut')} placeholder="Fim do arquivo" />
+              </>}
+              {form.sourceType === 'URL' && <>
+                <Input label="Duração máx. (s)" type="number" step="1" value={form.cueOut} onChange={f('cueOut')} placeholder="3600 (padrão para live)" />
+                <div />
+              </>}
+
               <Input label="Observações" value={form.notes} onChange={f('notes')} placeholder="Opcional" className="col-span-2" />
               <Select label="Gráfico" value={form.graphicId} onChange={f('graphicId')} className="col-span-2">
                 <option value="">Nenhum</option>
@@ -475,8 +560,8 @@ export default function ClipsPage() {
                 ))}
               </Select>
             </div>
-            {/* Upload de mídia no cadastro — só aparece quando o clipe não tem mídia ainda */}
-            {!editing?.media && (
+            {/* Upload de mídia no cadastro — só aparece quando clipe é FILE e não tem mídia ainda */}
+            {form.sourceType === 'FILE' && !editing?.media && (
               <div className="space-y-2 pt-1">
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Mídia</p>
@@ -527,7 +612,7 @@ export default function ClipsPage() {
         </div>
       </Modal>
 
-      {/* Modal: preview de vídeo */}
+      {/* Modal: preview de vídeo HLS */}
       <Modal
         open={!!previewClip}
         onClose={() => setPreviewClip(null)}
@@ -556,6 +641,50 @@ export default function ClipsPage() {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* Modal: preview YouTube / Twitch */}
+      <Modal
+        open={!!urlPreviewClip}
+        onClose={() => setUrlPreviewClip(null)}
+        title={urlPreviewClip?.title ?? 'Preview URL'}
+        size="lg"
+      >
+        {urlPreviewClip?.sourceUrl && (() => {
+          const embed = embedUrl(urlPreviewClip.sourceUrl!)
+          return embed ? (
+            <div className="space-y-2">
+              <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-black">
+                <iframe
+                  src={embed}
+                  className="w-full h-full"
+                  allowFullScreen
+                  allow="autoplay; fullscreen"
+                  title={urlPreviewClip.title}
+                />
+              </div>
+              <div className="flex items-center gap-4 text-xs text-gray-500 pt-1">
+                <span>Código: <span className="font-mono text-gray-300">{urlPreviewClip.code}</span></span>
+                <a href={urlPreviewClip.sourceUrl!} target="_blank" rel="noopener noreferrer" className="text-sky-400 hover:underline flex items-center gap-1">
+                  <Link className="h-3 w-3" />Abrir no navegador
+                </a>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3 py-4">
+              <p className="text-gray-400 text-sm">Preview não disponível para esta URL diretamente no navegador.</p>
+              <a
+                href={urlPreviewClip.sourceUrl!}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 text-sky-400 hover:underline text-sm"
+              >
+                <Link className="h-4 w-4" />Abrir URL externamente
+              </a>
+              <p className="text-xs text-gray-600 font-mono break-all">{urlPreviewClip.sourceUrl}</p>
+            </div>
+          )
+        })()}
       </Modal>
     </div>
   )

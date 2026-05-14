@@ -1,12 +1,14 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { ClipModality, Prisma } from '@prisma/client'
+import { ClipModality, ClipSourceType, Prisma } from '@prisma/client'
 import { prisma } from '../lib/prisma'
 
 const clipSchema = z.object({
   code: z.string().min(1),
   title: z.string().min(1),
   modality: z.nativeEnum(ClipModality).optional(),
+  sourceType: z.nativeEnum(ClipSourceType).optional(),
+  sourceUrl: z.string().url().optional().nullable(),
   cueIn: z.number().min(0).optional(),
   cueOut: z.number().min(0).optional().nullable(),
   validUntil: z.string().datetime().optional().nullable(),

@@ -295,8 +295,12 @@ function PlaylistItemRow({
         {item.title}
       </button>
 
-      {/* Indicador sem arquivo */}
-      {!item.mediaReady && (
+      {/* Indicador de fonte */}
+      {item.sourceType === 'URL' ? (
+        <span className="text-[9px] px-1 py-0.5 rounded bg-sky-900/50 text-sky-400 border border-sky-700/40 flex-shrink-0 font-medium">
+          URL
+        </span>
+      ) : !item.mediaReady && (
         <span className="text-[9px] px-1 py-0.5 rounded bg-orange-900/50 text-orange-400 border border-orange-700/40 flex-shrink-0 font-medium">
           SEM ARQ
         </span>

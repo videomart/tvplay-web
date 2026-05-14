@@ -25,6 +25,9 @@ type OutputConfig = {
   url?: string | null
   streamKey?: string | null
   device?: string | null
+  deviceOs?: string | null
+  deviceDriver?: string | null
+  deviceName?: string | null
   videoResolution?: string | null
   videoBitrate?: number | null
   audioBitrate?: number | null
@@ -122,6 +125,7 @@ function buildArgs(
   const lowerInputUrl = inputUrl.toLowerCase()
   const isRtmpInput = lowerInputUrl.startsWith('rtmp://')
   const isRtspInput = lowerInputUrl.startsWith('rtsp://')
+  const isHttpInput = lowerInputUrl.startsWith('http://') || lowerInputUrl.startsWith('https://')
 
   const input: string[] = [
     '-hide_banner', '-loglevel', 'warning',
@@ -129,6 +133,8 @@ function buildArgs(
     ...(isLive && isRtmpInput ? ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5'] : []),
     // RTSP input: força TCP (mais estável) e define timeout de 10s
     ...(isLive && isRtspInput ? ['-rtsp_transport', 'tcp', '-stimeout', '10000000'] : []),
+    // HTTP/HLS input (yt-dlp resolve URLs): reconnect + timeout longo — evita corte por timeout padrão (~20s)
+    ...(isLive && isHttpInput ? ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '10', '-timeout', '30000000'] : []),
     ...(isLive ? [] : ['-re']),
     ...(cueIn > 0 && !isLive ? ['-ss', String(Math.floor(cueIn))] : []),
     '-i', inputUrl,
@@ -183,6 +189,16 @@ function buildArgs(
     case 'RTP': {
       if (!output.url) return null
       return [...input, ...videoCodec, '-f', 'rtp', output.url]
+    }
+    case 'SDI': {
+      // Saída direta para placa Blackmagic DeckLink instalada no host/container
+      const deckDevice = output.device ?? 'DeckLink'
+      return [...input, ...videoCodec, '-f', 'decklink', deckDevice]
+    }
+    case 'LOCAL_DEVICE': {
+      // Envia via SRT para agente remoto (Windows/Linux com DeckLink ou USB) — Cenário 1
+      if (!output.url) return null
+      return [...input, ...videoCodec, '-f', 'mpegts', appendSrtPassphrase(output.url, output.streamKey)]
     }
     default:
       return null
@@ -430,6 +446,14 @@ function buildFallbackArgs(videoInput: string, output: OutputConfig, graphic: Gr
     case 'RTP': {
       if (!output.url) return null
       return [...inputArgs, ...encodeArgs, '-f', 'rtp', output.url]
+    }
+    case 'SDI': {
+      const deckDevice = output.device ?? 'DeckLink'
+      return [...inputArgs, ...encodeArgs, '-f', 'decklink', deckDevice]
+    }
+    case 'LOCAL_DEVICE': {
+      if (!output.url) return null
+      return [...inputArgs, ...encodeArgs, '-f', 'mpegts', appendSrtPassphrase(output.url, output.streamKey)]
     }
     default:
       return null

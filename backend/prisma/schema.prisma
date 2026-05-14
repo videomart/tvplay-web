@@ -46,6 +46,11 @@ enum FallbackType {
   INPUT_SOURCE
 }
 
+enum ClipSourceType {
+  FILE
+  URL
+}
+
 enum StreamOutputType {
   RTMP
   HLS_PUSH
@@ -53,6 +58,7 @@ enum StreamOutputType {
   SRT
   UDP
   RTP
+  LOCAL_DEVICE
 }
 
 enum InputSourceType {
@@ -173,19 +179,21 @@ model MediaFile {
 // ─── Clipes ───────────────────────────────────────────────────────────────────
 
 model Clip {
-  id         String       @id @default(cuid())
-  code       String       @unique
+  id         String          @id @default(cuid())
+  code       String          @unique
   title      String
-  modality   ClipModality @default(CP)
-  cueIn      Float        @default(0)
+  modality   ClipModality    @default(CP)
+  sourceType ClipSourceType  @default(FILE)
+  sourceUrl  String?         // URL YouTube/Twitch para sourceType=URL
+  cueIn      Float           @default(0)
   cueOut     Float?
   duration   Float?
   validUntil DateTime?
-  isLive     Boolean      @default(false)
-  active     Boolean      @default(true)
+  isLive     Boolean         @default(false)
+  active     Boolean         @default(true)
   notes      String?
-  createdAt  DateTime     @default(now())
-  updatedAt  DateTime     @updatedAt
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
 
   clientId String?
   client   Client?   @relation(fields: [clientId], references: [id])
@@ -284,6 +292,9 @@ model StreamOutput {
   url         String?
   streamKey   String?
   device          String?
+  deviceOs        String?   // WINDOWS | LINUX (para LOCAL_DEVICE)
+  deviceDriver    String?   // DSHOW | V4L2 | DECKLINK (para LOCAL_DEVICE)
+  deviceName      String?   // nome/caminho do dispositivo no host (para LOCAL_DEVICE)
   videoResolution String?
   videoBitrate    Int?
   audioBitrate    Int?

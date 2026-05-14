@@ -174,9 +174,10 @@ export default async function playoutRoutes(app: FastifyInstance) {
 
     return items.map((item, idx) => {
       const clip = item.clip
+      const isUrlClip = (clip as any).sourceType === 'URL'
       const cueIn = item.overrideCueIn ?? clip.cueIn
       const cueOut = item.overrideCueOut ?? clip.cueOut ?? clip.media?.duration ?? null
-      const duration = cueOut ? cueOut - cueIn : (clip.media?.duration ?? clip.duration ?? 30)
+      const duration = cueOut ? cueOut - cueIn : (clip.media?.duration ?? clip.duration ?? (isUrlClip ? 3600 : 30))
       return {
         id: item.id,
         index: idx,
@@ -190,7 +191,9 @@ export default async function playoutRoutes(app: FastifyInstance) {
         loop: item.loop,
         clientName: clip.client?.name ?? null,
         breakNum: item.breakNum,
-        mediaReady: clip.media?.ingestStatus === 'READY',
+        // Clips URL são considerados prontos se tiverem sourceUrl; clips FILE precisam de ingestStatus READY
+        mediaReady: isUrlClip ? !!(clip as any).sourceUrl : clip.media?.ingestStatus === 'READY',
+        sourceType: (clip as any).sourceType ?? 'FILE',
         graphicName: clip.graphic?.name ?? null,
       }
     })
