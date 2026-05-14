@@ -151,7 +151,9 @@ function buildArgs(
 
   let videoCodec: string[]
   if (isLive) {
-    videoCodec = ['-c', 'copy']
+    // -map 0:v:0 -map 0:a:0 garante seleção de uma única faixa de vídeo e áudio
+    // necessário para HLS do YouTube que pode ter múltiplas faixas
+    videoCodec = ['-c', 'copy', '-map', '0:v:0', '-map', '0:a:0']
   } else {
     const { filterArgs, mapArgs } = buildVideoFilter(output.videoResolution, effectiveGraphic, !!logoUrl)
     videoCodec = [

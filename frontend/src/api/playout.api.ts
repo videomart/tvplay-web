@@ -3,9 +3,12 @@ import { api } from './client'
 export interface CurrentItem {
   playlistItemId: string
   clipId: string
+  mediaId: string | null
   code: string
   title: string
   modality: string
+  sourceType: string       // 'FILE' | 'URL'
+  sourceUrl: string | null
   clientName: string | null
   typeName: string | null
   typeCode: string | null
@@ -17,6 +20,7 @@ export interface CurrentItem {
   hlsPath: string | null
   order: number
   breakNum: number
+  loop: boolean
 }
 
 export interface ActiveGraphic {

@@ -370,10 +370,22 @@ function startTimer(channelId: string) {
             const newGraphic = await resolveGraphic(next.item.clipId, state.playlistId, channelId).catch(() => state.activeGraphic)
             state.activeGraphic = newGraphic
             if (next.item.sourceType === 'URL' && next.item.sourceUrl) {
-              // Clip URL (YouTube/Twitch): resolve via yt-dlp e inicia como live
-              resolveInputUrl({ type: 'YOUTUBE', url: next.item.sourceUrl, device: null })
-                .then((url) => { if (url) streamService.startStreamingFromUrl(channelId, url).catch(() => {}) })
-                .catch(() => {})
+              const clipUrl = next.item.sourceUrl
+              console.log(`[playout] Avançando para clip URL ch=${channelId} — resolvendo: ${clipUrl}`)
+              resolveInputUrl({ type: 'YOUTUBE', url: clipUrl, device: null })
+                .then((url) => {
+                  if (url) {
+                    console.log(`[playout] Clip URL ch=${channelId} — URL resolvida, reiniciando streaming`)
+                    streamService.startStreamingFromUrl(channelId, url).catch((err) => {
+                      console.error(`[playout] Clip URL ch=${channelId} — falha ao reiniciar streaming:`, err)
+                    })
+                  } else {
+                    console.warn(`[playout] Clip URL ch=${channelId} — yt-dlp não retornou URL (${clipUrl})`)
+                  }
+                })
+                .catch((err) => {
+                  console.error(`[playout] Clip URL ch=${channelId} — erro ao resolver URL:`, err)
+                })
             } else {
               streamService.restartStreaming(channelId, next.item.mediaId, next.item.cueIn, newGraphic).catch(() => {})
             }
@@ -448,9 +460,22 @@ export async function play(channelId: string, playlistId: string): Promise<Playo
   persistState(channelId, playlistId, startIndex)
   startTimer(channelId)
   if (firstItem?.sourceType === 'URL' && firstItem.sourceUrl) {
-    resolveInputUrl({ type: 'YOUTUBE', url: firstItem.sourceUrl, device: null })
-      .then((url) => { if (url) streamService.startStreamingFromUrl(channelId, url).catch(() => {}) })
-      .catch(() => {})
+    const clipUrl = firstItem.sourceUrl
+    console.log(`[playout] Clip URL ch=${channelId} — resolvendo via yt-dlp: ${clipUrl}`)
+    resolveInputUrl({ type: 'YOUTUBE', url: clipUrl, device: null })
+      .then((url) => {
+        if (url) {
+          console.log(`[playout] Clip URL ch=${channelId} — URL resolvida, iniciando streaming`)
+          streamService.startStreamingFromUrl(channelId, url).catch((err) => {
+            console.error(`[playout] Clip URL ch=${channelId} — falha ao iniciar streaming:`, err)
+          })
+        } else {
+          console.warn(`[playout] Clip URL ch=${channelId} — yt-dlp não retornou URL (${clipUrl})`)
+        }
+      })
+      .catch((err) => {
+        console.error(`[playout] Clip URL ch=${channelId} — erro ao resolver URL:`, err)
+      })
   } else {
     streamService.startStreaming(channelId, firstItem?.mediaId ?? null, firstItem?.cueIn ?? 0, activeGraphic).catch(() => {})
   }

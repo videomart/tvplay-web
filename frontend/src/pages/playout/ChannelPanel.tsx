@@ -767,7 +767,18 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                     <VideoPlayer src={monitorSrc} startAt={monitorStartAt} autoPlay muted className="w-full h-full" />
                     {state?.activeGraphic && <GraphicOverlay graphic={state.activeGraphic} />}
                   </>
-                : <div className="w-full h-full flex items-center justify-center"><Radio className="h-6 w-6 text-gray-700" /></div>
+                : item?.sourceType === 'URL'
+                  ? (
+                    <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-black">
+                      <Antenna className="h-5 w-5 text-sky-500 animate-pulse" />
+                      <p className="text-xs text-sky-400 font-medium">Streaming via yt-dlp</p>
+                      {item.sourceUrl && (
+                        <p className="text-[10px] text-gray-500 truncate max-w-[90%] text-center">{item.sourceUrl}</p>
+                      )}
+                      <p className="text-[9px] text-gray-600">Monitor indisponível para streams externos</p>
+                    </div>
+                  )
+                  : <div className="w-full h-full flex items-center justify-center"><Radio className="h-6 w-6 text-gray-700" /></div>
             ) : (
               (() => {
                 if (channel.fallbackType === 'COLORBARS') return <ColorBars />
