@@ -68,6 +68,7 @@ enum InputSourceType {
   SDI
   USB
   LOCAL_DEVICE
+  CLIP
 }
 
 // ─── Usuários ────────────────────────────────────────────────────────────────
@@ -208,6 +209,7 @@ model Clip {
   graphic   Graphic? @relation(fields: [graphicId], references: [id])
 
   playlistItems PlaylistItem[]
+  inputSources  InputSource[]
 
   @@map("clips")
 }
@@ -328,6 +330,9 @@ model InputSource {
 
   channelId String?
   channel   Channel? @relation("ChannelSources", fields: [channelId], references: [id])
+
+  clipId String?
+  clip   Clip? @relation(fields: [clipId], references: [id])
 
   fallbackForChannels Channel[] @relation("ChannelFallback")
 

@@ -3,7 +3,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, Antenna, Play, Youtube, RefreshCw, ChevronDown, Copy, Check, Monitor } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
-import { inputSourcesApi, type InputSource, type InputSourceType, SOURCE_TYPE_LABELS } from '../../api/input-sources.api'
+import { inputSourcesApi, type InputSource, type InputSourceType, SOURCE_TYPE_LABELS, resolveSourceType, urlNeedsYtDlp } from '../../api/input-sources.api'
+import { clipsApi, type Clip, MODALITY_LABELS } from '../../api/clips.api'
 import { channelsApi } from '../../api/channels.api'
 import { Button } from '../../components/ui/Button'
 import { Input, Select } from '../../components/ui/Input'
@@ -12,9 +13,10 @@ import { Table, Thead, Th, Tbody, Tr, Td } from '../../components/ui/Table'
 import { StatusBadge } from '../../components/ui/Badge'
 import { VideoPlayer } from '../../components/ui/VideoPlayer'
 
-const SELECTABLE_TYPES: InputSourceType[] = ['IP', 'YOUTUBE', 'SRT', 'SDI', 'USB', 'LOCAL_DEVICE']
+// IP e YOUTUBE são unificados na UI como "URL" — YOUTUBE fica como legado no banco
+const SELECTABLE_TYPES: InputSourceType[] = ['IP', 'SRT', 'SDI', 'USB', 'LOCAL_DEVICE', 'CLIP']
 
-const empty = { name: '', type: 'IP' as InputSourceType, url: '', device: '', channelId: '' }
+const empty = { name: '', type: 'IP' as InputSourceType, url: '', device: '', channelId: '', clipId: '' }
 type SrtConfig = { host: string; port: string; mode: 'caller' | 'listener' }
 type UdpConfig = { address: string; port: string }
 type LocalDeviceConfig = {
@@ -93,14 +95,14 @@ function parseUdpUrl(url: string): UdpConfig {
 }
 
 const TYPE_ICONS: Record<InputSourceType, string> = {
-  IP: '🌐', YOUTUBE: '▶️', SRT: '📡', SDI: '🎬', USB: '🔌', LOCAL_DEVICE: '🖥️',
+  IP: '🌐', YOUTUBE: '▶️', SRT: '📡', SDI: '🎬', USB: '🔌', LOCAL_DEVICE: '🖥️', CLIP: '🎞️',
 }
 
 const needsUrl         = (t: InputSourceType) => t === 'IP' || t === 'YOUTUBE'
 const needsSrt         = (t: InputSourceType) => t === 'SRT'
-const needsUdp         = (t: InputSourceType) => false
 const needsDevice      = (t: InputSourceType) => t === 'SDI' || t === 'USB'
 const needsLocalDevice = (t: InputSourceType) => t === 'LOCAL_DEVICE'
+const needsClip        = (t: InputSourceType) => t === 'CLIP'
 
 export default function InputSourcesPage() {
   const qc = useQueryClient()
@@ -117,8 +119,16 @@ export default function InputSourcesPage() {
   const [resolving, setResolving] = useState(false)
   const [deviceDropdownOpen, setDeviceDropdownOpen] = useState(false)
 
+  const [clipSearch, setClipSearch] = useState('')
+  const [selectedClip, setSelectedClip] = useState<Clip | null>(null)
+
   const { data = [], isLoading } = useQuery({ queryKey: ['input-sources'], queryFn: inputSourcesApi.list })
   const { data: channels = [] } = useQuery({ queryKey: ['channels'], queryFn: channelsApi.list })
+  const { data: clipsData } = useQuery({
+    queryKey: ['clips-search-src', clipSearch],
+    queryFn: () => clipsApi.list({ search: clipSearch || undefined, limit: 30 } as any),
+    enabled: open && form.type === 'CLIP',
+  })
 
   const { data: devicesData, isFetching: fetchingDevices } = useQuery({
     queryKey: ['input-devices'],
@@ -136,16 +146,21 @@ export default function InputSourcesPage() {
   const save = useMutation({
     mutationFn: () => {
       const isLocal = form.type === 'LOCAL_DEVICE'
+      const isClip  = form.type === 'CLIP'
+      // Para URL: auto-detecta se precisa de yt-dlp e persiste o tipo correto
+      const effectiveType = (form.type === 'IP' && form.url && urlNeedsYtDlp(form.url)) ? 'YOUTUBE' : form.type
       const payload = {
         name:         form.name,
-        type:         form.type,
+        type:         effectiveType,
         url:          isLocal
           ? (localDeviceCfg.srtPort ? `srt://:${localDeviceCfg.srtPort}?mode=listener&timeout=15000000` : undefined)
+          : isClip ? undefined
           : getUrlForSave(),
-        device:       (!isLocal && form.device) ? form.device : undefined,
+        device:       (!isLocal && !isClip && form.device) ? form.device : undefined,
         deviceOs:     isLocal ? localDeviceCfg.os : undefined,
         deviceDriver: isLocal ? localDeviceCfg.driver : undefined,
         deviceName:   isLocal ? localDeviceCfg.deviceName || undefined : undefined,
+        clipId:       isClip ? (selectedClip?.id || form.clipId || undefined) : null,
         channelId:    form.channelId || undefined,
       }
       return editing ? inputSourcesApi.update(editing.id, payload) : inputSourcesApi.create(payload)
@@ -170,11 +185,13 @@ export default function InputSourcesPage() {
 
   function openNew() {
     setEditing(null); setForm(empty); setSrtCfg(emptySrt); setUdpCfg(emptyUdp)
-    setLocalDeviceCfg(emptyLocalDevice); setCmdCopied(false); setOpen(true)
+    setLocalDeviceCfg(emptyLocalDevice); setSelectedClip(null); setClipSearch(''); setCmdCopied(false); setOpen(true)
   }
   function openEdit(s: InputSource) {
     setEditing(s)
-    setForm({ name: s.name, type: s.type, url: s.url ?? '', device: s.device ?? '', channelId: s.channelId ?? '' })
+    // YOUTUBE legado → exibe como IP na UI (URL unificada)
+    const uiType: InputSourceType = s.type === 'YOUTUBE' ? 'IP' : s.type
+    setForm({ name: s.name, type: uiType, url: s.url ?? '', device: s.device ?? '', channelId: s.channelId ?? '', clipId: s.clipId ?? '' })
     if (s.type === 'SRT' && s.url) setSrtCfg(parseSrtUrl(s.url))
     else setSrtCfg(emptySrt)
     setUdpCfg(emptyUdp)
@@ -186,13 +203,17 @@ export default function InputSourcesPage() {
     } else {
       setLocalDeviceCfg(emptyLocalDevice)
     }
+    if (s.type === 'CLIP' && s.clip) setSelectedClip(s.clip as any)
+    else setSelectedClip(null)
+    setClipSearch('')
     setCmdCopied(false)
     setOpen(true)
   }
 
   function handleTypeChange(type: InputSourceType) {
-    setForm((v) => ({ ...v, type, url: '', device: '' }))
+    setForm((v) => ({ ...v, type, url: '', device: '', clipId: '' }))
     setSrtCfg(emptySrt); setUdpCfg(emptyUdp); setLocalDeviceCfg(emptyLocalDevice)
+    setSelectedClip(null); setClipSearch('')
   }
 
   const f = (k: keyof typeof empty) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
@@ -241,14 +262,21 @@ export default function InputSourcesPage() {
     YOUTUBE: 'https://www.youtube.com/watch?v=... · https://www.twitch.tv/...',
   }
 
-  // URL de preview para mostrar na tabela (SRT: monta string amigável)
+  // URL de preview para mostrar na tabela
   function displayUrl(s: InputSource): string {
+    if (s.type === 'CLIP') return s.clip ? `${s.clip.code} — ${s.clip.title}` : '(clipe não encontrado)'
     if (!s.url && !s.device) return '—'
     if (s.type === 'SRT' && s.url) {
       const cfg = parseSrtUrl(s.url)
       return cfg.host ? `${cfg.host}:${cfg.port} (${cfg.mode})` : s.url
     }
     return s.url ?? s.device ?? '—'
+  }
+
+  // Label unificado: YOUTUBE legado exibe como URL com badge yt-dlp
+  function displayTypeLabel(s: InputSource): string {
+    if (s.type === 'YOUTUBE') return 'URL (yt-dlp)'
+    return SOURCE_TYPE_LABELS[s.type] ?? s.type
   }
 
   return (
@@ -286,7 +314,7 @@ export default function InputSourcesPage() {
                 <Td><span className="font-medium text-white">{s.name}</span></Td>
                 <Td>
                   <span className="text-xs bg-gray-700 text-gray-300 px-2 py-0.5 rounded">
-                    {TYPE_ICONS[s.type]} {SOURCE_TYPE_LABELS[s.type]}
+                    {TYPE_ICONS[s.type] ?? '🎬'} {displayTypeLabel(s)}
                   </span>
                 </Td>
                 <Td>
@@ -340,21 +368,69 @@ export default function InputSourcesPage() {
             </Select>
           </div>
 
-          {/* IP / YOUTUBE */}
+          {/* IP / YOUTUBE — URL unificada */}
           {needsUrl(form.type) && (
             <div className="space-y-1.5">
               <Input
-                label={form.type === 'YOUTUBE' ? 'Link YouTube/Twitch *' : 'URL *'}
+                label="URL *"
                 value={form.url}
                 onChange={f('url')}
-                placeholder={urlPlaceholders[form.type] ?? ''}
+                placeholder="rtmp://... · rtsp://... · http://... · https://youtube.com/... · https://twitch.tv/..."
               />
-              {ytDlpDetected && (
+              {ytDlpDetected ? (
                 <p className="text-[11px] text-amber-400/90 flex items-center gap-1">
                   <Youtube className="h-3 w-3" />
-                  URL de plataforma detectada — será resolvida automaticamente via yt-dlp (requer stream público).
+                  URL YouTube/Twitch detectada — será resolvida automaticamente via yt-dlp no momento da exibição.
                 </p>
+              ) : form.url ? (
+                <p className="text-[11px] text-gray-500">
+                  URL direta — passada ao FFmpeg sem processamento adicional (RTMP, RTSP, HLS, etc.)
+                </p>
+              ) : null}
+            </div>
+          )}
+
+          {/* CLIP — seletor de clipe cadastrado */}
+          {needsClip(form.type) && (
+            <div className="space-y-2">
+              <Input
+                label="Buscar clipe"
+                value={clipSearch}
+                onChange={(e) => setClipSearch(e.target.value)}
+                placeholder="Buscar por título ou código..."
+                icon={<Play className="h-4 w-4" />}
+              />
+              {selectedClip && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-brand-600/20 border border-brand-500/40 text-sm">
+                  <span className="text-xs bg-brand-700/50 text-brand-300 px-1.5 py-0.5 rounded font-mono">{selectedClip.sourceType === 'URL' ? 'URL' : 'FILE'}</span>
+                  <span className="font-medium text-white flex-1 truncate">{selectedClip.title}</span>
+                  <span className="text-xs font-mono text-gray-400">{selectedClip.code}</span>
+                  <button type="button" onClick={() => { setSelectedClip(null); setForm((v) => ({ ...v, clipId: '' })) }} className="text-gray-500 hover:text-red-400 ml-1">✕</button>
+                </div>
               )}
+              <div className="max-h-48 overflow-y-auto space-y-1 rounded-lg border border-gray-700 p-1.5">
+                {clipsData?.items.length === 0 && (
+                  <p className="text-xs text-gray-500 text-center py-4">Nenhum clipe encontrado</p>
+                )}
+                {clipsData?.items.map((clip) => (
+                  <button
+                    key={clip.id}
+                    type="button"
+                    onClick={() => { setSelectedClip(clip); setForm((v) => ({ ...v, clipId: clip.id })) }}
+                    className={`w-full flex items-center gap-2 px-3 py-2 rounded text-left text-sm transition-colors ${selectedClip?.id === clip.id ? 'bg-brand-600/20 border border-brand-500/40' : 'hover:bg-gray-700/50'}`}
+                  >
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono shrink-0 ${clip.sourceType === 'URL' ? 'bg-sky-900/50 text-sky-400' : clip.media?.ingestStatus === 'READY' ? 'bg-emerald-900/50 text-emerald-400' : 'bg-orange-900/50 text-orange-400'}`}>
+                      {clip.sourceType === 'URL' ? 'URL' : clip.media?.ingestStatus === 'READY' ? 'FILE' : 'SEM ARQ'}
+                    </span>
+                    <span className="text-white truncate flex-1">{clip.title}</span>
+                    <span className="text-xs font-mono text-gray-500 shrink-0">{clip.code}</span>
+                    <span className="text-[10px] text-gray-600 shrink-0">{MODALITY_LABELS[clip.modality]}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-gray-500">
+                Clipes FILE usam o stream HLS interno. Clipes URL são resolvidos via yt-dlp no momento da exibição.
+              </p>
             </div>
           )}
 

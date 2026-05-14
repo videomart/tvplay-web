@@ -6,29 +6,61 @@ import type { GraphicConfig } from './stream.service'
 
 const execFileAsync = promisify(execFile)
 
+const YT_DLP_PATTERN = /youtube\.com|youtu\.be|twitch\.tv/i
+
 // Detecta se uma URL deve ser resolvida via yt-dlp (YouTube, Twitch, etc.)
 function needsYtDlp(type: string, url: string): boolean {
   if (type === 'YOUTUBE') return true
-  // Tipo IP com URL de plataforma suportada pelo yt-dlp → resolve automaticamente
-  return /youtube\.com|youtu\.be|twitch\.tv/i.test(url)
+  return YT_DLP_PATTERN.test(url)
 }
 
-// Resolve a URL real de uma fonte de entrada (YouTube/Twitch via yt-dlp; outros direto)
-async function resolveInputUrl(src: { type: string; url: string | null; device: string | null }): Promise<string | null> {
-  const raw = src.url ?? src.device ?? null
-  if (!raw) return null
-  if (!needsYtDlp(src.type, raw)) return raw
-  // YouTube / Twitch: resolve via yt-dlp com android client (mais confiável para lives)
+// Detecta se um clip URL é do tipo yt-dlp mesmo quando sourceType está desatualizado (fallback)
+function isUrlClip(sourceType: string | null | undefined, sourceUrl: string | null | undefined): boolean {
+  if (sourceType === 'URL') return true
+  if (sourceUrl && YT_DLP_PATTERN.test(sourceUrl)) return true
+  return false
+}
+
+// Resolve via yt-dlp
+async function resolveViaYtDlp(rawUrl: string): Promise<string | null> {
   const base = ['--no-playlist', '-g', '--no-warnings', '--socket-timeout', '15']
   const fmt  = 'best[protocol=m3u8_native]/best[height<=720]/best'
   for (const extra of [['--extractor-args', 'youtube:player_client=android'], []]) {
     try {
-      const { stdout } = await execFileAsync('yt-dlp', [...base, '-f', fmt, ...extra, raw], { timeout: 35000 })
+      const { stdout } = await execFileAsync('yt-dlp', [...base, '-f', fmt, ...extra, rawUrl], { timeout: 35000 })
       const url = stdout.trim().split('\n')[0]
       if (url) return url
     } catch { /* tenta próximo */ }
   }
   return null
+}
+
+// Resolve a URL real de uma fonte de entrada (YouTube/Twitch via yt-dlp; outros direto)
+// Suporta tipo CLIP: resolve a partir do clipe cadastrado
+async function resolveInputUrl(src: { type: string; url: string | null; device: string | null; clipId?: string | null }): Promise<string | null> {
+  // Tipo CLIP: resolve via clipe cadastrado
+  if (src.type === 'CLIP' && src.clipId) {
+    const clip = await prisma.clip.findUnique({
+      where: { id: src.clipId },
+      include: { media: { select: { hlsPath: true } } },
+    })
+    if (!clip) return null
+    if (isUrlClip(clip.sourceType, clip.sourceUrl) && clip.sourceUrl) {
+      console.log(`[playout] CLIP input — resolvendo URL via yt-dlp: ${clip.sourceUrl}`)
+      return resolveViaYtDlp(clip.sourceUrl)
+    }
+    if (clip.media?.hlsPath) {
+      const { config } = await import('../config')
+      const mediaId = clip.media.hlsPath.split('/')[1]
+      return `http://localhost:${config.port}/api/media/stream/${mediaId}/index.m3u8`
+    }
+    return null
+  }
+
+  const raw = src.url ?? src.device ?? null
+  if (!raw) return null
+  if (!needsYtDlp(src.type, raw)) return raw
+  return resolveViaYtDlp(raw)
 }
 
 export type PlayoutStatus = 'IDLE' | 'PLAYING' | 'PAUSED' | 'STOPPED'
@@ -177,10 +209,9 @@ async function loadItem(playlistId: string, index: number): Promise<CurrentItem 
   const item = items[index]
   const clip = item.clip
   const cueIn = item.overrideCueIn ?? clip.cueIn
-  const isUrlClip = clip.sourceType === 'URL'
+  const urlClip = isUrlClip(clip.sourceType, clip.sourceUrl)
   const cueOut = item.overrideCueOut ?? clip.cueOut ?? clip.media?.duration ?? null
-  // URL clips usam duração manual (clip.duration) ou 3600s (live stream indefinido)
-  const duration = cueOut ? cueOut - cueIn : (clip.media?.duration ?? clip.duration ?? (isUrlClip ? 3600 : 30))
+  const duration = cueOut ? cueOut - cueIn : (clip.media?.duration ?? clip.duration ?? (urlClip ? 3600 : 30))
   return {
     playlistItemId: item.id,
     clipId: clip.id,
@@ -188,7 +219,7 @@ async function loadItem(playlistId: string, index: number): Promise<CurrentItem 
     code: clip.code,
     title: clip.title,
     modality: clip.modality,
-    sourceType: clip.sourceType,
+    sourceType: urlClip ? 'URL' : (clip.sourceType ?? 'FILE'),
     sourceUrl: clip.sourceUrl ?? null,
     clientName: clip.client?.name ?? null,
     typeName: clip.type?.name ?? null,
@@ -231,12 +262,12 @@ async function findNextReadyFrom(
   for (let i = fromIndex; i < items.length; i++) {
     const item = items[i]
     const clip = item.clip
-    const isUrlClip = clip.sourceType === 'URL'
-    if (!isUrlClip && !clip.media?.hlsPath) continue // FILE sem arquivo — pula
-    if (isUrlClip && !clip.sourceUrl) continue        // URL sem URL — pula
+    const urlClip = isUrlClip(clip.sourceType, clip.sourceUrl)
+    if (!urlClip && !clip.media?.hlsPath) continue // FILE sem arquivo — pula
+    if (urlClip && !clip.sourceUrl) continue        // URL sem URL — pula
     const cueIn  = item.overrideCueIn  ?? clip.cueIn
     const cueOut = item.overrideCueOut ?? clip.cueOut ?? clip.media?.duration ?? null
-    const duration = cueOut ? cueOut - cueIn : (clip.media?.duration ?? clip.duration ?? (isUrlClip ? 3600 : 30))
+    const duration = cueOut ? cueOut - cueIn : (clip.media?.duration ?? clip.duration ?? (urlClip ? 3600 : 30))
     return {
       index: i,
       item: {
@@ -246,7 +277,7 @@ async function findNextReadyFrom(
         code: clip.code,
         title: clip.title,
         modality: clip.modality,
-        sourceType: clip.sourceType,
+        sourceType: urlClip ? 'URL' : (clip.sourceType ?? 'FILE'),
         sourceUrl: clip.sourceUrl ?? null,
         clientName: clip.client?.name ?? null,
         typeName: clip.type?.name ?? null,
@@ -369,7 +400,7 @@ function startTimer(channelId: string) {
             persistState(channelId, state.playlistId!, next.index)
             const newGraphic = await resolveGraphic(next.item.clipId, state.playlistId, channelId).catch(() => state.activeGraphic)
             state.activeGraphic = newGraphic
-            if (next.item.sourceType === 'URL' && next.item.sourceUrl) {
+            if (isUrlClip(next.item.sourceType, next.item.sourceUrl) && next.item.sourceUrl) {
               const clipUrl = next.item.sourceUrl
               console.log(`[playout] Avançando para clip URL ch=${channelId} — resolvendo: ${clipUrl}`)
               resolveInputUrl({ type: 'YOUTUBE', url: clipUrl, device: null })
@@ -459,7 +490,7 @@ export async function play(channelId: string, playlistId: string): Promise<Playo
   await prisma.channel.update({ where: { id: channelId }, data: { status: 'PLAYING' } }).catch(() => {})
   persistState(channelId, playlistId, startIndex)
   startTimer(channelId)
-  if (firstItem?.sourceType === 'URL' && firstItem.sourceUrl) {
+  if (isUrlClip(firstItem?.sourceType, firstItem?.sourceUrl) && firstItem?.sourceUrl) {
     const clipUrl = firstItem.sourceUrl
     console.log(`[playout] Clip URL ch=${channelId} — resolvendo via yt-dlp: ${clipUrl}`)
     resolveInputUrl({ type: 'YOUTUBE', url: clipUrl, device: null })

@@ -18,11 +18,15 @@ const schema = z.object({
   deviceOs:     z.string().optional().nullable(),
   deviceDriver: z.string().optional().nullable(),
   deviceName:   z.string().optional().nullable(),
+  clipId:       z.string().optional().nullable(),
   channelId:    z.string().optional().nullable(),
   active:       z.boolean().optional(),
 })
 
-const include = { channel: { select: { id: true, name: true, number: true } } }
+const include = {
+  channel: { select: { id: true, name: true, number: true } },
+  clip: { select: { id: true, code: true, title: true, sourceType: true, sourceUrl: true, media: { select: { hlsPath: true, ingestStatus: true } } } },
+}
 
 async function listVideoDevices(): Promise<{ path: string; name: string }[]> {
   try {
