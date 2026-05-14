@@ -349,8 +349,14 @@ export async function reconnectOutput(
   await startOutput(channelId, outputId, mediaId, cueIn, contentGraphic)
 }
 
-// Modo live (-c copy): para corte de entrada / fallback INPUT_SOURCE — baixa latência
-export async function startStreamingFromUrl(channelId: string, inputUrl: string) {
+// Para corte de entrada / fallback INPUT_SOURCE.
+// Se contentGraphic estiver presente, usa re-encode para aplicar o overlay.
+// Caso contrário, usa -c copy (baixa latência).
+export async function startStreamingFromUrl(
+  channelId: string,
+  inputUrl: string,
+  contentGraphic: GraphicConfig | null = null,
+) {
   await stopStreaming(channelId)
   const outputs = await prisma.streamOutput.findMany({
     where: { channelId, active: true },
@@ -359,7 +365,10 @@ export async function startStreamingFromUrl(channelId: string, inputUrl: string)
   if (!outputs.length) return
   const map = new Map<string, StreamProcess>()
   for (const output of outputs) {
-    const sp = spawnOutput(channelId, output, inputUrl, 0, true, null)
+    // Re-encode quando há gráfico ativo (necessário para aplicar filtros de overlay)
+    const effectiveGraphic = contentGraphic ?? output.graphic ?? null
+    const live = !effectiveGraphic  // sem gráfico → copy; com gráfico → re-encode
+    const sp = spawnOutput(channelId, output, inputUrl, 0, live, contentGraphic)
     if (sp) map.set(output.id, sp)
   }
   if (map.size) channelProcs.set(channelId, map)

@@ -437,8 +437,10 @@ function startTimer(channelId: string) {
             }).catch(() => null)
 
             if (channel?.fallbackType === 'INPUT_SOURCE' && channel.fallbackSource) {
-              resolveInputUrl(channel.fallbackSource).then((url) => {
-                if (url) streamService.startStreamingFromUrl(channelId, url).catch(() => {})
+              resolveInputUrl(channel.fallbackSource).then(async (url) => {
+                if (!url) return
+                const fbGraphic = await resolveGraphic(null, null, channelId).catch(() => null)
+                streamService.startStreamingFromUrl(channelId, url, fbGraphic).catch(() => {})
               }).catch(() => {})
             } else {
               streamService.startStreamingFromFallback(channelId, channel?.fallbackType ?? 'BLACK').catch(() => {})
@@ -556,8 +558,11 @@ export async function stop(channelId: string): Promise<PlayoutState> {
     include: { fallbackSource: true },
   }).catch(() => null)
   if (channel?.fallbackType === 'INPUT_SOURCE' && channel.fallbackSource) {
-    resolveInputUrl(channel.fallbackSource).then((url) => {
-      if (url) streamService.startStreamingFromUrl(channelId, url).catch(() => {})
+    resolveInputUrl(channel.fallbackSource).then(async (url) => {
+      if (!url) return
+      // Resolve gráfico padrão do canal (cascata de saídas) para aplicar no fallback
+      const fallbackGraphic = await resolveGraphic(null, null, channelId).catch(() => null)
+      streamService.startStreamingFromUrl(channelId, url, fallbackGraphic).catch(() => {})
     }).catch(() => {})
   } else {
     streamService.startStreamingFromFallback(channelId, channel?.fallbackType ?? 'BLACK').catch(() => {})
@@ -637,9 +642,11 @@ export async function cutToInput(channelId: string, sourceId: string): Promise<P
     data: { status: 'STOPPED', fallbackType: 'INPUT_SOURCE', fallbackSourceId: sourceId },
   }).catch(() => {})
 
-  // Inicia streaming da entrada (assíncrono para não bloquear a resposta)
-  resolveInputUrl(source).then((url) => {
-    if (url) streamService.startStreamingFromUrl(channelId, url).catch(() => {})
+  // Inicia streaming da entrada com gráfico ativo do canal (cascata de saídas)
+  resolveInputUrl(source).then(async (url) => {
+    if (!url) return
+    const cutGraphic = await resolveGraphic(null, null, channelId).catch(() => null)
+    streamService.startStreamingFromUrl(channelId, url, cutGraphic).catch(() => {})
   }).catch(() => {})
 
   broadcast(channelId, state)

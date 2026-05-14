@@ -232,8 +232,55 @@ export default async function inputSourceRoutes(app: FastifyInstance) {
 
   // Inicia transcodificação da fonte para HLS temporário
   app.post('/:id/preview/start', auth, async (request: any, reply) => {
-    const source = await prisma.inputSource.findUnique({ where: { id: request.params.id } })
+    const source = await prisma.inputSource.findUnique({
+      where: { id: request.params.id },
+      include: { clip: { include: { media: { select: { hlsPath: true, ingestStatus: true } } } } },
+    })
     if (!source) return reply.status(404).send({ error: 'Fonte não encontrada' })
+
+    // Tipo CLIP: resolve a URL a partir do clipe cadastrado
+    if ((source as any).type === 'CLIP') {
+      const clip = (source as any).clip
+      if (!clip) return reply.status(400).send({ error: 'Clipe não encontrado na fonte' })
+      // Clip FILE com HLS pronto: retorna URL diretamente sem FFmpeg
+      if (clip.sourceType !== 'URL' && clip.media?.hlsPath && clip.media.ingestStatus === 'READY') {
+        const mediaId = clip.media.hlsPath.split('/')[1]
+        return reply.send({ hlsUrl: `/api/media/stream/${mediaId}/index.m3u8` })
+      }
+      // Clip URL (YouTube/Twitch): resolve via yt-dlp e inicia preview FFmpeg
+      if (clip.sourceType === 'URL' && clip.sourceUrl) {
+        const YT_PATTERN = /youtube\.com|youtu\.be|twitch\.tv/i
+        const isYt = YT_PATTERN.test(clip.sourceUrl)
+        const base = ['--no-playlist', '-g', '--socket-timeout', '15', '--no-warnings']
+        const fmt  = 'best[protocol=m3u8_native]/best[height<=720]/best'
+        let resolvedUrl: string | null = null
+        if (isYt) {
+          const tryYt = async (...extra: string[]): Promise<string | null> => {
+            try { const { stdout } = await execFileAsync('yt-dlp', [...base, '-f', fmt, ...extra, clip.sourceUrl], { timeout: 35000 }); return stdout.trim().split('\n')[0] || null } catch { return null }
+          }
+          resolvedUrl = await tryYt('--extractor-args', 'youtube:player_client=android') || await tryYt()
+        } else {
+          resolvedUrl = clip.sourceUrl
+        }
+        if (!resolvedUrl) return reply.status(422).send({ error: 'Não foi possível resolver a URL do clipe.' })
+        const previewId = source.id + '_clip'
+        previewService.startPreview(previewId, resolvedUrl)
+        const maxAttempts = isYt ? 40 : 16
+        const hlsFile = path.join('/tmp/tvplay-previews', previewId, 'index.m3u8')
+        for (let i = 0; i < maxAttempts; i++) {
+          if (fs.existsSync(hlsFile)) break
+          if (previewService.hasPreviewFailed(previewId)) break
+          await new Promise((r) => setTimeout(r, 500))
+        }
+        if (!fs.existsSync(hlsFile)) {
+          previewService.stopPreview(previewId)
+          return reply.status(504).send({ error: 'Timeout ao iniciar preview do clipe.' })
+        }
+        return { hlsUrl: `/api/input-sources/${previewId}/preview/stream/index.m3u8` }
+      }
+      return reply.status(400).send({ error: 'Clipe sem mídia disponível para preview' })
+    }
+
     if (!source.url && !source.device) return reply.status(400).send({ error: 'Fonte sem URL ou dispositivo' })
 
     let inputUrl = source.url ?? source.device!

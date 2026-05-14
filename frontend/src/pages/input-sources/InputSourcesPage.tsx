@@ -252,7 +252,10 @@ export default function InputSourcesPage() {
     setPreviewStreamUrl(null)
   }
 
-  function canPreview(s: InputSource) { return !!(s.url || s.device) }
+  function canPreview(s: InputSource) {
+    if (s.type === 'CLIP') return !!(s.clip) // CLIP: preview se tem clipe associado
+    return !!(s.url || s.device)
+  }
 
   // Detecta se a URL precisa de yt-dlp (YouTube/Twitch) para mostrar hint ao usuário
   const ytDlpDetected = form.type === 'IP' && /youtube\.com|youtu\.be|twitch\.tv/i.test(form.url)

@@ -481,6 +481,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
       monitorOpen && isIdle &&
       channel.fallbackType === 'INPUT_SOURCE' && src &&
       (src.type === 'YOUTUBE' || src.type === 'SRT' || src.type === 'SDI' || src.type === 'USB' ||
+       src.type === 'CLIP' ||
        (src.type === 'IP' && src.url && !src.url.match(/\.m3u8/i)))
 
     if (!needsServerPreview) {
@@ -684,19 +685,20 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
     (s) => s.active && (!s.channelId || s.channelId === channel.id)
   )
 
-  const statusColor = {
-    PLAYING: 'text-emerald-400',
-    PAUSED:  'text-amber-400',
-    STOPPED: 'text-red-400',
-    IDLE:    'text-gray-500',
-  }[status]
+  const activeOutputs = outputs.filter((o) => o.streaming).length
+  const streamingUp = activeOutputs > 0
 
-  const statusLabel = {
-    PLAYING: 'AO AR',
-    PAUSED:  'PAUSADO',
-    STOPPED: 'PARADO',
-    IDLE:    'AGUARDANDO',
-  }[status]
+  const statusColor = status === 'PLAYING' ? 'text-emerald-400'
+    : status === 'PAUSED' ? 'text-amber-400'
+    : (status === 'STOPPED' || status === 'IDLE') && streamingUp ? 'text-sky-400'
+    : status === 'STOPPED' ? 'text-red-400'
+    : 'text-gray-500'
+
+  const statusLabel = status === 'PLAYING' ? 'AO AR'
+    : status === 'PAUSED' ? 'PAUSADO'
+    : (status === 'STOPPED' || status === 'IDLE') && streamingUp ? 'FALLBACK UP'
+    : status === 'STOPPED' ? 'PARADO'
+    : 'AGUARDANDO'
 
   // ─── Render ─────────────────────────────────────────────────────────────────
 
@@ -719,10 +721,10 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
             <p className="text-sm font-semibold text-white leading-tight truncate">{channel.name}</p>
             <div className="flex items-center gap-1.5">
               <p className={clsx('text-[11px] font-bold tracking-wider', statusColor)}>{statusLabel}</p>
-              {status === 'PLAYING' && (
-                <span className="flex items-center gap-0.5 text-[10px] text-emerald-400 font-semibold">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  LIVE
+              {(status === 'PLAYING' || ((status === 'STOPPED' || status === 'IDLE') && streamingUp)) && (
+                <span className={`flex items-center gap-0.5 text-[10px] font-semibold ${status === 'PLAYING' ? 'text-emerald-400' : 'text-sky-400'}`}>
+                  <span className={`h-1.5 w-1.5 rounded-full animate-pulse ${status === 'PLAYING' ? 'bg-emerald-400' : 'bg-sky-400'}`} />
+                  {status === 'PLAYING' ? 'LIVE' : `${activeOutputs} UP`}
                 </span>
               )}
             </div>
