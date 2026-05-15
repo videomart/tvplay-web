@@ -765,8 +765,10 @@ export async function setFallback(
   if (fallbackType === 'INPUT_SOURCE' && fallbackSourceId) {
     const source = await prisma.inputSource.findUnique({ where: { id: fallbackSourceId } })
     if (source) {
-      resolveInputUrl(source).then((url) => {
-        if (url) streamService.startStreamingFromUrl(channelId, url).catch(() => {})
+      resolveInputUrl(source).then(async (url) => {
+        if (!url) return
+        const fbGraphic = await resolveGraphic(null, null, channelId).catch(() => null)
+        streamService.startStreamingFromUrl(channelId, url, fbGraphic).catch(() => {})
       }).catch(() => {})
     }
   } else {
@@ -820,7 +822,23 @@ export async function initFromDb(): Promise<void> {
 
     if (ch.status === 'PLAYING') {
       startTimer(ch.id)
-      streamService.startStreaming(ch.id, item?.mediaId ?? null, item?.cueIn ?? 0, activeGraphic).catch(() => {})
+      // Trata URL clips corretamente — caso contrario, startStreaming(null) nao faz nada
+      if (isUrlClip(item?.sourceType, item?.sourceUrl) && item?.sourceUrl) {
+        const clipUrl = item.sourceUrl
+        console.log(`[playout] Restauracao URL clip ch=${ch.id} — resolvendo: ${clipUrl}`)
+        resolveInputUrl({ type: 'YOUTUBE', url: clipUrl, device: null })
+          .then((url) => {
+            if (url) {
+              console.log(`[playout] Restauracao URL clip ch=${ch.id} — iniciando streaming: ${url.slice(0, 80)}`)
+              streamService.startStreamingFromUrlReencode(ch.id, url, activeGraphic).catch(() => {})
+            } else {
+              console.warn(`[playout] Restauracao URL clip ch=${ch.id} — yt-dlp nao retornou URL`)
+            }
+          })
+          .catch((err) => console.error(`[playout] Restauracao URL clip ch=${ch.id} — erro:`, err))
+      } else {
+        streamService.startStreaming(ch.id, item?.mediaId ?? null, item?.cueIn ?? 0, activeGraphic).catch(() => {})
+      }
     }
 
     console.log(`[playout] Canal ${ch.id} restaurado: status=${ch.status} playlist=${playlist.name} idx=${ch.playlistIndex}`)
