@@ -63,6 +63,21 @@ const DEVICE_PLACEHOLDER: Record<string, string> = {
   DECKLINK: 'Intensity Shuttle · DeckLink Mini Recorder · UltraStudio',
 }
 
+// Extrai URL de embed YouTube/Twitch — mesmo helper do ClipsPage
+function embedUrl(sourceUrl: string): string | null {
+  try {
+    const u = new URL(sourceUrl)
+    const ytMatch = sourceUrl.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([A-Za-z0-9_-]{11})/)
+    if (ytMatch) return `https://www.youtube.com/embed/${ytMatch[1]}?autoplay=1`
+    if (u.hostname.includes('youtube.com') && !ytMatch) {
+      return `https://www.youtube.com/embed/live_stream?channel=${u.pathname.split('/').pop()}&autoplay=1`
+    }
+    const twMatch = sourceUrl.match(/twitch\.tv\/([A-Za-z0-9_]+)/)
+    if (twMatch) return `https://player.twitch.tv/?channel=${twMatch[1]}&parent=${window.location.hostname}&autoplay=true`
+  } catch {}
+  return null
+}
+
 function buildSrtUrl(c: SrtConfig): string {
   if (!c.port) return ''
   if (c.mode === 'listener') {
@@ -116,6 +131,7 @@ export default function InputSourcesPage() {
   const cmdRef = useRef<HTMLTextAreaElement>(null)
   const [previewSource, setPreviewSource] = useState<InputSource | null>(null)
   const [previewStreamUrl, setPreviewStreamUrl] = useState<string | null>(null)
+  const [previewEmbedUrl, setPreviewEmbedUrl] = useState<string | null>(null)
   const [resolving, setResolving] = useState(false)
   const [deviceDropdownOpen, setDeviceDropdownOpen] = useState(false)
 
@@ -222,12 +238,35 @@ export default function InputSourcesPage() {
   async function handlePreview(s: InputSource) {
     setPreviewSource(s)
     setPreviewStreamUrl(null)
+    setPreviewEmbedUrl(null)
+
+    // Tipo CLIP: usa o clipe associado diretamente (sem ida ao backend)
+    if (s.type === 'CLIP' && s.clip) {
+      const clip = s.clip
+      if (clip.sourceType === 'URL' && clip.sourceUrl) {
+        const embed = embedUrl(clip.sourceUrl)
+        if (embed) { setPreviewEmbedUrl(embed); return }
+      }
+      if (clip.media?.hlsPath && clip.media.ingestStatus === 'READY') {
+        const mediaId = clip.media.hlsPath.split('/')[1]
+        setPreviewStreamUrl(`/api/media/stream/${mediaId}/index.m3u8`)
+        return
+      }
+      toast.error('Clipe sem mídia disponível para preview.')
+      setPreviewSource(null)
+      return
+    }
+
+    // Tipo YOUTUBE ou IP com URL YouTube/Twitch: usa embed iframe (mais confiável)
+    const directUrl = s.url ?? ''
+    if ((s.type === 'YOUTUBE' || (s.type === 'IP' && /youtube\.com|youtu\.be|twitch\.tv/i.test(directUrl)))) {
+      const embed = embedUrl(directUrl)
+      if (embed) { setPreviewEmbedUrl(embed); return }
+    }
 
     if (s.type === 'IP' && s.url?.match(/^https?:\/\//i)) {
-      // IP HTTP/HLS direto — carrega sem transcodificação
       setPreviewStreamUrl(s.url)
     } else if (s.url || s.device) {
-      // YouTube, SRT, SDI, USB, IP não-HTTP → FFmpeg → HLS local
       setResolving(true)
       try {
         const { hlsUrl } = await inputSourcesApi.startPreview(s.id)
@@ -245,11 +284,13 @@ export default function InputSourcesPage() {
   }
 
   function handleClosePreview() {
-    if (previewSource && previewSource.type !== 'IP') {
+    // Só pede stop ao backend se realmente iniciou preview server-side (não embed)
+    if (previewSource && previewSource.type !== 'IP' && previewSource.type !== 'CLIP' && !previewEmbedUrl) {
       inputSourcesApi.stopPreview(previewSource.id).catch(() => {})
     }
     setPreviewSource(null)
     setPreviewStreamUrl(null)
+    setPreviewEmbedUrl(null)
   }
 
   function canPreview(s: InputSource) {
@@ -675,7 +716,15 @@ export default function InputSourcesPage() {
         title={`Preview — ${previewSource?.name ?? ''}`}
         size="lg"
       >
-        {resolving ? (
+        {previewEmbedUrl ? (
+          <iframe
+            src={previewEmbedUrl}
+            className="w-full aspect-video rounded-lg bg-black"
+            allow="autoplay; fullscreen"
+            allowFullScreen
+            title={previewSource?.name ?? 'Preview'}
+          />
+        ) : resolving ? (
           <div className="w-full aspect-video bg-black rounded-lg flex flex-col items-center justify-center gap-3">
             <RefreshCw className="h-8 w-8 text-gray-500 animate-spin" />
             <p className="text-sm text-gray-500">Iniciando stream no servidor...</p>
