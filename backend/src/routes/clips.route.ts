@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { ClipModality, ClipSourceType, Prisma } from '@prisma/client'
 import { prisma } from '../lib/prisma'
+import { checkIsLive } from '../services/playout.service'
 
 const clipSchema = z.object({
   code: z.string().min(1),
@@ -61,6 +62,14 @@ export default async function clipRoutes(app: FastifyInstance) {
     ])
 
     return { items, total, page: parseInt(page), limit: parseInt(limit) }
+  })
+
+  // Verifica se URL YouTube/Twitch eh live ou VOD
+  app.post('/check-url', auth, async (request: any, reply) => {
+    const url = (request.body as any)?.url as string
+    if (!url || !/^https?:\/\//.test(url)) return reply.status(400).send({ error: 'URL invalida' })
+    const result = await checkIsLive(url)
+    return result
   })
 
   // Rota estática deve vir antes de /:id

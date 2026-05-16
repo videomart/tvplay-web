@@ -21,6 +21,24 @@ function isUrlClip(sourceType: string | null | undefined, sourceUrl: string | nu
   return false
 }
 
+// Verifica se URL YouTube/Twitch é stream ao vivo (true) ou VOD (false)
+// Retorna null se yt-dlp falhar
+export async function checkIsLive(url: string): Promise<{ isLive: boolean | null; title?: string; duration?: number }> {
+  try {
+    const { stdout } = await execFileAsync('yt-dlp', [
+      '--no-playlist', '--no-warnings', '--socket-timeout', '15',
+      '--print', '%(is_live)s|%(title)s|%(duration)s',
+      url,
+    ], { timeout: 20000 })
+    const [isLiveStr, title, durStr] = stdout.trim().split('|')
+    const isLive = isLiveStr === 'True' ? true : isLiveStr === 'False' ? false : null
+    const duration = durStr && durStr !== 'NA' ? parseFloat(durStr) : undefined
+    return { isLive, title: title === 'NA' ? undefined : title, duration }
+  } catch {
+    return { isLive: null }
+  }
+}
+
 // Resolve via yt-dlp
 async function resolveViaYtDlp(rawUrl: string): Promise<string | null> {
   const base = ['--no-playlist', '-g', '--no-warnings', '--socket-timeout', '15']
@@ -494,6 +512,12 @@ export async function play(channelId: string, playlistId: string): Promise<Playo
   startTimer(channelId)
   if (isUrlClip(firstItem?.sourceType, firstItem?.sourceUrl) && firstItem?.sourceUrl) {
     const clipUrl = firstItem.sourceUrl
+    // Verifica se eh live ou VOD para alertar o usuario
+    checkIsLive(clipUrl).then(({ isLive }) => {
+      if (isLive === false) {
+        console.warn(`[playout] AVISO ch=${channelId}: clip URL eh VOD (nao live). YouTube faz throttle de download — streaming pode travar/atrasar. Use canal LIVE para melhor resultado.`)
+      }
+    }).catch(() => {})
     console.log(`[playout] Clip URL ch=${channelId} — resolvendo via yt-dlp: ${clipUrl}`)
     resolveInputUrl({ type: 'YOUTUBE', url: clipUrl, device: null })
       .then((url) => {

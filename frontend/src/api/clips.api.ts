@@ -53,6 +53,7 @@ export const clipsApi = {
   update: (id: string, data: Partial<Clip>) => api.put<Clip>(`/clips/${id}`, data).then((r) => r.data),
   delete: (id: string) => api.delete(`/clips/${id}`),
   nextCode: (prefix: string) => api.get<{ code: string }>(`/clips/next-code?prefix=${encodeURIComponent(prefix)}`).then((r) => r.data),
+  checkUrl: (url: string) => api.post<{ isLive: boolean | null; title?: string; duration?: number }>('/clips/check-url', { url }).then((r) => r.data),
   uploadMediaDirect: (file: File, onProgress?: (pct: number) => void) => {
     const form = new FormData()
     form.append('file', file)

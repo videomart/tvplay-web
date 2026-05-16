@@ -69,6 +69,8 @@ export default function ClipsPage() {
   const [open, setOpen] = useState(false)
   const [previewClip, setPreviewClip] = useState<Clip | null>(null)
   const [urlPreviewClip, setUrlPreviewClip] = useState<Clip | null>(null)
+  const [urlCheckLoading, setUrlCheckLoading] = useState(false)
+  const [urlCheckResult, setUrlCheckResult] = useState<{ isLive: boolean | null; title?: string; duration?: number } | null>(null)
   const [uploadingClipId, setUploadingClipId] = useState<string | null>(null)
   const [uploadProgress, setUploadProgress] = useState<number>(0)
   const [editing, setEditing] = useState<Clip | null>(null)
@@ -534,12 +536,33 @@ export default function ClipsPage() {
                   <Input
                     label="URL do vídeo *"
                     value={form.sourceUrl}
-                    onChange={f('sourceUrl')}
+                    onChange={(e) => { setForm((v) => ({ ...v, sourceUrl: e.target.value })); setUrlCheckResult(null) }}
                     placeholder="https://www.youtube.com/watch?v=... ou https://twitch.tv/..."
                     error={formErrors.sourceUrl}
                     icon={<Link className="h-4 w-4" />}
                   />
-                  <p className="text-[10px] text-gray-500">A URL será resolvida via yt-dlp no momento da exibição. Funciona com YouTube e Twitch.</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[10px] text-gray-500">Resolvida via yt-dlp na exibição. Use canais LIVE para evitar throttle do YouTube.</p>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      loading={urlCheckLoading}
+                      disabled={!form.sourceUrl}
+                      onClick={async () => {
+                        setUrlCheckLoading(true); setUrlCheckResult(null)
+                        try { setUrlCheckResult(await clipsApi.checkUrl(form.sourceUrl)) }
+                        catch { toast.error('Falha ao verificar URL') }
+                        finally { setUrlCheckLoading(false) }
+                      }}
+                    >Verificar</Button>
+                  </div>
+                  {urlCheckResult && (
+                    <div className={`text-[11px] rounded px-2 py-1.5 mt-1 ${urlCheckResult.isLive === true ? 'bg-emerald-900/40 text-emerald-300 border border-emerald-700/40' : urlCheckResult.isLive === false ? 'bg-amber-900/40 text-amber-300 border border-amber-700/40' : 'bg-gray-800 text-gray-400 border border-gray-700'}`}>
+                      {urlCheckResult.isLive === true && <>✓ <strong>Stream LIVE</strong>{urlCheckResult.title && ` — ${urlCheckResult.title}`} (recomendado para playout)</>}
+                      {urlCheckResult.isLive === false && <>⚠ <strong>VOD</strong>{urlCheckResult.title && ` — ${urlCheckResult.title}`}{urlCheckResult.duration && ` (${Math.round(urlCheckResult.duration)}s)`} — YouTube faz throttle no download, streaming pode travar/atrasar.</>}
+                      {urlCheckResult.isLive === null && <>? Não foi possível determinar (URL inválida ou yt-dlp falhou)</>}
+                    </div>
+                  )}
                 </div>
               )}
 
