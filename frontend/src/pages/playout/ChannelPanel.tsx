@@ -800,6 +800,27 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                   </>
                 : item?.sourceType === 'URL'
                   ? (() => {
+                      // Quando outputs estão transmitindo ativamente: mostra indicador de status
+                      // (iframe reinicia do início ao ser remontado — não reflete posição real do broadcast)
+                      if (streamingUp) {
+                        const allStats = outputs.filter(o => o.streaming).map(o => formatBitrate(o.stats)).filter(Boolean)
+                        return (
+                          <>
+                            <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-black">
+                              <div className="flex items-center gap-2">
+                                <span className="h-2.5 w-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                                <p className="text-sm text-emerald-400 font-bold tracking-wide">ON AIR</p>
+                              </div>
+                              <p className="text-xs text-white font-medium text-center px-4 truncate max-w-full">{item.title}</p>
+                              {allStats.length > 0 && (
+                                <p className="text-[11px] font-mono text-emerald-300/70">{allStats.join(' · ')}</p>
+                              )}
+                              <p className="text-[10px] text-gray-600 text-center">yt-dlp → re-encode → saída</p>
+                            </div>
+                            {state?.activeGraphic && <GraphicOverlay graphic={state.activeGraphic} />}
+                          </>
+                        )
+                      }
                       const embed = embedUrlForMonitor(item.sourceUrl)
                       return embed ? (
                         <>

@@ -168,8 +168,8 @@ function buildArgs(
     ...(isLive && isRtmpInput ? ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5'] : []),
     // RTSP input: força TCP (mais estável) e define timeout de 10s
     ...(isLive && isRtspInput ? ['-rtsp_transport', 'tcp', '-stimeout', '10000000'] : []),
-    // HTTP/HLS input (yt-dlp resolve URLs): reconnect + timeout longo — evita corte por timeout padrão (~20s)
-    ...(isLive && isHttpInput ? ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '10', '-timeout', '30000000'] : []),
+    // HTTP/HLS input: reconnect + timeout longo — vale tanto para VOD local quanto para URLs yt-dlp (live ou não)
+    ...(isHttpInput ? ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '10', '-timeout', '30000000'] : []),
     ...(isLive ? [] : ['-re']),
     ...(cueIn > 0 && !isLive ? ['-ss', String(Math.floor(cueIn))] : []),
     '-i', inputUrl,
