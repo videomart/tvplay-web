@@ -2,40 +2,59 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import type { PlayoutState } from '../api/playout.api'
 import { useAuthStore } from '../stores/auth.store'
 
+const cacheKey = (id: string) => `tvplay-playout-state-${id}`
+
+function readCache(channelId: string): PlayoutState | null {
+  try {
+    const raw = sessionStorage.getItem(cacheKey(channelId))
+    return raw ? (JSON.parse(raw) as PlayoutState) : null
+  } catch { return null }
+}
+
+function writeCache(channelId: string, state: PlayoutState) {
+  try { sessionStorage.setItem(cacheKey(channelId), JSON.stringify(state)) } catch {}
+}
+
 export function usePlayoutSocket(channelId: string) {
-  const [state, setState] = useState<PlayoutState | null>(null)
+  const [state, setState] = useState<PlayoutState | null>(() => readCache(channelId))
   const [connected, setConnected] = useState(false)
-  const wsRef = useRef<WebSocket | null>(null)
-  const token = useAuthStore((s) => s.token)
+  const wsRef    = useRef<WebSocket | null>(null)
+  const mounted  = useRef(true)
+  const token    = useAuthStore((s) => s.token)
 
   const connect = useCallback(() => {
+    if (!mounted.current) return
     if (wsRef.current?.readyState === WebSocket.OPEN) return
 
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
     const host = import.meta.env.DEV ? 'localhost:3001' : window.location.host
-    const url = `${protocol}://${host}/api/playout/${channelId}/ws?token=${token}`
-
-    const ws = new WebSocket(url)
+    const ws = new WebSocket(`${protocol}://${host}/api/playout/${channelId}/ws?token=${token}`)
     wsRef.current = ws
 
-    ws.onopen = () => setConnected(true)
+    ws.onopen = () => { if (mounted.current) setConnected(true) }
     ws.onclose = () => {
+      if (!mounted.current) return
       setConnected(false)
-      // Reconecta após 3s
       setTimeout(connect, 3000)
     }
     ws.onerror = () => ws.close()
     ws.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data)
-        if (msg.event === 'state') setState(msg.data as PlayoutState)
+        if (msg.event === 'state') {
+          const s = msg.data as PlayoutState
+          writeCache(channelId, s)
+          if (mounted.current) setState(s)
+        }
       } catch {}
     }
   }, [channelId, token])
 
   useEffect(() => {
+    mounted.current = true
     connect()
     return () => {
+      mounted.current = false
       wsRef.current?.close()
       wsRef.current = null
     }
