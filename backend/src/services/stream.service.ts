@@ -37,6 +37,37 @@ type OutputConfig = {
 // Map: channelId → Map<outputId, StreamProcess>
 const channelProcs = new Map<string, Map<string, StreamProcess>>()
 
+interface OutputStats {
+  bitrate: number   // kbits/s
+  fps: number
+  speed: number     // 1.00 = tempo real
+  updatedAt: number
+}
+const outputStats = new Map<string, Map<string, OutputStats>>()
+
+function parseStats(channelId: string, outputId: string, data: string) {
+  const br = data.match(/bitrate=\s*(\d+(?:\.\d+)?)kbits\/s/)
+  if (!br) return
+  const fps   = data.match(/fps=\s*(\d+(?:\.\d+)?)/)
+  const speed = data.match(/speed=\s*(\d+(?:\.\d+)?)x/)
+  if (!outputStats.has(channelId)) outputStats.set(channelId, new Map())
+  outputStats.get(channelId)!.set(outputId, {
+    bitrate:   parseFloat(br[1]),
+    fps:       fps   ? parseFloat(fps[1])   : 0,
+    speed:     speed ? parseFloat(speed[1]) : 1,
+    updatedAt: Date.now(),
+  })
+}
+
+export function getOutputStats(): Record<string, Record<string, OutputStats>> {
+  const result: Record<string, Record<string, OutputStats>> = {}
+  for (const [ch, map] of outputStats) {
+    result[ch] = {}
+    for (const [id, s] of map) result[ch][id] = s
+  }
+  return result
+}
+
 function appendSrtPassphrase(url: string, passphrase: string | null | undefined): string {
   if (!passphrase) return url
   const sep = url.includes('?') ? '&' : '?'
@@ -232,8 +263,13 @@ function spawnOutput(
 
   proc.stdout?.on('data', () => {})
   proc.stderr?.on('data', (d: Buffer) => {
-    const msg = d.toString().trim()
-    if (msg) console.log(`[stream/${channelId}/${output.name}] ${msg}`)
+    const raw = d.toString()
+    if (raw.includes('bitrate=')) {
+      parseStats(channelId, output.id, raw)
+    } else {
+      const msg = raw.replace(/\r/g, '\n').trim()
+      if (msg) console.log(`[stream/${channelId}/${output.name}] ${msg}`)
+    }
   })
 
   proc.on('exit', (code) => {
@@ -300,6 +336,7 @@ export function stopStreaming(channelId: string) {
     console.log(`[stream/${channelId}] Parando ${sp.type}/${sp.name}`)
   }
   channelProcs.delete(channelId)
+  outputStats.delete(channelId)
   return Promise.resolve()
 }
 
@@ -320,6 +357,7 @@ export function stopOutput(channelId: string, outputId: string) {
   sp.stopped = true
   try { sp.proc.kill('SIGTERM') } catch {}
   channelProcs.get(channelId)?.delete(outputId)
+  outputStats.get(channelId)?.delete(outputId)
   console.log(`[stream/${channelId}] Output ${sp.name} parado manualmente`)
 }
 

@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
-import { playoutApi, type ChannelOutput, type PlaylistItemRow, type ActiveGraphic } from '../../api/playout.api'
+import { playoutApi, type ChannelOutput, type OutputStats, type PlaylistItemRow, type ActiveGraphic } from '../../api/playout.api'
 import { GraphicOverlay } from '../../components/ui/GraphicOverlay'
 import { playlistsApi } from '../../api/playlists.api'
 import { channelsApi, type Channel, type FallbackType } from '../../api/channels.api'
@@ -22,6 +22,15 @@ import { VideoPlayer } from '../../components/ui/VideoPlayer'
 function hlsStreamUrl(hlsPath: string) {
   const mediaId = hlsPath.split('/')[1]
   return `/api/media/stream/${mediaId}/index.m3u8`
+}
+
+function formatBitrate(stats: OutputStats | null): string | null {
+  if (!stats || stats.bitrate <= 0) return null
+  // Considera stats stale se não atualizou em 5s
+  if (Date.now() - stats.updatedAt > 5000) return null
+  return stats.bitrate >= 1000
+    ? `${(stats.bitrate / 1000).toFixed(1)} Mb/s`
+    : `${Math.round(stats.bitrate)} kb/s`
 }
 
 function embedUrlForMonitor(url: string | null | undefined): string | null {
@@ -146,6 +155,8 @@ function OutputRow({
 }) {
   const isOn = output.streaming
   const isActive = output.active
+  const bitrateLabel = formatBitrate(output.stats)
+  const speedOk = !output.stats || output.stats.speed >= 0.95
 
   return (
     <div className={clsx(
@@ -174,12 +185,22 @@ function OutputRow({
           ) : null
         })()}
       </div>
-      <span className={clsx(
-        'text-[10px] flex-shrink-0 font-semibold w-12 text-right',
-        isOn ? 'text-emerald-400' : isActive ? 'text-gray-600' : 'text-gray-700'
-      )}>
-        {isOn ? 'ON AIR' : isActive ? 'idle' : 'off'}
-      </span>
+      <div className="flex flex-col items-end flex-shrink-0 w-16">
+        <span className={clsx(
+          'text-[10px] font-semibold',
+          isOn ? 'text-emerald-400' : isActive ? 'text-gray-600' : 'text-gray-700'
+        )}>
+          {isOn ? 'ON AIR' : isActive ? 'idle' : 'off'}
+        </span>
+        {isOn && bitrateLabel && (
+          <span className={clsx(
+            'text-[9px] font-mono',
+            speedOk ? 'text-emerald-300/70' : 'text-amber-400'
+          )}>
+            {bitrateLabel}{!speedOk && ' ⚠'}
+          </span>
+        )}
+      </div>
       {isPlaying && isActive && (
         <button
           onClick={onReconnect}

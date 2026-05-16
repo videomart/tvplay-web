@@ -96,7 +96,9 @@ export default async function playoutRoutes(app: FastifyInstance) {
       orderBy: { name: 'asc' },
     })
     const streaming = streamService.getStreamingStatus()
+    const stats = streamService.getOutputStats()
     const activeForChannel = new Set((streaming[channelId] ?? []).map((s) => s.outputId))
+    const channelStats = stats[channelId] ?? {}
     return outputs.map((o) => ({
       id:          o.id,
       name:        o.name,
@@ -106,6 +108,7 @@ export default async function playoutRoutes(app: FastifyInstance) {
       streamKey:   o.streamKey,
       active:      o.active,
       streaming:   activeForChannel.has(o.id),
+      stats:       channelStats[o.id] ?? null,
     }))
   })
 

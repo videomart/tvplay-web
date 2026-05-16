@@ -64,6 +64,13 @@ export interface PlaylistItemRow {
   graphicName: string | null
 }
 
+export interface OutputStats {
+  bitrate:   number   // kbits/s
+  fps:       number
+  speed:     number   // 1.00 = tempo real
+  updatedAt: number
+}
+
 export interface ChannelOutput {
   id:          string
   name:        string
@@ -73,6 +80,7 @@ export interface ChannelOutput {
   streamKey:   string | null
   active:      boolean
   streaming:   boolean
+  stats:       OutputStats | null
 }
 
 export const playoutApi = {
