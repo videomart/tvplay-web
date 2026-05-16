@@ -90,6 +90,10 @@ function logoPositionExpr(pos: string): string {
   }
 }
 
+// Caminho da fonte para drawtext — necessário para FFmpeg estático (mwader/static-ffmpeg)
+// Alpine Linux com ttf-freefont instala em /usr/share/fonts/freefont/
+const DRAWTEXT_FONT = 'fontfile=/usr/share/fonts/freefont/FreeSans.otf:'
+
 // Constrói o filtro de vídeo. hasLogoInput=true significa que o logo já foi
 // adicionado como segundo input (-i logo), disponível como [1:v].
 function buildVideoFilter(
@@ -105,9 +109,9 @@ function buildVideoFilter(
   if (!hasScale && !hasLogo && !hasClock && !hasText) return { filterArgs: [], mapArgs: [] }
 
   const escapeText = (t: string) => t.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-  const clockFilter = `drawtext=text='%{localtime\\:%T}':fontsize=48:fontcolor=white:box=1:boxcolor=black@0.5:boxborderw=8:x=w-tw-20:y=20`
+  const clockFilter = `drawtext=${DRAWTEXT_FONT}text='%{localtime\\:%T}':fontsize=48:fontcolor=white:box=1:boxcolor=black@0.5:boxborderw=8:x=w-tw-20:y=20`
   const lowerFilter = hasText
-    ? `drawtext=text='${escapeText(graphic!.lowerText!.trim())}':fontsize=32:fontcolor=white:box=1:boxcolor=black@0.6:boxborderw=8:x=(w-tw)/2:y=h-th-30`
+    ? `drawtext=${DRAWTEXT_FONT}text='${escapeText(graphic!.lowerText!.trim())}':fontsize=32:fontcolor=white:box=1:boxcolor=black@0.6:boxborderw=8:x=(w-tw)/2:y=h-th-30`
     : null
 
   if (!hasLogo) {
@@ -296,7 +300,10 @@ function spawnOutput(
     }
   })
 
-  console.log(`[stream/${channelId}] Iniciando ${output.type} → ${output.name}${contentGraphic?.logoUrl ? ` | logo: ${resolveLogoUrl(contentGraphic.logoUrl)}` : ''}`)
+  const gfxInfo = effectiveGraphic
+    ? ` | GFX: logo=${effectiveGraphic.logoUrl ?? 'none'} clock=${effectiveGraphic.showClock} text="${effectiveGraphic.lowerText ?? ''}"`
+    : ' | GFX: nenhum'
+  console.log(`[stream/${channelId}] Iniciando ${output.type} → ${output.name}${gfxInfo}`)
   console.log(`[stream/${channelId}] FFmpeg args: ${args.join(' ')}`)
   return sp
 }

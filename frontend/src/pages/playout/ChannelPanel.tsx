@@ -26,8 +26,7 @@ function hlsStreamUrl(hlsPath: string) {
 
 function formatBitrate(stats: OutputStats | null): string | null {
   if (!stats || stats.bitrate <= 0) return null
-  // Considera stats stale se não atualizou em 5s
-  if (Date.now() - stats.updatedAt > 5000) return null
+  if (Date.now() - stats.updatedAt > 15000) return null
   return stats.bitrate >= 1000
     ? `${(stats.bitrate / 1000).toFixed(1)} Mb/s`
     : `${Math.round(stats.bitrate)} kb/s`
