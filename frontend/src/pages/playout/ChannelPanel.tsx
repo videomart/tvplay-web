@@ -802,13 +802,16 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                   ? (() => {
                       const embed = embedUrlForMonitor(item.sourceUrl)
                       return embed ? (
-                        <iframe
-                          src={embed}
-                          className="w-full h-full border-0"
-                          allow="autoplay; fullscreen"
-                          allowFullScreen
-                          title={item.title}
-                        />
+                        <>
+                          <iframe
+                            src={embed}
+                            className="w-full h-full border-0"
+                            allow="autoplay; fullscreen"
+                            allowFullScreen
+                            title={item.title}
+                          />
+                          {state?.activeGraphic && <GraphicOverlay graphic={state.activeGraphic} />}
+                        </>
                       ) : (
                         <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-black">
                           <Antenna className="h-5 w-5 text-sky-500 animate-pulse" />

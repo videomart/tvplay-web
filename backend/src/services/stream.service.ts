@@ -163,7 +163,7 @@ function buildArgs(
   const isHttpInput = lowerInputUrl.startsWith('http://') || lowerInputUrl.startsWith('https://')
 
   const input: string[] = [
-    '-hide_banner', '-loglevel', 'warning',
+    '-hide_banner', '-loglevel', 'warning', '-stats',
     // RTMP input: reconnect automático se a fonte cair
     ...(isLive && isRtmpInput ? ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5'] : []),
     // RTSP input: força TCP (mais estável) e define timeout de 10s
