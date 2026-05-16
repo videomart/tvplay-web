@@ -42,14 +42,20 @@ export async function checkIsLive(url: string): Promise<{ isLive: boolean | null
 // Resolve via yt-dlp
 async function resolveViaYtDlp(rawUrl: string): Promise<string | null> {
   const base = ['--no-playlist', '-g', '--no-warnings', '--socket-timeout', '15']
-  const fmt  = 'best[protocol=m3u8_native]/best[height<=720]/best'
+  const fmt  = 'best[protocol=m3u8_native]/best[vcodec!=none][acodec!=none][height<=720]/best[vcodec!=none][acodec!=none]/best'
   for (const extra of [['--extractor-args', 'youtube:player_client=android'], []]) {
     try {
       const { stdout } = await execFileAsync('yt-dlp', [...base, '-f', fmt, ...extra, rawUrl], { timeout: 35000 })
       const url = stdout.trim().split('\n')[0]
-      if (url) return url
-    } catch { /* tenta próximo */ }
+      if (url) {
+        console.log(`[yt-dlp] URL resolvida OK: ${url.slice(0, 100)}`)
+        return url
+      }
+    } catch (err: any) {
+      console.error(`[yt-dlp] Falha ao resolver ${rawUrl} — ${err?.message ?? err}`)
+    }
   }
+  console.error(`[yt-dlp] TODAS as tentativas falharam para: ${rawUrl}`)
   return null
 }
 

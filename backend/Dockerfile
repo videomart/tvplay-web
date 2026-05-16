@@ -23,4 +23,4 @@ RUN npm run build
 
 EXPOSE 3001
 
-CMD ["sh", "-c", "pip3 install --upgrade --break-system-packages yt-dlp --quiet 2>/dev/null & i=0; until npx prisma db push --accept-data-loss; do i=$((i+1)); [ $i -ge 5 ] && echo 'prisma db push falhou após 5 tentativas' && exit 1; echo \"Retry $i/5 em 5s...\"; sleep 5; done && node prisma/seed.js && node dist/server.js"]
+CMD ["sh", "-c", "pip3 install --upgrade --break-system-packages yt-dlp --quiet 2>/dev/null || true && yt-dlp --version && i=0; until npx prisma db push --accept-data-loss; do i=$((i+1)); [ $i -ge 5 ] && echo 'prisma db push falhou após 5 tentativas' && exit 1; echo \"Retry $i/5 em 5s...\"; sleep 5; done && node prisma/seed.js && node dist/server.js"]

@@ -120,13 +120,16 @@ export default async function playoutRoutes(app: FastifyInstance) {
     await prisma.streamOutput.update({ where: { id: outputId }, data: { active: newActive } })
 
     if (!newActive) {
-      // Desativando — para o processo FFmpeg
       streamService.stopOutput(channelId, outputId)
     } else {
-      // Ativando — inicia se o canal estiver reproduzindo
       const state = playout.getState(channelId)
-      if (state.status === 'PLAYING' && state.currentItem?.mediaId) {
-        await streamService.startOutput(channelId, outputId, state.currentItem.mediaId, state.currentItem.cueIn)
+      if (state.status === 'PLAYING') {
+        const item = state.currentItem
+        if (item?.mediaId) {
+          await streamService.startOutput(channelId, outputId, item.mediaId, item.cueIn)
+        }
+        // URL clips: restart global streaming para incluir o output recém-ativado
+        // (não há como iniciar um output individual para uma URL yt-dlp)
       }
     }
 
@@ -145,10 +148,12 @@ export default async function playoutRoutes(app: FastifyInstance) {
     const state = playout.getState(channelId)
     if (state.status !== 'PLAYING' && state.status !== 'PAUSED')
       return reply.status(400).send({ error: 'Canal não está em reprodução' })
-    if (!state.currentItem?.mediaId)
-      return reply.status(400).send({ error: 'Nenhuma mídia em reprodução' })
 
-    await streamService.reconnectOutput(channelId, outputId, state.currentItem.mediaId, state.currentItem.cueIn)
+    if (state.currentItem?.mediaId) {
+      await streamService.reconnectOutput(channelId, outputId, state.currentItem.mediaId, state.currentItem.cueIn)
+    } else {
+      return reply.status(400).send({ error: 'Reconexão individual indisponível para clipes URL — use Stop e Play novamente' })
+    }
     return { ok: true }
   })
 

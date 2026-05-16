@@ -24,6 +24,15 @@ function hlsStreamUrl(hlsPath: string) {
   return `/api/media/stream/${mediaId}/index.m3u8`
 }
 
+function embedUrlForMonitor(url: string | null | undefined): string | null {
+  if (!url) return null
+  const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/)
+  if (ytMatch) return `https://www.youtube.com/embed/${ytMatch[1]}?autoplay=1&mute=0`
+  const twMatch = url.match(/twitch\.tv\/([a-zA-Z0-9_]+)/)
+  if (twMatch) return `https://player.twitch.tv/?channel=${twMatch[1]}&parent=${location.hostname}&autoplay=true`
+  return null
+}
+
 const OUTPUT_TYPE_SHORT: Record<string, string> = {
   RTMP: 'RTMP', HLS_PUSH: 'HLS', SDI: 'SDI', SRT: 'SRT', UDP: 'UDP', RTP: 'RTP',
 }
@@ -770,16 +779,26 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                     {state?.activeGraphic && <GraphicOverlay graphic={state.activeGraphic} />}
                   </>
                 : item?.sourceType === 'URL'
-                  ? (
-                    <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-black">
-                      <Antenna className="h-5 w-5 text-sky-500 animate-pulse" />
-                      <p className="text-xs text-sky-400 font-medium">Streaming via yt-dlp</p>
-                      {item.sourceUrl && (
-                        <p className="text-[10px] text-gray-500 truncate max-w-[90%] text-center">{item.sourceUrl}</p>
-                      )}
-                      <p className="text-[9px] text-gray-600">Monitor indisponível para streams externos</p>
-                    </div>
-                  )
+                  ? (() => {
+                      const embed = embedUrlForMonitor(item.sourceUrl)
+                      return embed ? (
+                        <iframe
+                          src={embed}
+                          className="w-full h-full border-0"
+                          allow="autoplay; fullscreen"
+                          allowFullScreen
+                          title={item.title}
+                        />
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-black">
+                          <Antenna className="h-5 w-5 text-sky-500 animate-pulse" />
+                          <p className="text-xs text-sky-400 font-medium">Streaming via yt-dlp</p>
+                          {item.sourceUrl && (
+                            <p className="text-[10px] text-gray-500 truncate max-w-[90%] text-center">{item.sourceUrl}</p>
+                          )}
+                        </div>
+                      )
+                    })()
                   : <div className="w-full h-full flex items-center justify-center"><Radio className="h-6 w-6 text-gray-700" /></div>
             ) : (
               (() => {
