@@ -350,6 +350,32 @@ async function resolveGraphic(
   return result
 }
 
+// Inicia streaming para um item da playlist, tratando URL clips e FILE clips
+async function startStreamingForItem(
+  channelId: string,
+  item: CurrentItem | null,
+  graphic: GraphicConfig | null,
+): Promise<void> {
+  if (!item) return
+  if (isUrlClip(item.sourceType, item.sourceUrl) && item.sourceUrl) {
+    const clipUrl = item.sourceUrl
+    console.log(`[playout] startStreamingForItem ch=${channelId} — URL clip, resolvendo: ${clipUrl}`)
+    resolveInputUrl({ type: 'YOUTUBE', url: clipUrl, device: null })
+      .then((url) => {
+        if (url) {
+          streamService.startStreamingFromUrlReencode(channelId, url, graphic).catch((err) => {
+            console.error(`[playout] startStreamingForItem ch=${channelId} — falha re-encode:`, err)
+          })
+        } else {
+          console.warn(`[playout] startStreamingForItem ch=${channelId} — yt-dlp sem URL (${clipUrl})`)
+        }
+      })
+      .catch((err) => console.error(`[playout] startStreamingForItem ch=${channelId} — erro resolve:`, err))
+  } else {
+    streamService.restartStreaming(channelId, item.mediaId, item.cueIn, graphic).catch(() => {})
+  }
+}
+
 function stopTimer(channelId: string) {
   const t = timers.get(channelId)
   if (t) { clearInterval(t); timers.delete(channelId) }
@@ -608,7 +634,7 @@ export async function nextClip(channelId: string): Promise<PlayoutState> {
   persistState(channelId, state.playlistId, nextIndex)
   const g_next = await resolveGraphic(state.currentItem?.clipId ?? null, state.playlistId, channelId).catch(() => null)
   state.activeGraphic = g_next
-  streamService.restartStreaming(channelId, state.currentItem?.mediaId ?? null, state.currentItem?.cueIn ?? 0, g_next).catch(() => {})
+  await startStreamingForItem(channelId, state.currentItem, g_next)
   broadcast(channelId, state)
   return state
 }
@@ -624,7 +650,7 @@ export async function prevClip(channelId: string): Promise<PlayoutState> {
   persistState(channelId, state.playlistId, prevIndex)
   const g_prev = await resolveGraphic(state.currentItem?.clipId ?? null, state.playlistId, channelId).catch(() => null)
   state.activeGraphic = g_prev
-  streamService.restartStreaming(channelId, state.currentItem?.mediaId ?? null, state.currentItem?.cueIn ?? 0, g_prev).catch(() => {})
+  await startStreamingForItem(channelId, state.currentItem, g_prev)
   broadcast(channelId, state)
   return state
 }
@@ -641,7 +667,7 @@ export async function jumpTo(channelId: string, itemIndex: number): Promise<Play
   persistState(channelId, state.playlistId, itemIndex)
   const g_jump = await resolveGraphic(state.currentItem?.clipId ?? null, state.playlistId, channelId).catch(() => null)
   state.activeGraphic = g_jump
-  streamService.restartStreaming(channelId, state.currentItem?.mediaId ?? null, state.currentItem?.cueIn ?? 0, g_jump).catch(() => {})
+  await startStreamingForItem(channelId, state.currentItem, g_jump)
   broadcast(channelId, state)
   return state
 }
@@ -761,7 +787,7 @@ export async function removeItem(channelId: string, itemId: string): Promise<Pla
     persistState(channelId, state.playlistId, newIndex)
     const g_rem = await resolveGraphic(state.currentItem?.clipId ?? null, state.playlistId, channelId).catch(() => null)
     state.activeGraphic = g_rem
-    streamService.restartStreaming(channelId, state.currentItem?.mediaId ?? null, state.currentItem?.cueIn ?? 0, g_rem).catch(() => {})
+    await startStreamingForItem(channelId, state.currentItem, g_rem)
   }
 
   const { totalDuration, count } = await computePlaylistMeta(state.playlistId)
