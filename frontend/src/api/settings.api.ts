@@ -9,6 +9,7 @@ export interface SystemSettings {
   defaultFallbackOpen: boolean
   defaultOutputsOpen: boolean
   defaultPlaylistOpen: boolean
+  clockOffsetHours: number
   updatedAt: string
 }
 

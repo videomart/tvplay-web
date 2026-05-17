@@ -56,6 +56,7 @@ export default function SettingsPage() {
     defaultOutputsOpen: true,
     defaultPlaylistOpen: true,
   })
+  const [clockOffsetHours, setClockOffsetHours] = useState(0)
   const [channelNames, setChannelNames] = useState<Record<string, { name: string; description: string }>>({})
 
   useEffect(() => {
@@ -71,6 +72,7 @@ export default function SettingsPage() {
         defaultOutputsOpen:  settings.defaultOutputsOpen,
         defaultPlaylistOpen: settings.defaultPlaylistOpen,
       })
+      setClockOffsetHours(settings.clockOffsetHours ?? 0)
     }
   }, [settings])
 
@@ -312,11 +314,41 @@ export default function SettingsPage() {
             </div>
           ))}
 
+          {/* Relógio de gráfico — fuso horário */}
+          <div className="border-t border-gray-800 pt-4 space-y-2">
+            <h3 className="text-sm font-semibold text-white">Relógio do Gráfico</h3>
+            <p className="text-xs text-gray-500">
+              Ajusta o fuso horário do relógio exibido no stream. Ex.: Brasil (UTC-3) → <code className="bg-gray-800 px-1 rounded">-3</code>.
+              Afeta novos processos de streaming iniciados após salvar.
+            </p>
+            <div className="flex items-center gap-3">
+              <label className="text-sm text-gray-300 flex-shrink-0">Offset UTC (horas):</label>
+              <select
+                value={clockOffsetHours}
+                onChange={(e) => setClockOffsetHours(Number(e.target.value))}
+                className={inputCls + ' w-40'}
+              >
+                {Array.from({ length: 27 }, (_, i) => i - 12).map((h) => (
+                  <option key={h} value={h}>
+                    {h === 0 ? 'UTC (0)' : `UTC${h > 0 ? '+' : ''}${h}`}
+                  </option>
+                ))}
+              </select>
+              <span className="text-xs text-gray-500">
+                Agora no stream: {(() => {
+                  const d = new Date()
+                  d.setUTCHours(d.getUTCHours() + clockOffsetHours)
+                  return d.toISOString().slice(11, 19)
+                })()}
+              </span>
+            </div>
+          </div>
+
           <div className="flex justify-end pt-2">
             <Button
               icon={<Save className="h-4 w-4" />}
               loading={saveMut.isPending}
-              onClick={() => saveMut.mutate(playoutDefaults)}
+              onClick={() => saveMut.mutate({ ...playoutDefaults, clockOffsetHours })}
             >
               Salvar
             </Button>

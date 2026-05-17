@@ -45,6 +45,21 @@ export function setStreamFailureCallback(cb: (channelId: string) => void) {
   onUnexpectedExitCb = cb
 }
 
+// Offset do relógio (horas em relação ao UTC). Atualizado pelas configurações do sistema.
+let clockOffsetHours = 0
+
+export function setClockOffsetHours(offset: number) {
+  clockOffsetHours = Math.round(offset)
+}
+
+// Converte offset inteiro para string TZ POSIX (sinal invertido em relação ao UTC)
+function clockTz(): string {
+  if (clockOffsetHours === 0) return 'UTC'
+  // POSIX: Etc/GMT+3 = UTC-3, Etc/GMT-3 = UTC+3
+  const sign = clockOffsetHours > 0 ? '-' : '+'
+  return `Etc/GMT${sign}${Math.abs(clockOffsetHours)}`
+}
+
 interface OutputStats {
   bitrate: number   // kbits/s
   fps: number
@@ -268,7 +283,10 @@ function spawnOutput(
   const args = buildArgs(hlsUrl, cueIn, output, isLive, effectiveGraphic)
   if (!args) return null
 
-  const proc = spawn(config.ffmpeg.path, args, { stdio: ['ignore', 'pipe', 'pipe'] })
+  const proc = spawn(config.ffmpeg.path, args, {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, TZ: clockTz() },
+  })
   const sp: StreamProcess = {
     proc, outputId: output.id, type: output.type, name: output.name,
     stopped: false, contentGraphic,
@@ -475,7 +493,10 @@ export async function startStreamingFromFallback(channelId: string, fallbackType
       : `color=c=black:size=${size}:rate=25`
     const args = buildFallbackArgs(videoInput, output, output.graphic ?? null)
     if (!args) continue
-    const proc = spawn(config.ffmpeg.path, args, { stdio: ['ignore', 'pipe', 'pipe'] })
+    const proc = spawn(config.ffmpeg.path, args, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, TZ: clockTz() },
+    })
     const sp: StreamProcess = { proc, outputId: output.id, type: output.type, name: output.name, stopped: false, contentGraphic: null }
     proc.stdout?.on('data', () => {})
     proc.stderr?.on('data', (d: Buffer) => {

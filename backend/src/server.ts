@@ -6,8 +6,9 @@ import authPlugin from './plugins/auth.plugin'
 import corsPlugin from './plugins/cors.plugin'
 import { registerRoutes } from './routes'
 import { initFromDb, handleStreamFailure } from './services/playout.service'
-import { setStreamFailureCallback } from './services/stream.service'
+import { setStreamFailureCallback, setClockOffsetHours } from './services/stream.service'
 import { startScheduler } from './services/scheduler.service'
+import { prisma } from './lib/prisma'
 
 const app = Fastify({
   logger: {
@@ -33,8 +34,12 @@ async function bootstrap() {
   await app.listen({ port: config.port, host: '0.0.0.0' })
   app.log.info(`TVPlay API rodando na porta ${config.port}`)
 
-  // Conecta falha de streaming → avanço automático de clipe no playout
   setStreamFailureCallback(handleStreamFailure)
+
+  // Carrega offset do relógio das configurações do sistema
+  const sysSettings = await prisma.systemSettings.findUnique({ where: { id: 'singleton' } })
+  if (sysSettings?.clockOffsetHours) setClockOffsetHours(sysSettings.clockOffsetHours)
+
   await initFromDb()
   startScheduler()
 }

@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify'
 import path from 'path'
 import { prisma } from '../lib/prisma'
 import { storageService } from '../services/storage.service'
+import { setClockOffsetHours } from '../services/stream.service'
 
 export default async function settingsRoutes(app: FastifyInstance) {
   const auth = { preHandler: [app.authenticate] }
@@ -19,6 +20,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
       companyName, logoUrl, email,
       defaultMonitorOpen, defaultFallbackOpen,
       defaultOutputsOpen, defaultPlaylistOpen,
+      clockOffsetHours,
     } = request.body as {
       companyName?: string
       logoUrl?: string | null
@@ -27,9 +29,10 @@ export default async function settingsRoutes(app: FastifyInstance) {
       defaultFallbackOpen?: boolean
       defaultOutputsOpen?: boolean
       defaultPlaylistOpen?: boolean
+      clockOffsetHours?: number
     }
 
-    return prisma.systemSettings.upsert({
+    const result = await prisma.systemSettings.upsert({
       where: { id: 'singleton' },
       create: {
         id: 'singleton',
@@ -40,6 +43,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
         defaultFallbackOpen: defaultFallbackOpen ?? true,
         defaultOutputsOpen:  defaultOutputsOpen  ?? true,
         defaultPlaylistOpen: defaultPlaylistOpen ?? true,
+        clockOffsetHours:    clockOffsetHours    ?? 0,
       },
       update: {
         ...(companyName        !== undefined && { companyName }),
@@ -49,8 +53,14 @@ export default async function settingsRoutes(app: FastifyInstance) {
         ...(defaultFallbackOpen !== undefined && { defaultFallbackOpen }),
         ...(defaultOutputsOpen  !== undefined && { defaultOutputsOpen }),
         ...(defaultPlaylistOpen !== undefined && { defaultPlaylistOpen }),
+        ...(clockOffsetHours    !== undefined && { clockOffsetHours }),
       },
     })
+
+    // Aplica imediatamente no stream service (novos processos FFmpeg usarão o TZ atualizado)
+    if (clockOffsetHours !== undefined) setClockOffsetHours(clockOffsetHours)
+
+    return result
   })
 
   // Upload de logo a partir de arquivo local

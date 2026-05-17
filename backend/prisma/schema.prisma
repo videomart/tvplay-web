@@ -353,6 +353,9 @@ model SystemSettings {
   defaultOutputsOpen  Boolean @default(true)
   defaultPlaylistOpen Boolean @default(true)
 
+  // Fuso horário do relógio no gráfico de stream (offset UTC em horas inteiras)
+  clockOffsetHours Int @default(0)
+
   updatedAt DateTime @updatedAt
 
   @@map("system_settings")
