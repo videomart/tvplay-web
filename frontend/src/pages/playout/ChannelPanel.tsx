@@ -275,9 +275,9 @@ function PlaylistItemRow({
       onDragEnd={() => { fromHandle.current = false; onDragEnd() }}
       onDrop={(e) => { e.preventDefault(); onDrop() }}
       className={clsx(
-        'flex items-center gap-1.5 px-2 py-1.5 rounded transition-all',
-        isCurrent  ? 'bg-emerald-950/50 ring-1 ring-emerald-500/30' : '',
-        isPlayed   ? 'opacity-40' : '',
+        'flex items-center gap-1.5 px-2 rounded transition-all',
+        isCurrent  ? 'py-2 bg-emerald-500/25 ring-2 ring-emerald-400/80 shadow-[inset_3px_0_0_0_rgb(52_211_153)]' : 'py-1.5',
+        isPlayed   ? 'opacity-35' : '',
         !isCurrent && !isPlayed ? 'hover:bg-gray-800/40' : '',
         isDragging ? 'opacity-30' : '',
         isDragOver ? 'border-t-2 border-brand-400' : '',
@@ -287,15 +287,22 @@ function PlaylistItemRow({
       <GripVertical
         onMouseDown={() => { fromHandle.current = true }}
         onMouseUp={() => { fromHandle.current = false }}
-        className="h-3.5 w-3.5 text-gray-700 flex-shrink-0 cursor-grab active:cursor-grabbing"
+        className={clsx(
+          'h-3.5 w-3.5 flex-shrink-0 cursor-grab active:cursor-grabbing',
+          isCurrent ? 'text-emerald-600' : 'text-gray-700'
+        )}
       />
 
-      {/* Indicador de posição */}
-      <span className={clsx(
-        'text-[10px] font-mono w-5 text-right flex-shrink-0',
-        isCurrent ? 'text-emerald-400 font-bold' : 'text-gray-600'
-      )}>
-        {isCurrent ? '▶' : item.index + 1}
+      {/* Indicador de posição — pulsing dot + ▶ para item no ar */}
+      <span className="w-5 flex-shrink-0 flex items-center justify-end gap-0.5">
+        {isCurrent ? (
+          <>
+            <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
+            <span className="text-[10px] font-bold text-emerald-300">▶</span>
+          </>
+        ) : (
+          <span className="text-[10px] font-mono text-gray-600">{item.index + 1}</span>
+        )}
       </span>
 
       {/* Badge de tipo */}
@@ -308,7 +315,10 @@ function PlaylistItemRow({
       )}
 
       {/* Código */}
-      <span className="text-[10px] font-mono text-gray-600 flex-shrink-0 w-14 truncate pl-2" title={item.code}>
+      <span className={clsx(
+        'text-[10px] font-mono flex-shrink-0 w-14 truncate pl-2',
+        isCurrent ? 'text-emerald-300/80' : 'text-gray-600'
+      )} title={item.code}>
         {item.code}
       </span>
 
@@ -318,11 +328,18 @@ function PlaylistItemRow({
         title="Ir para este clipe"
         className={clsx(
           'flex-1 text-left text-xs truncate transition-colors min-w-0 pl-1',
-          isCurrent ? 'text-white font-medium' : isPlayed ? 'text-gray-500' : 'text-gray-300 hover:text-white'
+          isCurrent ? 'text-emerald-50 font-bold' : isPlayed ? 'text-gray-500' : 'text-gray-300 hover:text-white'
         )}
       >
         {item.title}
       </button>
+
+      {/* Badge AO AR */}
+      {isCurrent && (
+        <span className="flex-shrink-0 text-[9px] font-bold px-1 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 tracking-wide animate-pulse">
+          AO AR
+        </span>
+      )}
 
       {/* Indicador de fonte */}
       {item.sourceType === 'URL' ? (
