@@ -40,6 +40,8 @@ export function VideoPlayer({ src, poster, className, autoPlay = false, startAt,
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: false,
+        // Inicia diretamente no segmento correto — evita flash do início antes do seek
+        startPosition: startAt && startAt > 0 ? startAt : -1,
         xhrSetup: (xhr, url) => {
           // Só envia o token para requests na própria API (evita CORS em CDNs externas)
           const isInternal = !url || url.startsWith('/') || url.includes(window.location.hostname)
