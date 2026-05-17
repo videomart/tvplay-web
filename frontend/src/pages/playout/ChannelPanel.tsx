@@ -409,8 +409,8 @@ function PlaylistItemRow({
         <RotateCcw className="h-3 w-3" />
       </button>
 
-      {/* Excluir item (apenas se não for o clipe atual em reprodução) */}
-      {!isCurrent && (
+      {/* Excluir item — visível para não-atual, ou para qualquer item quando parado/idle */}
+      {(!isCurrent || playoutStatus === 'STOPPED' || playoutStatus === 'IDLE') && (
         <button
           onClick={onDelete}
           disabled={deletePending}

@@ -37,6 +37,14 @@ type OutputConfig = {
 // Map: channelId → Map<outputId, StreamProcess>
 const channelProcs = new Map<string, Map<string, StreamProcess>>()
 
+// Callback global chamado quando FFmpeg sai com erro sem ter sido parado manualmente.
+// Permite que o playout avance para o próximo clipe sem depender de importação circular.
+let onUnexpectedExitCb: ((channelId: string) => void) | null = null
+
+export function setStreamFailureCallback(cb: (channelId: string) => void) {
+  onUnexpectedExitCb = cb
+}
+
 interface OutputStats {
   bitrate: number   // kbits/s
   fps: number
@@ -285,9 +293,14 @@ function spawnOutput(
     }
     const isError = code !== null && code !== 0 && code !== 255
     if (isError && !sp.stopped) {
-      console.warn(`[stream/${channelId}/${output.name}] Saiu com código ${code} — reconectando em 5s...`)
+      console.warn(`[stream/${channelId}/${output.name}] Saiu com código ${code} — notificando playout e reconectando em 5s...`)
+      // Notifica o playout service para avançar ao próximo clipe (sem importação circular)
+      onUnexpectedExitCb?.(channelId)
       setTimeout(async () => {
         if (sp.stopped) return
+        // Aborta reconnect se um processo mais novo já foi registrado pelo playout
+        const current = channelProcs.get(channelId)?.get(output.id)
+        if (current && current.proc !== proc) return
         const dbOutput = await prisma.streamOutput.findUnique({
           where: { id: output.id },
           include: { graphic: true },

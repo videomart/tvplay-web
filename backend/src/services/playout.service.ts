@@ -709,6 +709,17 @@ export async function cutToInput(channelId: string, sourceId: string): Promise<P
   return state
 }
 
+// Chamado pelo stream.service quando FFmpeg morre inesperadamente.
+// Força o avanço para o próximo clipe — "o show deve continuar".
+export function handleStreamFailure(channelId: string): void {
+  const state = states.get(channelId)
+  if (!state || state.status !== 'PLAYING') return
+  if (advancing.has(channelId)) return
+  console.warn(`[playout] Falha de streaming ch=${channelId} — forçando avanço de clipe`)
+  // Posição no fim do clipe atual → o próximo tick do timer dispara o avanço normal
+  state.position = Math.max(state.position, state.currentItem?.duration ?? 0)
+}
+
 // Atualiza o flag de loop do item atual em memória (chamado após toggle no DB)
 export function updateCurrentItemLoop(channelId: string, itemId: string, loop: boolean) {
   const state = states.get(channelId)
@@ -782,7 +793,8 @@ export async function removeItem(channelId: string, itemId: string): Promise<Pla
   if (removeIdx < state.currentIndex) {
     newIndex = state.currentIndex - 1
   } else if (isCurrentItem) {
-    newIndex = Math.min(state.currentIndex, items.length - 2)
+    // items.length - 2 seria -1 se só havia 1 item; Math.max(0,...) evita índice negativo
+    newIndex = Math.max(0, Math.min(state.currentIndex, items.length - 2))
   }
 
   state.currentIndex = newIndex

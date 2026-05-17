@@ -5,7 +5,8 @@ import { config } from './config'
 import authPlugin from './plugins/auth.plugin'
 import corsPlugin from './plugins/cors.plugin'
 import { registerRoutes } from './routes'
-import { initFromDb } from './services/playout.service'
+import { initFromDb, handleStreamFailure } from './services/playout.service'
+import { setStreamFailureCallback } from './services/stream.service'
 import { startScheduler } from './services/scheduler.service'
 
 const app = Fastify({
@@ -32,6 +33,8 @@ async function bootstrap() {
   await app.listen({ port: config.port, host: '0.0.0.0' })
   app.log.info(`TVPlay API rodando na porta ${config.port}`)
 
+  // Conecta falha de streaming → avanço automático de clipe no playout
+  setStreamFailureCallback(handleStreamFailure)
   await initFromDb()
   startScheduler()
 }
