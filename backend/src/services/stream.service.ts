@@ -52,12 +52,14 @@ export function setClockOffsetHours(offset: number) {
   clockOffsetHours = Math.round(offset)
 }
 
-// Converte offset inteiro para string TZ POSIX (sinal invertido em relação ao UTC)
+// Converte offset inteiro para string TZ POSIX inline.
+// Formato "UTC+N" funciona sem tzdata instalado (musl/glibc interpretam direto).
+// Sinal INVERTIDO em relação à notação UTC: UTC+3 = 3h a oeste = UTC-3 (Brasil).
 function clockTz(): string {
   if (clockOffsetHours === 0) return 'UTC'
-  // POSIX: Etc/GMT+3 = UTC-3, Etc/GMT-3 = UTC+3
-  const sign = clockOffsetHours > 0 ? '-' : '+'
-  return `Etc/GMT${sign}${Math.abs(clockOffsetHours)}`
+  // clockOffsetHours=-3 (UTC-3, Brasil) → posixOffset=3 → "UTC+3" ✓
+  const posixOffset = -clockOffsetHours
+  return `UTC${posixOffset >= 0 ? '+' : ''}${posixOffset}`
 }
 
 interface OutputStats {
