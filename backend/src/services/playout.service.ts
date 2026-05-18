@@ -709,6 +709,31 @@ export async function cutToInput(channelId: string, sourceId: string): Promise<P
   return state
 }
 
+// Chamado pelo camera.service quando a câmera para — retoma o streaming do playout.
+export async function resumeAfterCamera(channelId: string): Promise<void> {
+  const state = states.get(channelId)
+  if (!state) return
+  console.log(`[playout] Câmera encerrada ch=${channelId} — retomando streaming`)
+  if (state.status === 'PLAYING' && state.currentItem) {
+    await startStreamingForItem(channelId, state.currentItem, state.activeGraphic)
+  } else {
+    // Canal parado — retoma fallback configurado
+    const channel = await prisma.channel.findUnique({
+      where: { id: channelId },
+      include: { fallbackSource: true },
+    }).catch(() => null)
+    if (channel?.fallbackType === 'INPUT_SOURCE' && channel.fallbackSource) {
+      resolveInputUrl(channel.fallbackSource).then(async (url) => {
+        if (!url) return
+        const fbGraphic = await resolveGraphic(null, null, channelId).catch(() => null)
+        streamService.startStreamingFromUrl(channelId, url, fbGraphic).catch(() => {})
+      }).catch(() => {})
+    } else {
+      streamService.startStreamingFromFallback(channelId, channel?.fallbackType ?? 'BLACK').catch(() => {})
+    }
+  }
+}
+
 // Chamado pelo stream.service quando FFmpeg morre inesperadamente.
 // Força o avanço para o próximo clipe — "o show deve continuar".
 export function handleStreamFailure(channelId: string): void {

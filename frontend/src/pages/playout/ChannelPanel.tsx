@@ -4,11 +4,13 @@ import {
   Play, Pause, Square, SkipForward, SkipBack,
   Radio, Wifi, WifiOff, ListVideo, MonitorPlay, MonitorOff, Antenna,
   ChevronDown, ChevronUp, RefreshCw, RotateCcw, GripVertical, ArrowLeftRight, Trash2, Repeat,
+  Camera,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
 import { playoutApi, type ChannelOutput, type OutputStats, type PlaylistItemRow, type ActiveGraphic } from '../../api/playout.api'
 import { GraphicOverlay } from '../../components/ui/GraphicOverlay'
+import { CameraModal } from '../../components/ui/CameraModal'
 import { playlistsApi } from '../../api/playlists.api'
 import { channelsApi, type Channel, type FallbackType } from '../../api/channels.api'
 import { inputSourcesApi } from '../../api/input-sources.api'
@@ -457,6 +459,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
     staleTime: 60_000,
   })
 
+  const [cameraOpen, setCameraOpen] = useState(false)
   const [selectPlaylistOpen, setSelectPlaylistOpen] = useState(false)
   const [selectedPlaylistId, setSelectedPlaylistId] = useState('')
   const [monitorOpen, setMonitorOpen] = useState(true)
@@ -801,6 +804,13 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
             {monitorOpen
               ? <MonitorOff className="h-4 w-4" />
               : <MonitorPlay className="h-4 w-4" />}
+          </button>
+          <button
+            onClick={() => setCameraOpen(true)}
+            className="p-1 rounded transition-colors text-gray-500 hover:text-sky-400"
+            title="Câmera — transmitir da webcam"
+          >
+            <Camera className="h-4 w-4" />
           </button>
         </div>
       </div>
@@ -1257,6 +1267,14 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
           </div>
         </div>
       </Modal>
+
+      {/* ── Modal: câmera ────────────────────────────────────────────────── */}
+      <CameraModal
+        open={cameraOpen}
+        onClose={() => setCameraOpen(false)}
+        channelId={channel.id}
+        channelName={channel.name}
+      />
     </div>
   )
 }
