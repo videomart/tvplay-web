@@ -24,6 +24,8 @@ export function useCameraStream(channelId: string) {
   const [videoDevices, setVideoDevices] = useState<MediaDeviceOption[]>([])
   const [audioDevices, setAudioDevices] = useState<MediaDeviceOption[]>([])
 
+  const [previewStream, setPreviewStream] = useState<MediaStream | null>(null)
+
   const streamRef   = useRef<MediaStream | null>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
   const wsRef       = useRef<WebSocket | null>(null)
@@ -79,6 +81,7 @@ export function useCameraStream(channelId: string) {
       throw new Error(msg)
     }
     streamRef.current = stream
+    setPreviewStream(stream)
 
     // 2. Conecta WebSocket ao backend
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
@@ -150,6 +153,7 @@ export function useCameraStream(channelId: string) {
     recorderRef.current = null
     streamRef.current?.getTracks().forEach((t) => t.stop())
     streamRef.current = null
+    setPreviewStream(null)
     setActive(false)
   }
 
@@ -165,9 +169,5 @@ export function useCameraStream(channelId: string) {
     stopAll()
   }
 
-  function getPreviewStream(): MediaStream | null {
-    return streamRef.current
-  }
-
-  return { active, error, videoDevices, audioDevices, start, stop, getPreviewStream, enumerateDevices }
+  return { active, error, previewStream, videoDevices, audioDevices, start, stop, enumerateDevices }
 }

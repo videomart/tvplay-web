@@ -1,22 +1,31 @@
 import { useState, useEffect, useRef } from 'react'
 import { Camera, CameraOff, Mic, Video, AlertCircle, RefreshCw } from 'lucide-react'
-import { clsx } from 'clsx'
 import { Modal } from './Modal'
 import { Button } from './Button'
-import { useCameraStream } from '../../hooks/useCameraStream'
+import type { MediaDeviceOption } from '../../hooks/useCameraStream'
+
+export interface CameraControls {
+  active: boolean
+  error: string | null
+  previewStream: MediaStream | null
+  videoDevices: MediaDeviceOption[]
+  audioDevices: MediaDeviceOption[]
+  start: (videoDeviceId: string, audioDeviceId: string) => Promise<void>
+  stop: () => void
+  enumerateDevices: () => Promise<void>
+}
 
 interface CameraModalProps {
   open: boolean
   onClose: () => void
-  channelId: string
   channelName: string
+  camera: CameraControls
 }
 
-export function CameraModal({ open, onClose, channelId, channelName }: CameraModalProps) {
-  const {
-    active, error, videoDevices, audioDevices,
-    start, stop, getPreviewStream, enumerateDevices,
-  } = useCameraStream(channelId)
+const selectCls = 'w-full bg-gray-800 border border-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-brand-500'
+
+export function CameraModal({ open, onClose, channelName, camera }: CameraModalProps) {
+  const { active, error, previewStream, videoDevices, audioDevices, start, stop, enumerateDevices } = camera
 
   const [selectedVideo, setSelectedVideo] = useState('')
   const [selectedAudio, setSelectedAudio] = useState('')
@@ -24,7 +33,6 @@ export function CameraModal({ open, onClose, channelId, channelName }: CameraMod
 
   const previewRef = useRef<HTMLVideoElement>(null)
 
-  // Seleciona primeiro dispositivo disponível
   useEffect(() => {
     if (videoDevices.length && !selectedVideo) setSelectedVideo(videoDevices[0].deviceId)
   }, [videoDevices])
@@ -33,53 +41,34 @@ export function CameraModal({ open, onClose, channelId, channelName }: CameraMod
     if (audioDevices.length && !selectedAudio) setSelectedAudio(audioDevices[0].deviceId)
   }, [audioDevices])
 
-  // Atualiza preview quando câmera está ativa
+  // Vincula o MediaStream ao elemento de vídeo
   useEffect(() => {
-    if (!previewRef.current) return
-    const stream = getPreviewStream()
-    if (stream && active) {
-      previewRef.current.srcObject = stream
-    } else {
-      previewRef.current.srcObject = null
-    }
-  }, [active, getPreviewStream])
+    const el = previewRef.current
+    if (!el) return
+    el.srcObject = previewStream ?? null
+  }, [previewStream])
 
   async function handleStart() {
     setStarting(true)
-    try {
-      await start(selectedVideo, selectedAudio)
-    } catch {
-      // error já está em `error`
-    } finally {
-      setStarting(false)
-    }
+    try { await start(selectedVideo, selectedAudio) } catch {}
+    setStarting(false)
   }
 
-  function handleStop() {
-    stop()
-  }
-
-  function handleClose() {
-    if (active) stop()
-    onClose()
-  }
-
-  const selectCls = 'w-full bg-gray-800 border border-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-brand-500'
-
+  // Fechar o modal NÃO para a câmera — ela continua transmitindo em background
+  // O botão "Parar câmera" é o único que encerra a transmissão
   return (
-    <Modal open={open} onClose={handleClose} title={`Câmera — ${channelName}`}>
+    <Modal open={open} onClose={onClose} title={`Câmera — ${channelName}`}>
       <div className="space-y-4">
 
         {/* Preview */}
         <div className="relative w-full aspect-video bg-black rounded-lg overflow-hidden">
           <video
             ref={previewRef}
-            autoPlay
-            muted
-            playsInline
-            className={clsx('w-full h-full object-cover', !active && 'hidden')}
+            autoPlay muted playsInline
+            className="w-full h-full object-cover"
+            style={{ display: previewStream ? 'block' : 'none' }}
           />
-          {!active && (
+          {!previewStream && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-gray-600">
               <Camera className="h-10 w-10" />
               <p className="text-sm">Preview aparece após iniciar</p>
@@ -93,7 +82,7 @@ export function CameraModal({ open, onClose, channelId, channelName }: CameraMod
           )}
         </div>
 
-        {/* Seleção de dispositivos */}
+        {/* Seleção de dispositivos — só quando inativa */}
         {!active && (
           <div className="space-y-3">
             <div className="space-y-1.5">
@@ -126,24 +115,23 @@ export function CameraModal({ open, onClose, channelId, channelName }: CameraMod
               )}
             </div>
 
-            <button
-              onClick={enumerateDevices}
-              className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-300 transition-colors"
-            >
+            <button onClick={enumerateDevices} className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-300 transition-colors">
               <RefreshCw className="h-3 w-3" /> Atualizar dispositivos
             </button>
+
+            <div className="bg-amber-950/30 border border-amber-700/30 rounded-lg p-3 text-xs text-amber-300/80 space-y-1">
+              <p>Ao iniciar, a câmera substitui o sinal atual nas saídas de streaming ativas.</p>
+              <p>Fechar este painel <strong>não</strong> para a transmissão — use "Parar câmera".</p>
+            </div>
           </div>
         )}
 
-        {/* Aviso de funcionamento */}
-        {!active && (
-          <div className="bg-amber-950/30 border border-amber-700/30 rounded-lg p-3 text-xs text-amber-300/80 space-y-1">
-            <p>Ao iniciar, a câmera substitui o sinal atual nas saídas de streaming ativas do canal.</p>
-            <p>Ao parar, o playout retoma automaticamente.</p>
+        {active && (
+          <div className="bg-emerald-950/30 border border-emerald-700/30 rounded-lg p-3 text-xs text-emerald-300/80">
+            Câmera transmitindo nas saídas ativas. Feche este painel sem parar — o sinal continua.
           </div>
         )}
 
-        {/* Erro */}
         {error && (
           <div className="flex items-start gap-2 bg-red-950/30 border border-red-700/30 rounded-lg p-3">
             <AlertCircle className="h-4 w-4 text-red-400 flex-shrink-0 mt-0.5" />
@@ -151,14 +139,13 @@ export function CameraModal({ open, onClose, channelId, channelName }: CameraMod
           </div>
         )}
 
-        {/* Ações */}
         <div className="flex gap-2 justify-end pt-1">
-          <Button variant="secondary" onClick={handleClose}>
-            {active ? 'Fechar' : 'Cancelar'}
+          <Button variant="secondary" onClick={onClose}>
+            {active ? 'Minimizar' : 'Cancelar'}
           </Button>
           {active ? (
             <Button
-              onClick={handleStop}
+              onClick={() => { stop(); onClose() }}
               className="bg-red-700 hover:bg-red-600 text-white"
               icon={<CameraOff className="h-4 w-4" />}
             >

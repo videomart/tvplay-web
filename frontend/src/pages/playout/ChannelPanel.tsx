@@ -11,6 +11,7 @@ import { clsx } from 'clsx'
 import { playoutApi, type ChannelOutput, type OutputStats, type PlaylistItemRow, type ActiveGraphic } from '../../api/playout.api'
 import { GraphicOverlay } from '../../components/ui/GraphicOverlay'
 import { CameraModal } from '../../components/ui/CameraModal'
+import { useCameraStream } from '../../hooks/useCameraStream'
 import { playlistsApi } from '../../api/playlists.api'
 import { channelsApi, type Channel, type FallbackType } from '../../api/channels.api'
 import { inputSourcesApi } from '../../api/input-sources.api'
@@ -83,6 +84,31 @@ function formatTime(sec: number) {
   return h > 0
     ? `${sign}${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
     : `${sign}${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
+// Mostra o feed da câmera no monitor do playout (srcObject não é suportado como prop)
+function CameraMonitorPreview({
+  stream,
+  graphic,
+}: {
+  stream: MediaStream
+  graphic?: import('../../api/playout.api').ActiveGraphic | null
+}) {
+  const ref = useRef<HTMLVideoElement>(null)
+  useEffect(() => {
+    if (ref.current) ref.current.srcObject = stream
+    return () => { if (ref.current) ref.current.srcObject = null }
+  }, [stream])
+  return (
+    <>
+      <video ref={ref} autoPlay muted playsInline className="w-full h-full object-cover" />
+      <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full pointer-events-none z-10">
+        <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
+        CÂMERA AO VIVO
+      </div>
+      {graphic && <GraphicOverlay graphic={graphic} />}
+    </>
+  )
 }
 
 function ColorBars() {
@@ -459,6 +485,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
     staleTime: 60_000,
   })
 
+  const camera = useCameraStream(channel.id)
   const [cameraOpen, setCameraOpen] = useState(false)
   const [selectPlaylistOpen, setSelectPlaylistOpen] = useState(false)
   const [selectedPlaylistId, setSelectedPlaylistId] = useState('')
@@ -807,8 +834,13 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
           </button>
           <button
             onClick={() => setCameraOpen(true)}
-            className="p-1 rounded transition-colors text-gray-500 hover:text-sky-400"
-            title="Câmera — transmitir da webcam"
+            className={clsx(
+              'p-1 rounded transition-colors',
+              camera.active
+                ? 'text-red-400 animate-pulse'
+                : 'text-gray-500 hover:text-sky-400'
+            )}
+            title={camera.active ? 'Câmera ao vivo — clique para gerenciar' : 'Câmera — transmitir da webcam'}
           >
             <Camera className="h-4 w-4" />
           </button>
@@ -819,7 +851,10 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
       {monitorOpen && (
         <div className="px-3 pt-3 pb-2 border-b border-gray-800">
           <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-black">
-            {status === 'PLAYING' || status === 'PAUSED' ? (
+            {/* Câmera tem prioridade — substitui qualquer outro conteúdo no monitor */}
+            {camera.active && camera.previewStream ? (
+              <CameraMonitorPreview stream={camera.previewStream} graphic={state?.activeGraphic} />
+            ) : status === 'PLAYING' || status === 'PAUSED' ? (
               monitorSrc
                 ? <>
                     <VideoPlayer src={monitorSrc} startAt={monitorStartAt} autoPlay muted className="w-full h-full" />
@@ -914,6 +949,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
           </div>
         </div>
       )}
+
 
       {/* ── Seletor de sinal / Fallback ───────────────────────────────────── */}
       {fallbackOpen && (
@@ -1272,8 +1308,8 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
       <CameraModal
         open={cameraOpen}
         onClose={() => setCameraOpen(false)}
-        channelId={channel.id}
         channelName={channel.name}
+        camera={camera}
       />
     </div>
   )
