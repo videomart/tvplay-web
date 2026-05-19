@@ -10,11 +10,12 @@ interface CameraSession {
 
 const sessions = new Map<string, CameraSession>()
 
-// Callback registrado pelo playout para retomar streaming após câmera parar
-let onCameraStopCb: ((channelId: string) => void) | null = null
-export function setOnCameraStop(cb: (channelId: string) => void) {
-  onCameraStopCb = cb
-}
+// Callbacks registrados pelo playout — sem importação circular
+let onCameraStartCb: ((channelId: string) => void) | null = null
+let onCameraStopCb:  ((channelId: string) => void) | null = null
+
+export function setOnCameraStart(cb: (channelId: string) => void) { onCameraStartCb = cb }
+export function setOnCameraStop (cb: (channelId: string) => void) { onCameraStopCb  = cb }
 
 function buildArgs(outputs: any[]): string[] | null {
   const outputArgs: string[] = []
@@ -73,7 +74,9 @@ function buildArgs(outputs: any[]): string[] | null {
 }
 
 export async function startCamera(channelId: string): Promise<ChildProcess> {
-  // Para streaming normal do playout antes de iniciar câmera
+  // Para o timer do playout E o streaming antes de iniciar câmera.
+  // Sem isso, o timer continua avançando clips e matando o FFmpeg da câmera em loop.
+  onCameraStartCb?.(channelId)
   await stopStreaming(channelId)
 
   const outputs = await prisma.streamOutput.findMany({

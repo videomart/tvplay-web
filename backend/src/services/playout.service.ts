@@ -709,15 +709,22 @@ export async function cutToInput(channelId: string, sourceId: string): Promise<P
   return state
 }
 
-// Chamado pelo camera.service quando a câmera para — retoma o streaming do playout.
+// Chamado pelo camera.service quando a câmera INICIA — para o timer para não interferir.
+export function pauseForCamera(channelId: string): void {
+  stopTimer(channelId)
+  console.log(`[playout] Câmera iniciada ch=${channelId} — timer pausado`)
+}
+
+// Chamado pelo camera.service quando a câmera PARA — retoma playout ou fallback.
 export async function resumeAfterCamera(channelId: string): Promise<void> {
   const state = states.get(channelId)
   if (!state) return
-  console.log(`[playout] Câmera encerrada ch=${channelId} — retomando streaming`)
+  console.log(`[playout] Câmera encerrada ch=${channelId} — retomando playout`)
   if (state.status === 'PLAYING' && state.currentItem) {
+    // Reinicia o timer E o streaming do clip atual
+    startTimer(channelId)
     await startStreamingForItem(channelId, state.currentItem, state.activeGraphic)
   } else {
-    // Canal parado — retoma fallback configurado
     const channel = await prisma.channel.findUnique({
       where: { id: channelId },
       include: { fallbackSource: true },
