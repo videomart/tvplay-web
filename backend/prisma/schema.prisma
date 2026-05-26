@@ -324,6 +324,7 @@ model InputSource {
   deviceOs     String?   // WINDOWS | LINUX (para LOCAL_DEVICE)
   deviceDriver String?   // DSHOW | V4L2 | DECKLINK (para LOCAL_DEVICE)
   deviceName   String?   // nome/caminho do dispositivo no host (para LOCAL_DEVICE)
+  serverIp     String?   // IP do servidor TVPlay para o agente LOCAL_DEVICE enviar SRT
   active       Boolean         @default(true)
   createdAt DateTime        @default(now())
   updatedAt DateTime        @updatedAt

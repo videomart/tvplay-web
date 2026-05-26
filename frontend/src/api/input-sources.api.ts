@@ -11,6 +11,7 @@ export interface InputSource {
   deviceOs?: string | null
   deviceDriver?: string | null
   deviceName?: string | null
+  serverIp?: string | null
   clipId?: string | null
   clip?: { id: string; code: string; title: string; sourceType: string; sourceUrl?: string | null; media?: { hlsPath?: string; ingestStatus: string } | null } | null
   channelId?: string

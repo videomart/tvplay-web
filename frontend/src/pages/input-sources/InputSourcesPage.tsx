@@ -176,6 +176,7 @@ export default function InputSourcesPage() {
         deviceOs:     isLocal ? localDeviceCfg.os : undefined,
         deviceDriver: isLocal ? localDeviceCfg.driver : undefined,
         deviceName:   isLocal ? localDeviceCfg.deviceName || undefined : undefined,
+        serverIp:     isLocal ? localDeviceCfg.serverIp || undefined : undefined,
         clipId:       isClip ? (selectedClip?.id || form.clipId || undefined) : null,
         channelId:    form.channelId || undefined,
       }
@@ -215,7 +216,7 @@ export default function InputSourcesPage() {
       const os = (s.deviceOs as LocalDeviceConfig['os']) || 'WINDOWS'
       const driver = (s.deviceDriver as LocalDeviceConfig['driver']) || 'DSHOW'
       const port = s.url ? (s.url.match(/^srt:\/\/:(\d+)/) ?? [])[1] ?? '' : ''
-      setLocalDeviceCfg({ os, driver, deviceName: s.deviceName ?? '', srtPort: port, serverIp: '' })
+      setLocalDeviceCfg({ os, driver, deviceName: s.deviceName ?? '', srtPort: port, serverIp: s.serverIp ?? '' })
     } else {
       setLocalDeviceCfg(emptyLocalDevice)
     }

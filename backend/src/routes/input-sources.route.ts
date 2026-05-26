@@ -18,6 +18,7 @@ const schema = z.object({
   deviceOs:     z.string().optional().nullable(),
   deviceDriver: z.string().optional().nullable(),
   deviceName:   z.string().optional().nullable(),
+  serverIp:     z.string().optional().nullable(),
   clipId:       z.string().optional().nullable(),
   channelId:    z.string().optional().nullable(),
   active:       z.boolean().optional(),

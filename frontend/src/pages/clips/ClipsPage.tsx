@@ -53,7 +53,7 @@ function fmtTime(sec: number) {
 function IngestBadge({ status, sourceType }: { status: string; sourceType?: string }) {
   if (sourceType === 'URL') return <span className="flex items-center gap-1 text-sky-400 text-xs"><Link className="h-3.5 w-3.5" />YouTube/Twitch</span>
   if (status === 'READY') return <span className="flex items-center gap-1 text-emerald-400 text-xs"><CheckCircle2 className="h-3.5 w-3.5" />Pronto</span>
-  if (status === 'PROCESSING') return <span className="flex items-center gap-1 text-amber-400 text-xs"><Clock className="h-3.5 w-3.5" />Transcodificando</span>
+  if (status === 'PROCESSING') return <span className="flex items-center gap-1 text-amber-400 text-xs animate-pulse"><Clock className="h-3.5 w-3.5 animate-spin" />Transcodificando</span>
   if (status === 'ERROR') return <span className="flex items-center gap-1 text-red-400 text-xs"><XCircle className="h-3.5 w-3.5" />Erro</span>
   return <span className="text-gray-500 text-xs">Sem mídia</span>
 }
@@ -322,6 +322,25 @@ export default function ClipsPage() {
         </select>
       </div>
 
+      {/* Barra de progresso de upload */}
+      {uploadingClipId && (
+        <div className="rounded-lg bg-gray-800 border border-gray-700 px-4 py-3 flex items-center gap-3">
+          <Upload className="h-4 w-4 text-blue-400 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="flex justify-between text-xs text-gray-400 mb-1">
+              <span>Enviando arquivo…</span>
+              <span>{uploadProgress}%</span>
+            </div>
+            <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-blue-500 rounded-full transition-all duration-300"
+                style={{ width: `${uploadProgress}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="card">
         <Table>
           <Thead>
@@ -375,14 +394,17 @@ export default function ClipsPage() {
                           title="Preview YouTube/Twitch"
                         />
                       )}
-                      {c.sourceType !== 'URL' && (!c.media || c.media.ingestStatus === 'ERROR') && (
+                      {c.sourceType !== 'URL' && (
                         <Button
                           size="sm" variant="ghost"
-                          icon={<Upload className="h-3.5 w-3.5 text-blue-400" />}
+                          icon={<Upload className={`h-3.5 w-3.5 ${c.media?.ingestStatus === 'READY' ? 'text-amber-400' : 'text-blue-400'}`} />}
                           loading={uploadingClipId === c.id}
-                          onClick={() => startUpload(c.id)}
+                          onClick={() => {
+                            if (c.media?.ingestStatus === 'READY' && !window.confirm('Substituir o arquivo de mídia deste clipe? O arquivo atual será removido.')) return
+                            startUpload(c.id)
+                          }}
                           disabled={uploadingClipId !== null && uploadingClipId !== c.id}
-                          title={uploadingClipId === c.id ? `${uploadProgress}%` : 'Enviar mídia'}
+                          title={uploadingClipId === c.id ? `Enviando… ${uploadProgress}%` : c.media?.ingestStatus === 'READY' ? 'Substituir arquivo' : 'Enviar mídia'}
                         />
                       )}
                       <Button size="sm" variant="ghost" icon={<Pencil className="h-3.5 w-3.5" />} onClick={() => openEdit(c)} />
