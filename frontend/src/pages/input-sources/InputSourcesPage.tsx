@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Antenna, Play, Youtube, RefreshCw, ChevronDown, Copy, Check, Monitor } from 'lucide-react'
+import { Plus, Pencil, Trash2, Antenna, Play, Youtube, RefreshCw, ChevronDown, Copy, Check, Monitor, Download } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
 import { inputSourcesApi, type InputSource, type InputSourceType, SOURCE_TYPE_LABELS, resolveSourceType, urlNeedsYtDlp } from '../../api/input-sources.api'
@@ -46,6 +46,100 @@ function buildLocalDeviceCommand(cfg: LocalDeviceConfig): string {
   }
   // DECKLINK
   return `ffmpeg -f decklink -i "${cfg.deviceName}" ${encode} "${dest}"`
+}
+
+function buildScript(cfg: LocalDeviceConfig): { content: string; filename: string; mimeType: string } | null {
+  const cmd = buildLocalDeviceCommand(cfg)
+  if (!cmd) return null
+  const dest = cfg.serverIp
+    ? `srt://${cfg.serverIp}:${cfg.srtPort}?mode=caller`
+    : `srt://IP_DO_SERVIDOR:${cfg.srtPort}?mode=caller`
+
+  if (cfg.os === 'WINDOWS') {
+    const lines = [
+      '@echo off',
+      'chcp 65001 > nul',
+      `title TVPlay — ${cfg.deviceName || 'Host Agent'}`,
+      'cls',
+      'echo.',
+      'echo ================================================================',
+      'echo  TVPlay - Host Agent de Camera',
+      'echo ================================================================',
+      'echo.',
+      'where ffmpeg >nul 2>&1',
+      'if %errorlevel% neq 0 (',
+      '    echo [ERRO] FFmpeg nao foi encontrado no PATH.',
+      '    echo.',
+      '    echo Para instalar o FFmpeg no Windows:',
+      '    echo   1. Acesse: https://www.gyan.dev/ffmpeg/builds/',
+      '    echo   2. Baixe "ffmpeg-release-essentials.zip"',
+      '    echo   3. Descompacte e adicione a pasta "bin" ao PATH do sistema.',
+      '    echo.',
+      '    pause',
+      '    exit /b 1',
+      ')',
+      `echo Dispositivo : ${cfg.deviceName}`,
+      `echo Destino SRT : ${dest}`,
+      'echo.',
+      'echo Pressione Ctrl+C para encerrar a transmissao.',
+      'echo.',
+      cmd,
+      'echo.',
+      'echo ================================================================',
+      'echo  Transmissao encerrada.',
+      'echo ================================================================',
+      'echo.',
+      'pause',
+    ]
+    return { content: lines.join('\r\n'), filename: 'tvplay-agent.bat', mimeType: 'application/x-bat' }
+  } else {
+    const lines = [
+      '#!/bin/bash',
+      'clear',
+      'echo "================================================================"',
+      'echo " TVPlay - Host Agent de Camera"',
+      'echo "================================================================"',
+      'echo ""',
+      'if ! command -v ffmpeg &>/dev/null; then',
+      '    echo "[ERRO] FFmpeg nao encontrado."',
+      '    echo ""',
+      '    echo "Para instalar:"',
+      '    echo "  Ubuntu/Debian : sudo apt install ffmpeg"',
+      '    echo "  Fedora/RHEL   : sudo dnf install ffmpeg"',
+      '    echo "  Arch Linux    : sudo pacman -S ffmpeg"',
+      '    echo ""',
+      '    read -p "Pressione Enter para sair..."',
+      '    exit 1',
+      'fi',
+      `echo "Dispositivo : ${cfg.deviceName}"`,
+      `echo "Destino SRT : ${dest}"`,
+      'echo ""',
+      'echo "Pressione Ctrl+C para encerrar a transmissao."',
+      'echo ""',
+      cmd,
+      'echo ""',
+      'echo "================================================================"',
+      'echo " Transmissao encerrada."',
+      'echo "================================================================"',
+      'echo ""',
+      'read -p "Pressione Enter para sair..."',
+    ]
+    return { content: lines.join('\n'), filename: 'tvplay-agent.sh', mimeType: 'application/x-sh' }
+  }
+}
+
+function downloadScript(cfg: LocalDeviceConfig) {
+  const result = buildScript(cfg)
+  if (!result) return
+  const blob = new Blob([result.content], { type: result.mimeType })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = result.filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
 }
 
 const DRIVER_OPTIONS: Record<'WINDOWS' | 'LINUX', { value: string; label: string }[]> = {
@@ -640,21 +734,32 @@ export default function InputSourcesPage() {
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <p className="text-xs font-semibold text-gray-400">Comando FFmpeg para executar no host</p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const cmd = buildLocalDeviceCommand(localDeviceCfg)
-                        navigator.clipboard.writeText(cmd).then(() => {
-                          setCmdCopied(true)
-                          setTimeout(() => setCmdCopied(false), 2000)
-                        })
-                      }}
-                      className="flex items-center gap-1 text-[11px] text-gray-500 hover:text-brand-400 transition-colors"
-                    >
-                      {cmdCopied
-                        ? <><Check className="h-3 w-3 text-emerald-400" /><span className="text-emerald-400">Copiado!</span></>
-                        : <><Copy className="h-3 w-3" />Copiar</>}
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => downloadScript(localDeviceCfg)}
+                        className="flex items-center gap-1 text-[11px] text-gray-500 hover:text-brand-400 transition-colors"
+                        title={localDeviceCfg.os === 'WINDOWS' ? 'Baixar tvplay-agent.bat (duplo-clique para executar)' : 'Baixar tvplay-agent.sh'}
+                      >
+                        <Download className="h-3 w-3" />
+                        {localDeviceCfg.os === 'WINDOWS' ? 'Baixar .bat' : 'Baixar .sh'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const cmd = buildLocalDeviceCommand(localDeviceCfg)
+                          navigator.clipboard.writeText(cmd).then(() => {
+                            setCmdCopied(true)
+                            setTimeout(() => setCmdCopied(false), 2000)
+                          })
+                        }}
+                        className="flex items-center gap-1 text-[11px] text-gray-500 hover:text-brand-400 transition-colors"
+                      >
+                        {cmdCopied
+                          ? <><Check className="h-3 w-3 text-emerald-400" /><span className="text-emerald-400">Copiado!</span></>
+                          : <><Copy className="h-3 w-3" />Copiar</>}
+                      </button>
+                    </div>
                   </div>
                   <textarea
                     ref={cmdRef}
