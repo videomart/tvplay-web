@@ -35,12 +35,14 @@ function buildLocalDeviceCommand(cfg: LocalDeviceConfig): string {
   const dest = cfg.serverIp
     ? `srt://${cfg.serverIp}:${cfg.srtPort}?mode=caller`
     : `srt://IP_DO_SERVIDOR:${cfg.srtPort}?mode=caller`
-  const encode = '-c:v libx264 -preset ultrafast -tune zerolatency -b:v 2000k -c:a aac -ar 48000 -b:a 128k -f mpegts'
+  // -rtbufsize 200M: evita overflow do buffer raw da câmera (1080p YUY2 é muito pesado)
+  // -s 1280x720: reduz resolução antes de codificar — diminui carga de CPU
+  const encode = '-rtbufsize 200M -s 1280x720 -c:v libx264 -preset ultrafast -tune zerolatency -b:v 2000k -c:a aac -ar 48000 -b:a 128k -f mpegts'
   if (cfg.driver === 'DSHOW') {
-    return `ffmpeg -f dshow -i video="${cfg.deviceName}" ${encode} "${dest}"`
+    return `ffmpeg -f dshow -rtbufsize 200M -i video="${cfg.deviceName}" ${encode} "${dest}"`
   }
   if (cfg.driver === 'V4L2') {
-    return `ffmpeg -f v4l2 -i ${cfg.deviceName} ${encode} "${dest}"`
+    return `ffmpeg -f v4l2 -input_format yuyv422 -video_size 1280x720 -i ${cfg.deviceName} ${encode} "${dest}"`
   }
   // DECKLINK
   return `ffmpeg -f decklink -i "${cfg.deviceName}" ${encode} "${dest}"`

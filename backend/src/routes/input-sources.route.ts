@@ -325,13 +325,15 @@ export default async function inputSourceRoutes(app: FastifyInstance) {
 
     previewService.startPreview(source.id, inputUrl)
 
-    // YouTube/SRT: até 20s; RTMP/RTSP: até 15s; UDP: até 10s; outros (HTTP/HLS): 8s
+    // Listener SRT (LOCAL_DEVICE): até 120s para o agente externo conectar
+    // YouTube/SRT caller: até 20s; RTMP/RTSP: até 15s; UDP: até 10s; outros: 8s
     const lowerUrl = inputUrl.toLowerCase()
-    const isSrt  = lowerUrl.startsWith('srt://')
+    const isSrt         = lowerUrl.startsWith('srt://')
+    const isSrtListener = isSrt && lowerUrl.includes('mode=listener')
     const isUdp  = lowerUrl.startsWith('udp://')
     const isRtmp = lowerUrl.startsWith('rtmp://')
     const isRtsp = lowerUrl.startsWith('rtsp://')
-    const maxAttempts = (isSrt || needsYtDlp) ? 40 : (isRtmp || isRtsp) ? 30 : isUdp ? 20 : 16   // ×500ms
+    const maxAttempts = isSrtListener ? 240 : (isSrt || needsYtDlp) ? 40 : (isRtmp || isRtsp) ? 30 : isUdp ? 20 : 16   // ×500ms
     const hlsFile = path.join('/tmp/tvplay-previews', source.id, 'index.m3u8')
 
     for (let i = 0; i < maxAttempts; i++) {
@@ -346,7 +348,9 @@ export default async function inputSourceRoutes(app: FastifyInstance) {
       return reply.status(504).send({
         error: failed
           ? 'Erro no FFmpeg ao conectar à fonte. Verifique a URL e se o protocolo é suportado pelo servidor.'
-          : 'Timeout: a fonte não enviou dados no tempo esperado. Verifique se está transmitindo.',
+          : isSrtListener
+            ? 'Timeout: nenhum agente conectou ao listener SRT em 120s. Inicie o comando FFmpeg no host e tente novamente.'
+            : 'Timeout: a fonte não enviou dados no tempo esperado. Verifique se está transmitindo.',
       })
     }
 
