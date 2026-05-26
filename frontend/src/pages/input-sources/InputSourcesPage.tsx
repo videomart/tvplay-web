@@ -615,10 +615,14 @@ export default function InputSourcesPage() {
                   placeholder="4010"
                 />
                 <Input
-                  label="IP do servidor TVPlay"
+                  label="IP ou hostname do servidor TVPlay"
                   value={localDeviceCfg.serverIp}
-                  onChange={(e) => setLocalDeviceCfg((v) => ({ ...v, serverIp: e.target.value }))}
-                  placeholder="192.168.1.100"
+                  onChange={(e) => {
+                    // Remove protocolo (http://, https://) e barra final que o usuário possa colar
+                    const clean = e.target.value.replace(/^https?:\/\//i, '').replace(/\/+$/, '')
+                    setLocalDeviceCfg((v) => ({ ...v, serverIp: clean }))
+                  }}
+                  placeholder="192.168.1.100 ou meuservidor.com.br"
                 />
               </div>
 
