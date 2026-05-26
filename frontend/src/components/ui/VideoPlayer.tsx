@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import Hls from 'hls.js'
+import Hls, { type ErrorData } from 'hls.js'
 import { Loader2, AlertCircle } from 'lucide-react'
 import { clsx } from 'clsx'
 
@@ -54,7 +54,7 @@ export function VideoPlayer({ src, poster, className, autoPlay = false, startAt,
 
     hls.attachMedia(video)
 
-    hls.on(Hls.Events.ERROR, (_ev: string, data: Hls.errorData) => {
+    hls.on(Hls.Events.ERROR, (_ev: string, data: ErrorData) => {
       if (data.fatal) {
         setState('error')
         setErrorMsg(data.details ?? 'Erro ao carregar vídeo')
@@ -99,8 +99,6 @@ export function VideoPlayer({ src, poster, className, autoPlay = false, startAt,
       manifestHandlerRef.current = handler
       hls.once(Hls.Events.MANIFEST_PARSED, handler)
 
-      // Define ponto de início antes de carregar para evitar flash do começo do segmento
-      hls.startPosition = startAt && startAt > 0 ? startAt : -1
       hls.loadSource(src)
 
       return () => {
