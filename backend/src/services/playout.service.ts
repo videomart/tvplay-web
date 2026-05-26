@@ -1,6 +1,7 @@
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { prisma } from '../lib/prisma'
+import { config } from '../config'
 import * as streamService from './stream.service'
 import type { GraphicConfig } from './stream.service'
 
@@ -356,6 +357,46 @@ async function resolveGraphic(
   return result
 }
 
+// Retorna itens FILE consecutivos a partir de fromIndex para uso no concat demuxer.
+// Para quando encontra um clip URL ou o fim da playlist.
+async function fetchConcatItems(
+  playlistId: string,
+  fromIndex: number,
+): Promise<{ items: streamService.PlaylistStreamItem[]; endIndex: number }> {
+  const rows = await prisma.playlistItem.findMany({
+    where: { playlistId },
+    include: {
+      clip: {
+        include: { media: { select: { id: true, hlsPath: true, duration: true } } },
+      },
+    },
+    orderBy: { order: 'asc' },
+  })
+
+  const items: streamService.PlaylistStreamItem[] = []
+  let endIndex = fromIndex
+
+  for (let i = fromIndex; i < rows.length; i++) {
+    const row = rows[i]
+    const clip = row.clip
+    if (isUrlClip(clip.sourceType, clip.sourceUrl)) break   // para no primeiro URL clip
+    if (!clip.media?.hlsPath) continue                       // sem HLS, pula
+
+    const mediaId = (clip.media as any).id as string
+    const cueIn  = row.overrideCueIn  ?? clip.cueIn
+    const cueOut = row.overrideCueOut ?? clip.cueOut ?? clip.media?.duration ?? null
+
+    items.push({
+      hlsUrl: `http://localhost:${config.port}/api/media/stream/${mediaId}/index.m3u8`,
+      cueIn,
+      cueOut,
+    })
+    endIndex = i
+  }
+
+  return { items, endIndex }
+}
+
 // Inicia streaming para um item da playlist, tratando URL clips e FILE clips
 async function startStreamingForItem(
   channelId: string,
@@ -422,11 +463,12 @@ function startTimer(channelId: string) {
           let next = state.playlistId && nextIndex < total
             ? await findNextReadyFrom(state.playlistId, nextIndex)
             : null
+          let isLoopRestart = false
 
           // Fim da playlist + loop ativo → reinicia do primeiro clip
           if (!next && state.loop && state.playlistId) {
             next = await findNextReadyFrom(state.playlistId, 0)
-            if (next) state.totalElapsed = 0 // reseta o elapsed ao loopear
+            if (next) { state.totalElapsed = 0; isLoopRestart = true }
           }
 
           if (next) {
@@ -450,13 +492,22 @@ function startTimer(channelId: string) {
             persistState(channelId, state.playlistId!, next.index)
             const newGraphic = await resolveGraphic(next.item.clipId, state.playlistId, channelId).catch(() => state.activeGraphic)
             state.activeGraphic = newGraphic
-            if (isUrlClip(next.item.sourceType, next.item.sourceUrl) && next.item.sourceUrl) {
+
+            const concatEnd = streamService.getConcatRunEnd(channelId)
+            const isInsideConcat = !isLoopRestart
+              && concatEnd !== undefined && next.index <= concatEnd
+              && !isUrlClip(next.item.sourceType, next.item.sourceUrl)
+
+            if (isInsideConcat) {
+              // FFmpeg já está gerenciando esta transição via concat — apenas atualiza estado
+              console.log(`[playout] Auto-avanço ch=${channelId} → #${next.index} via concat (sem restart FFmpeg)`)
+            } else if (isUrlClip(next.item.sourceType, next.item.sourceUrl) && next.item.sourceUrl) {
+              streamService.clearConcatRun(channelId)
               const clipUrl = next.item.sourceUrl
               console.log(`[playout] Avançando para clip URL ch=${channelId} — resolvendo: ${clipUrl}`)
               resolveInputUrl({ type: 'YOUTUBE', url: clipUrl, device: null })
                 .then((url) => {
                   if (url) {
-                    console.log(`[playout] Clip URL ch=${channelId} — URL resolvida, reiniciando re-encode: ${url.slice(0, 80)}`)
                     streamService.startStreamingFromUrlReencode(channelId, url, newGraphic).catch((err) => {
                       console.error(`[playout] Clip URL ch=${channelId} — falha ao reiniciar streaming:`, err)
                     })
@@ -464,11 +515,19 @@ function startTimer(channelId: string) {
                     console.warn(`[playout] Clip URL ch=${channelId} — yt-dlp não retornou URL (${clipUrl})`)
                   }
                 })
-                .catch((err) => {
-                  console.error(`[playout] Clip URL ch=${channelId} — erro ao resolver URL:`, err)
-                })
+                .catch((err) => console.error(`[playout] Clip URL ch=${channelId} — erro ao resolver URL:`, err))
             } else {
-              streamService.restartStreaming(channelId, next.item.mediaId, next.item.cueIn, newGraphic).catch(() => {})
+              // Fora do concat (ex: clip adicionado após o fim do run original) — inicia novo concat
+              streamService.clearConcatRun(channelId)
+              fetchConcatItems(state.playlistId!, next.index).then(({ items, endIndex }) => {
+                if (items.length > 0) {
+                  streamService.startStreamingFromPlaylist(channelId, items, endIndex, newGraphic).catch(() => {})
+                } else {
+                  streamService.restartStreaming(channelId, next.item.mediaId, next.item.cueIn, newGraphic).catch(() => {})
+                }
+              }).catch(() => {
+                streamService.restartStreaming(channelId, next.item.mediaId, next.item.cueIn, newGraphic).catch(() => {})
+              })
             }
           } else {
             // Fim da playlist sem loop
@@ -544,18 +603,15 @@ export async function play(channelId: string, playlistId: string): Promise<Playo
   startTimer(channelId)
   if (isUrlClip(firstItem?.sourceType, firstItem?.sourceUrl) && firstItem?.sourceUrl) {
     const clipUrl = firstItem.sourceUrl
-    // Verifica se eh live ou VOD para alertar o usuario
     checkIsLive(clipUrl).then(({ isLive }) => {
       if (isLive === false) {
-        console.warn(`[playout] AVISO ch=${channelId}: clip URL eh VOD (nao live). YouTube faz throttle de download — streaming pode travar/atrasar. Use canal LIVE para melhor resultado.`)
+        console.warn(`[playout] AVISO ch=${channelId}: clip URL eh VOD — YouTube faz throttle, use canal LIVE.`)
       }
     }).catch(() => {})
     console.log(`[playout] Clip URL ch=${channelId} — resolvendo via yt-dlp: ${clipUrl}`)
     resolveInputUrl({ type: 'YOUTUBE', url: clipUrl, device: null })
       .then((url) => {
         if (url) {
-          console.log(`[playout] Clip URL ch=${channelId} — URL resolvida, iniciando re-encode: ${url.slice(0, 80)}`)
-          // Re-encode garante compatibilidade com VP9/AV1 e aplica overlays de gráficos
           streamService.startStreamingFromUrlReencode(channelId, url, activeGraphic).catch((err) => {
             console.error(`[playout] Clip URL ch=${channelId} — falha ao iniciar streaming:`, err)
           })
@@ -563,11 +619,19 @@ export async function play(channelId: string, playlistId: string): Promise<Playo
           console.warn(`[playout] Clip URL ch=${channelId} — yt-dlp não retornou URL (${clipUrl})`)
         }
       })
-      .catch((err) => {
-        console.error(`[playout] Clip URL ch=${channelId} — erro ao resolver URL:`, err)
-      })
+      .catch((err) => console.error(`[playout] Clip URL ch=${channelId} — erro ao resolver URL:`, err))
   } else {
-    streamService.startStreaming(channelId, firstItem?.mediaId ?? null, firstItem?.cueIn ?? 0, activeGraphic).catch(() => {})
+    // Usa concat demuxer: carrega todos os clips FILE consecutivos num único FFmpeg
+    fetchConcatItems(playlistId, startIndex).then(({ items, endIndex }) => {
+      if (items.length > 0) {
+        console.log(`[playout] play ch=${channelId} — concat com ${items.length} clips (idx ${startIndex}→${endIndex})`)
+        streamService.startStreamingFromPlaylist(channelId, items, endIndex, activeGraphic).catch(() => {})
+      } else {
+        streamService.startStreaming(channelId, firstItem?.mediaId ?? null, firstItem?.cueIn ?? 0, activeGraphic).catch(() => {})
+      }
+    }).catch(() => {
+      streamService.startStreaming(channelId, firstItem?.mediaId ?? null, firstItem?.cueIn ?? 0, activeGraphic).catch(() => {})
+    })
   }
   broadcast(channelId, state)
   return state
@@ -597,6 +661,7 @@ export async function resume(channelId: string): Promise<PlayoutState> {
 
 export async function stop(channelId: string): Promise<PlayoutState> {
   stopTimer(channelId)
+  streamService.clearConcatRun(channelId)
   streamService.stopStreaming(channelId)
   const state = states.get(channelId) ?? defaultState(channelId)
   state.status = 'STOPPED'
@@ -627,6 +692,23 @@ export async function stop(channelId: string): Promise<PlayoutState> {
   return state
 }
 
+// Inicia streaming manual (next/prev/jump): limpa concat run e reinicia com nova lista
+async function restartFromIndex(channelId: string, index: number, playlistId: string, graphic: GraphicConfig | null): Promise<void> {
+  streamService.clearConcatRun(channelId)
+  const item = await loadItem(playlistId, index)
+  if (!item) return
+  if (isUrlClip(item.sourceType, item.sourceUrl) && item.sourceUrl) {
+    await startStreamingForItem(channelId, item, graphic)
+    return
+  }
+  const { items, endIndex } = await fetchConcatItems(playlistId, index)
+  if (items.length > 0) {
+    await streamService.startStreamingFromPlaylist(channelId, items, endIndex, graphic)
+  } else {
+    await startStreamingForItem(channelId, item, graphic)
+  }
+}
+
 export async function nextClip(channelId: string): Promise<PlayoutState> {
   const state = states.get(channelId)
   if (!state || !state.playlistId) throw new Error('Nenhuma playlist ativa')
@@ -640,7 +722,7 @@ export async function nextClip(channelId: string): Promise<PlayoutState> {
   persistState(channelId, state.playlistId, nextIndex)
   const g_next = await resolveGraphic(state.currentItem?.clipId ?? null, state.playlistId, channelId).catch(() => null)
   state.activeGraphic = g_next
-  await startStreamingForItem(channelId, state.currentItem, g_next)
+  await restartFromIndex(channelId, nextIndex, state.playlistId, g_next)
   broadcast(channelId, state)
   return state
 }
@@ -656,7 +738,7 @@ export async function prevClip(channelId: string): Promise<PlayoutState> {
   persistState(channelId, state.playlistId, prevIndex)
   const g_prev = await resolveGraphic(state.currentItem?.clipId ?? null, state.playlistId, channelId).catch(() => null)
   state.activeGraphic = g_prev
-  await startStreamingForItem(channelId, state.currentItem, g_prev)
+  await restartFromIndex(channelId, prevIndex, state.playlistId, g_prev)
   broadcast(channelId, state)
   return state
 }
@@ -673,7 +755,7 @@ export async function jumpTo(channelId: string, itemIndex: number): Promise<Play
   persistState(channelId, state.playlistId, itemIndex)
   const g_jump = await resolveGraphic(state.currentItem?.clipId ?? null, state.playlistId, channelId).catch(() => null)
   state.activeGraphic = g_jump
-  await startStreamingForItem(channelId, state.currentItem, g_jump)
+  await restartFromIndex(channelId, itemIndex, state.playlistId, g_jump)
   broadcast(channelId, state)
   return state
 }

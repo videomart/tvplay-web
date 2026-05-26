@@ -1,4 +1,7 @@
 import { spawn, ChildProcess } from 'child_process'
+import { writeFile } from 'fs/promises'
+import { join } from 'path'
+import { tmpdir } from 'os'
 import { prisma } from '../lib/prisma'
 import { config } from '../config'
 
@@ -388,6 +391,173 @@ export async function restartStreaming(
   contentGraphic: GraphicConfig | null = null,
 ) {
   await startStreaming(channelId, mediaId, cueIn, contentGraphic)
+}
+
+// ─── Concat demuxer: playlist inteira num único processo FFmpeg ───────────────
+
+export interface PlaylistStreamItem {
+  hlsUrl: string
+  cueIn:  number
+  cueOut?: number | null
+}
+
+// Canais em modo concat: o FFmpeg gerencia as transições internamente
+const concatRunEnd = new Map<string, number>()
+
+export function getConcatRunEnd(channelId: string): number | undefined {
+  return concatRunEnd.get(channelId)
+}
+
+export function clearConcatRun(channelId: string) {
+  concatRunEnd.delete(channelId)
+}
+
+async function writeConcatFile(channelId: string, items: PlaylistStreamItem[]): Promise<string> {
+  const lines = ['ffconcat version 1.0']
+  for (const item of items) {
+    lines.push(`file '${item.hlsUrl}'`)
+    if (item.cueIn > 0)                          lines.push(`inpoint ${item.cueIn.toFixed(3)}`)
+    if (item.cueOut != null && item.cueOut > 0)  lines.push(`outpoint ${item.cueOut.toFixed(3)}`)
+  }
+  const filePath = join(tmpdir(), `tvplay_concat_${channelId}.txt`)
+  await writeFile(filePath, lines.join('\n') + '\n', 'utf8')
+  return filePath
+}
+
+function buildConcatArgs(
+  concatFilePath: string,
+  output: OutputConfig,
+  contentGraphic: GraphicConfig | null = null,
+): string[] | null {
+  const effectiveGraphic = contentGraphic ?? output.graphic ?? null
+  const logoUrl = effectiveGraphic?.logoUrl ? resolveLogoUrl(effectiveGraphic.logoUrl) : null
+
+  const input: string[] = [
+    '-hide_banner', '-loglevel', 'warning', '-stats',
+    '-f', 'concat', '-safe', '0',
+    '-protocol_whitelist', 'file,http,https,tcp,tls,crypto',
+    '-i', concatFilePath,
+    ...(logoUrl ? ['-stream_loop', '-1', '-i', logoUrl] : []),
+    '-re',
+  ]
+
+  const aBitrate = output.audioBitrate ?? 128
+  const videoBitrateArgs = output.videoBitrate
+    ? ['-b:v', `${output.videoBitrate}k`,
+       '-maxrate', `${Math.round(output.videoBitrate * 1.5)}k`,
+       '-bufsize', `${output.videoBitrate * 2}k`]
+    : []
+
+  const { filterArgs, mapArgs } = buildVideoFilter(output.videoResolution, effectiveGraphic, !!logoUrl)
+  const videoCodec = [
+    ...filterArgs,
+    '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
+    ...videoBitrateArgs,
+    '-c:a', 'aac', '-ar', '44100', '-b:a', `${aBitrate}k`,
+    ...mapArgs,
+  ]
+
+  switch (output.type) {
+    case 'RTMP': {
+      if (!output.url) return null
+      const dest = output.streamKey ? `${output.url}/${output.streamKey}` : output.url
+      return [...input, ...videoCodec, '-f', 'flv', dest]
+    }
+    case 'SRT': {
+      if (!output.url) return null
+      return [...input, ...videoCodec, '-f', 'mpegts', appendSrtPassphrase(output.url, output.streamKey)]
+    }
+    case 'UDP': {
+      if (!output.url) return null
+      return [...input, ...videoCodec, '-f', 'mpegts', output.url]
+    }
+    case 'RTP': {
+      if (!output.url) return null
+      return [...input, ...videoCodec, '-f', 'rtp', output.url]
+    }
+    default:
+      return null
+  }
+}
+
+function spawnOutputFromConcat(
+  channelId: string,
+  output: OutputConfig,
+  concatFilePath: string,
+  contentGraphic: GraphicConfig | null = null,
+): StreamProcess | null {
+  const effectiveGraphic = contentGraphic ?? output.graphic ?? null
+  const args = buildConcatArgs(concatFilePath, output, contentGraphic)
+  if (!args) return null
+
+  const proc = spawn(config.ffmpeg.path, args, {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, TZ: clockTz() },
+  })
+  const sp: StreamProcess = {
+    proc, outputId: output.id, type: output.type, name: output.name,
+    stopped: false, contentGraphic,
+  }
+
+  proc.stdout?.on('data', () => {})
+  proc.stderr?.on('data', (d: Buffer) => {
+    const raw = d.toString()
+    if (raw.includes('bitrate=')) {
+      parseStats(channelId, output.id, raw)
+    } else {
+      const msg = raw.replace(/\r/g, '\n').trim()
+      if (msg) console.log(`[stream/${channelId}/${output.name}] ${msg}`)
+    }
+  })
+
+  proc.on('exit', (code) => {
+    const registered = channelProcs.get(channelId)?.get(output.id)
+    if (registered?.proc === proc) {
+      channelProcs.get(channelId)?.delete(output.id)
+    }
+    // Código 0 = fim natural da playlist concat — o playout service gerencia o estado
+    const isError = code !== null && code !== 0 && code !== 255
+    if (isError && !sp.stopped) {
+      console.warn(`[stream/${channelId}/${output.name}] Concat saiu com código ${code} — notificando playout...`)
+      onUnexpectedExitCb?.(channelId)
+    }
+  })
+
+  const gfxInfo = effectiveGraphic
+    ? ` | GFX: logo=${effectiveGraphic.logoUrl ?? 'none'} clock=${effectiveGraphic.showClock}`
+    : ' | GFX: nenhum'
+  console.log(`[stream/${channelId}] Iniciando CONCAT ${output.type} → ${output.name}${gfxInfo}`)
+  console.log(`[stream/${channelId}] FFmpeg concat args: ${args.join(' ')}`)
+  return sp
+}
+
+export async function startStreamingFromPlaylist(
+  channelId: string,
+  items: PlaylistStreamItem[],
+  endIndex: number,
+  contentGraphic: GraphicConfig | null = null,
+): Promise<void> {
+  if (!items.length) return
+
+  await stopStreaming(channelId)
+
+  const outputs = await prisma.streamOutput.findMany({
+    where: { channelId, active: true },
+    include: { graphic: true },
+  })
+  if (!outputs.length) return
+
+  const concatFilePath = await writeConcatFile(channelId, items)
+
+  const map = new Map<string, StreamProcess>()
+  for (const output of outputs) {
+    const sp = spawnOutputFromConcat(channelId, output, concatFilePath, contentGraphic)
+    if (sp) map.set(output.id, sp)
+  }
+  if (map.size) {
+    channelProcs.set(channelId, map)
+    concatRunEnd.set(channelId, endIndex)
+  }
 }
 
 // ─── Controle por output individual ──────────────────────────────────────────

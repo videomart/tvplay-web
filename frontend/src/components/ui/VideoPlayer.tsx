@@ -15,12 +15,65 @@ interface VideoPlayerProps {
 
 type State = 'loading' | 'ready' | 'error'
 
+function getToken(): string | null {
+  try {
+    const raw = localStorage.getItem('tvplay-auth')
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    return parsed?.state?.token ?? null
+  } catch {
+    return null
+  }
+}
+
 export function VideoPlayer({ src, poster, className, autoPlay = false, startAt, muted = false, onTimeUpdate }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<Hls | null>(null)
+  // Guarda o listener pendente de MANIFEST_PARSED para cancelar em troca de src
+  const manifestHandlerRef = useRef<((event: string, data: unknown) => void) | null>(null)
   const [state, setState] = useState<State>('loading')
   const [errorMsg, setErrorMsg] = useState('')
 
+  // Cria a instância HLS uma única vez ao montar — evita destroy/recreate ao trocar src
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+
+    if (!Hls.isSupported()) return
+
+    const hls = new Hls({
+      enableWorker: true,
+      lowLatencyMode: false,
+      xhrSetup: (xhr: XMLHttpRequest, url: string) => {
+        const isInternal = !url || url.startsWith('/') || url.includes(window.location.hostname)
+        if (!isInternal) return
+        const token = getToken()
+        if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+      },
+    })
+
+    hls.attachMedia(video)
+
+    hls.on(Hls.Events.ERROR, (_ev: string, data: Hls.errorData) => {
+      if (data.fatal) {
+        setState('error')
+        setErrorMsg(data.details ?? 'Erro ao carregar vídeo')
+      }
+    })
+
+    hlsRef.current = hls
+
+    return () => {
+      if (manifestHandlerRef.current) {
+        hls.off(Hls.Events.MANIFEST_PARSED, manifestHandlerRef.current)
+        manifestHandlerRef.current = null
+      }
+      hls.destroy()
+      hlsRef.current = null
+    }
+  }, [])
+
+  // Carrega nova fonte quando src muda — reutiliza instância HLS existente
   useEffect(() => {
     const video = videoRef.current
     if (!video || !src) return
@@ -28,57 +81,53 @@ export function VideoPlayer({ src, poster, className, autoPlay = false, startAt,
     setState('loading')
     setErrorMsg('')
 
-    hlsRef.current?.destroy()
+    if (hlsRef.current) {
+      const hls = hlsRef.current
 
-    const onReady = () => {
-      setState('ready')
-      if (startAt && startAt > 0) video.currentTime = startAt
-      if (autoPlay) video.play().catch(() => {})
+      // Cancela listener pendente de carregamento anterior
+      if (manifestHandlerRef.current) {
+        hls.off(Hls.Events.MANIFEST_PARSED, manifestHandlerRef.current)
+        manifestHandlerRef.current = null
+      }
+
+      const handler = () => {
+        manifestHandlerRef.current = null
+        setState('ready')
+        if (startAt && startAt > 0) video.currentTime = startAt
+        if (autoPlay) video.play().catch(() => {})
+      }
+      manifestHandlerRef.current = handler
+      hls.once(Hls.Events.MANIFEST_PARSED, handler)
+
+      // Define ponto de início antes de carregar para evitar flash do começo do segmento
+      hls.startPosition = startAt && startAt > 0 ? startAt : -1
+      hls.loadSource(src)
+
+      return () => {
+        if (manifestHandlerRef.current) {
+          hls.off(Hls.Events.MANIFEST_PARSED, manifestHandlerRef.current)
+          manifestHandlerRef.current = null
+        }
+      }
     }
 
-    if (Hls.isSupported()) {
-      const hls = new Hls({
-        enableWorker: true,
-        lowLatencyMode: false,
-        // Inicia diretamente no segmento correto — evita flash do início antes do seek
-        startPosition: startAt && startAt > 0 ? startAt : -1,
-        xhrSetup: (xhr, url) => {
-          // Só envia o token para requests na própria API (evita CORS em CDNs externas)
-          const isInternal = !url || url.startsWith('/') || url.includes(window.location.hostname)
-          if (!isInternal) return
-          const token = localStorage.getItem('tvplay-auth')
-          if (token) {
-            try {
-              const parsed = JSON.parse(token)
-              if (parsed?.state?.token)
-                xhr.setRequestHeader('Authorization', `Bearer ${parsed.state.token}`)
-            } catch {}
-          }
-        },
-      })
-      hls.loadSource(src)
-      hls.attachMedia(video)
-      hls.on(Hls.Events.MANIFEST_PARSED, onReady)
-      hls.on(Hls.Events.ERROR, (_, data) => {
-        if (data.fatal) {
-          setState('error')
-          setErrorMsg(data.details ?? 'Erro ao carregar vídeo')
-        }
-      })
-      hlsRef.current = hls
-    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+    // Fallback: HLS nativo (Safari)
+    if (video.canPlayType('application/vnd.apple.mpegurl')) {
       video.src = src
-      video.addEventListener('loadedmetadata', onReady, { once: true })
+      video.addEventListener('loadedmetadata', () => {
+        setState('ready')
+        if (startAt && startAt > 0) video.currentTime = startAt
+        if (autoPlay) video.play().catch(() => {})
+      }, { once: true })
       video.addEventListener('error', () => {
         setState('error')
         setErrorMsg('Erro ao carregar vídeo')
       }, { once: true })
-    } else {
-      setState('error')
-      setErrorMsg('Navegador não suporta HLS')
+      return
     }
 
-    return () => { hlsRef.current?.destroy(); hlsRef.current = null }
+    setState('error')
+    setErrorMsg('Navegador não suporta HLS')
   }, [src, autoPlay, startAt])
 
   return (
