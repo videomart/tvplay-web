@@ -35,14 +35,13 @@ function buildLocalDeviceCommand(cfg: LocalDeviceConfig): string {
   const dest = cfg.serverIp
     ? `srt://${cfg.serverIp}:${cfg.srtPort}?mode=caller`
     : `srt://IP_DO_SERVIDOR:${cfg.srtPort}?mode=caller`
-  // -rtbufsize 200M: evita overflow do buffer raw da câmera (1080p YUY2 é muito pesado)
-  // -s 1280x720: reduz resolução antes de codificar — diminui carga de CPU
-  const encode = '-rtbufsize 200M -s 1280x720 -c:v libx264 -preset ultrafast -tune zerolatency -b:v 2000k -c:a aac -ar 48000 -b:a 128k -f mpegts'
+  const encode = '-c:v libx264 -preset ultrafast -tune zerolatency -b:v 2000k -an -f mpegts'
   if (cfg.driver === 'DSHOW') {
-    return `ffmpeg -f dshow -rtbufsize 200M -i video="${cfg.deviceName}" ${encode} "${dest}"`
+    // -video_size e -framerate antes de -i forçam captura em 720p (evita buffer overflow com YUY2 1080p ~124MB/s)
+    return `ffmpeg -f dshow -video_size 1280x720 -framerate 30 -rtbufsize 100M -i "video=${cfg.deviceName}" ${encode} "${dest}"`
   }
   if (cfg.driver === 'V4L2') {
-    return `ffmpeg -f v4l2 -input_format yuyv422 -video_size 1280x720 -i ${cfg.deviceName} ${encode} "${dest}"`
+    return `ffmpeg -f v4l2 -input_format yuyv422 -video_size 1280x720 -framerate 30 -i ${cfg.deviceName} ${encode} "${dest}"`
   }
   // DECKLINK
   return `ffmpeg -f decklink -i "${cfg.deviceName}" ${encode} "${dest}"`
@@ -592,7 +591,7 @@ export default function InputSourcesPage() {
                     label={srtCfg.mode === 'listener' ? 'Host / IP (não usado no listener)' : 'Host / IP *'}
                     value={srtCfg.mode === 'listener' ? '' : srtCfg.host}
                     onChange={(e) => setSrtCfg((v) => ({ ...v, host: e.target.value }))}
-                    placeholder={srtCfg.mode === 'listener' ? '0.0.0.0 (todas as interfaces)' : '192.168.1.100'}
+                    placeholder={srtCfg.mode === 'listener' ? '0.0.0.0 (todas as interfaces)' : window.location.hostname}
                     disabled={srtCfg.mode === 'listener'}
                   />
                 </div>
