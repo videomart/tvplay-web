@@ -10,6 +10,7 @@ export interface PlaylistItem {
   overrideCueIn?: number
   overrideCueOut?: number
   loop?: boolean
+  maxDuration?: number | null
   playlistId: string
   clipId: string
   clip: Clip & {

@@ -10,6 +10,7 @@ import { playlistsApi } from '../../api/playlists.api'
 import { Badge } from '../../components/ui/Badge'
 import { Button } from '../../components/ui/Button'
 import type { Channel } from '../../api/channels.api'
+import { usePlayoutSelection } from '../../stores/playoutSelection.store'
 
 function formatTime(sec: number) {
   const abs = Math.floor(sec)
@@ -71,12 +72,26 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
     staleTime: 10_000,
   })
 
+  const { selectedByChannel, clearSelected } = usePlayoutSelection()
+  const selectedItemId = selectedByChannel[targetChannelId] ?? null
+
+  const insertBreakMut = useMutation({
+    mutationFn: () => playoutApi.insertBreak(targetChannelId, selectedItemId),
+    onSuccess: () => {
+      toast.success('BREAK inserido')
+      qc.invalidateQueries({ queryKey: ['playout-items', targetChannelId] })
+      clearSelected(targetChannelId)
+    },
+    onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao inserir BREAK'),
+  })
+
   const insertMut = useMutation({
     mutationFn: ({ channelId, clipId }: { channelId: string; clipId: string }) =>
-      playoutApi.insertClip(channelId, clipId),
+      playoutApi.insertClip(channelId, clipId, selectedByChannel[channelId] ?? null),
     onSuccess: (_state, { channelId }) => {
       toast.success('Clipe inserido')
       qc.invalidateQueries({ queryKey: ['playout-items', channelId] })
+      clearSelected(channelId)
     },
     onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao inserir clipe'),
   })
@@ -180,9 +195,9 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
         </div>
       </div>
 
-      {/* Filtro por tipo */}
-      {activeTypes.length > 0 && (
-        <div className="px-3 pt-2 pb-1 flex gap-1 flex-wrap">
+      {/* Filtro por tipo + botão BREAK */}
+      <div className="px-3 pt-2 pb-1 flex items-center gap-1">
+        <div className="flex gap-1 flex-wrap flex-1 min-w-0">
           <button
             onClick={() => setTypeId('')}
             className={clsx(
@@ -208,7 +223,20 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
             </button>
           ))}
         </div>
-      )}
+
+        {/* Botão BREAK — fundo preto, letra amarela */}
+        <button
+          onClick={() => insertBreakMut.mutate()}
+          disabled={!hasActivePlaylist || insertBreakMut.isPending}
+          title={selectedItemId ? 'Inserir BREAK após item selecionado no grid' : 'Inserir BREAK no final da playlist'}
+          className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1 rounded bg-black border-2 border-yellow-400 text-yellow-400 text-[11px] font-black tracking-wider hover:bg-yellow-400 hover:text-black disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+        >
+          {insertBreakMut.isPending
+            ? <Loader2 className="h-3 w-3 animate-spin" />
+            : '⏸'}
+          BREAK
+        </button>
+      </div>
 
       {/* Modal inline: criar playlist e iniciar */}
       {createOpen && (

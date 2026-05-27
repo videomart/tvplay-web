@@ -252,13 +252,15 @@ model PlaylistItem {
   overrideCueIn  Float?
   overrideCueOut Float?
   loop         Boolean   @default(false)
+  maxDuration  Int?
+  isBreak      Boolean   @default(false)
   createdAt    DateTime  @default(now())
 
   playlistId String
   playlist   Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
 
-  clipId String
-  clip   Clip   @relation(fields: [clipId], references: [id])
+  clipId String?
+  clip   Clip?   @relation(fields: [clipId], references: [id])
 
   @@index([playlistId, order])
   @@map("playlist_items")

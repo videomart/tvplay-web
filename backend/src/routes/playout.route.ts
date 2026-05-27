@@ -181,39 +181,54 @@ export default async function playoutRoutes(app: FastifyInstance) {
     })
 
     return items.map((item, idx) => {
-      const clip = item.clip
+      if ((item as any).isBreak) {
+        return {
+          id: item.id, index: idx, order: item.order,
+          code: 'BREAK', title: 'BREAK',
+          typeCode: null, typeBg: null, typeColor: null,
+          duration: (item as any).maxDuration ?? 0,
+          loop: false, maxDuration: (item as any).maxDuration ?? null,
+          clientName: null, breakNum: item.breakNum,
+          mediaReady: true, sourceType: 'BREAK', graphicName: null, isBreak: true,
+        }
+      }
+      const clip = item.clip!
       const YT_PATTERN = /youtube\.com|youtu\.be|twitch\.tv/i
       const isUrlClip = (clip as any).sourceType === 'URL' ||
         ((clip as any).sourceUrl && YT_PATTERN.test((clip as any).sourceUrl))
       const cueIn = item.overrideCueIn ?? clip.cueIn
       const cueOut = item.overrideCueOut ?? clip.cueOut ?? clip.media?.duration ?? null
-      const duration = cueOut ? cueOut - cueIn : (clip.media?.duration ?? clip.duration ?? (isUrlClip ? 3600 : 30))
+      const duration = (isUrlClip && item.maxDuration)
+        ? item.maxDuration
+        : cueOut ? cueOut - cueIn : (clip.media?.duration ?? clip.duration ?? (isUrlClip ? 3600 : 30))
       return {
-        id: item.id,
-        index: idx,
-        order: item.order,
-        code: clip.code,
-        title: clip.title,
+        id: item.id, index: idx, order: item.order,
+        code: clip.code, title: clip.title,
         typeCode: clip.type?.code ?? null,
         typeBg: clip.type?.fontBackColor ?? null,
         typeColor: clip.type?.fontColor ?? null,
-        duration,
-        loop: item.loop,
-        clientName: clip.client?.name ?? null,
-        breakNum: item.breakNum,
-        // Clips URL são considerados prontos se tiverem sourceUrl; clips FILE precisam de ingestStatus READY
+        duration, loop: item.loop, maxDuration: item.maxDuration ?? null,
+        clientName: clip.client?.name ?? null, breakNum: item.breakNum,
         mediaReady: isUrlClip ? !!(clip as any).sourceUrl : clip.media?.ingestStatus === 'READY',
         sourceType: (clip as any).sourceType ?? 'FILE',
-        graphicName: clip.graphic?.name ?? null,
+        graphicName: clip.graphic?.name ?? null, isBreak: false,
       }
     })
   })
 
-  // Insere clipe ao vivo após o item atual
+  // Insere clipe na posição selecionada (afterItemId) ou no final se não houver seleção
   app.post('/:channelId/insert', auth, async (request: any, reply) => {
-    const { clipId } = request.body as { clipId: string }
+    const { clipId, afterItemId } = request.body as { clipId: string; afterItemId?: string | null }
     if (!clipId) return reply.status(400).send({ error: 'clipId é obrigatório' })
-    return playout.insertClip(request.params.channelId, clipId).catch((e) =>
+    return playout.insertClip(request.params.channelId, clipId, afterItemId).catch((e) =>
+      reply.status(400).send({ error: e.message })
+    )
+  })
+
+  // Insere um item BREAK na posição selecionada (afterItemId) ou no final se não houver seleção
+  app.post('/:channelId/insert-break', auth, async (request: any, reply) => {
+    const { afterItemId } = (request.body ?? {}) as { afterItemId?: string | null }
+    return playout.insertBreak(request.params.channelId, afterItemId).catch((e) =>
       reply.status(400).send({ error: e.message })
     )
   })

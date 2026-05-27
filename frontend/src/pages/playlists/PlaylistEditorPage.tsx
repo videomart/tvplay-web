@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, Plus, Trash2, Search, GripVertical,
-  Clock, ListVideo, ChevronRight, Repeat2, Lock, Upload
+  Clock, ListVideo, ChevronRight, Repeat2, Lock, Upload, Timer
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
@@ -43,6 +43,8 @@ export default function PlaylistEditorPage() {
   const [uploadProgress, setUploadProgress] = useState(0)
   const uploadClipIdRef = useRef<string | null>(null)
   const uploadFileRef = useRef<HTMLInputElement>(null)
+  const [timerEditId, setTimerEditId] = useState<string | null>(null)
+  const [timerEditVal, setTimerEditVal] = useState('')
 
   function startUpload(clipId: string) {
     uploadClipIdRef.current = clipId
@@ -106,6 +108,34 @@ export default function PlaylistEditorPage() {
     mutationFn: (item: PlaylistItem) => playlistsApi.updateItem(id!, item.id, { loop: !item.loop }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['playlist', id] }),
   })
+
+  const setMaxDuration = useMutation({
+    mutationFn: ({ itemId, maxDuration }: { itemId: string; maxDuration: number | null }) =>
+      playlistsApi.updateItem(id!, itemId, { maxDuration }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['playlist', id] }),
+  })
+
+  function openTimerEdit(item: PlaylistItem) {
+    setTimerEditId(item.id)
+    const v = item.maxDuration
+    setTimerEditVal(v ? `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}` : '')
+  }
+
+  function commitTimer(itemId: string) {
+    const raw = timerEditVal.trim()
+    let secs: number | null = null
+    if (raw) {
+      if (raw.includes(':')) {
+        const [m, s] = raw.split(':').map(Number)
+        secs = (m || 0) * 60 + (s || 0)
+      } else {
+        secs = parseInt(raw, 10) * 60
+      }
+      if (!secs || secs <= 0) secs = null
+    }
+    setMaxDuration.mutate({ itemId, maxDuration: secs })
+    setTimerEditId(null)
+  }
 
   const items: PlaylistItem[] = playlist?.items ?? []
   const isLocked = !!playlist?.locked
@@ -272,6 +302,40 @@ export default function PlaylistEditorPage() {
                     )}>
                       {media.ingestStatus === 'READY' ? '✓' : '⏳'}
                     </span>
+                  )}
+
+                  {/* Timer — só para URL clips */}
+                  {(['URL', 'YOUTUBE'].includes((clip as any).sourceType)) && (
+                    timerEditId === item.id ? (
+                      <input
+                        autoFocus
+                        className="w-16 bg-gray-700 text-gray-100 text-[10px] font-mono rounded px-1.5 py-0.5 border border-brand-500/60 outline-none"
+                        placeholder="mm:ss"
+                        value={timerEditVal}
+                        onChange={(e) => setTimerEditVal(e.target.value)}
+                        onBlur={() => commitTimer(item.id)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') commitTimer(item.id); if (e.key === 'Escape') setTimerEditId(null) }}
+                      />
+                    ) : (
+                      <button
+                        onClick={() => !isLocked && openTimerEdit(item)}
+                        disabled={isLocked}
+                        title={item.maxDuration ? `Timer: avança após ${Math.floor(item.maxDuration/60)}:${String(item.maxDuration%60).padStart(2,'0')}` : 'Definir timer de avanço'}
+                        className={clsx(
+                          'flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors',
+                          isLocked
+                            ? 'bg-gray-800 text-gray-600 cursor-not-allowed'
+                            : item.maxDuration
+                              ? 'bg-amber-500/20 text-amber-300 ring-1 ring-amber-500/40'
+                              : 'bg-gray-800 text-gray-400 hover:text-gray-200'
+                        )}
+                      >
+                        <Timer className="h-3 w-3" />
+                        {item.maxDuration
+                          ? `${Math.floor(item.maxDuration/60)}:${String(item.maxDuration%60).padStart(2,'0')}`
+                          : 'Timer'}
+                      </button>
+                    )
                   )}
 
                   {/* Loop */}

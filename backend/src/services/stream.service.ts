@@ -37,8 +37,137 @@ type OutputConfig = {
   graphic?: GraphicConfig | null
 }
 
-// Map: channelId → Map<outputId, StreamProcess>
+// Map: channelId → Map<outputId, StreamProcess> (content processes)
 const channelProcs = new Map<string, Map<string, StreamProcess>>()
+
+// ─── Relay architecture ───────────────────────────────────────────────────────
+// Content processes encode → UDP loopback → relay processes forward to RTMP/SRT.
+// Relay processes never restart during clip switches, keeping the external connection alive.
+
+interface RelayProcess {
+  proc:    ChildProcess
+  port:    number
+  stopped: boolean
+}
+
+const relayProcs  = new Map<string, Map<string, RelayProcess>>()
+const relayPortMap = new Map<string, number>()
+let   nextRelayPort = 13100
+
+function getOrAllocRelayPort(outputId: string): number {
+  if (!relayPortMap.has(outputId)) relayPortMap.set(outputId, nextRelayPort++)
+  return relayPortMap.get(outputId)!
+}
+
+// Only RTMP, SRT, and LOCAL_DEVICE outputs have persistent connections worth relaying.
+function isRelayCapable(type: string): boolean {
+  return ['RTMP', 'SRT', 'LOCAL_DEVICE'].includes(type)
+}
+
+function buildRelayArgs(output: OutputConfig, port: number): string[] | null {
+  if (!isRelayCapable(output.type)) return null
+  // -f mpegts before -i skips format probing; relay starts as soon as first TS packet arrives
+  const udpUrl    = `udp://0.0.0.0:${port}?fifo_size=5000000&overrun_nonfatal=1`
+  const inputArgs = ['-hide_banner', '-loglevel', 'warning', '-stats', '-f', 'mpegts', '-i', udpUrl]
+  const codec     = ['-c', 'copy']
+  switch (output.type) {
+    case 'RTMP': {
+      if (!output.url) return null
+      const dest = output.streamKey ? `${output.url}/${output.streamKey}` : output.url
+      return [
+        '-hide_banner', '-loglevel', 'warning', '-stats',
+        // Reconnect flags ensure RTMP connection recovers automatically
+        '-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5',
+        '-f', 'mpegts', '-i', udpUrl,
+        ...codec, '-f', 'flv', dest,
+      ]
+    }
+    case 'SRT': {
+      if (!output.url) return null
+      return [...inputArgs, ...codec, '-f', 'mpegts', appendSrtPassphrase(output.url, output.streamKey)]
+    }
+    case 'LOCAL_DEVICE': {
+      if (!output.url) return null
+      return [...inputArgs, ...codec, '-f', 'mpegts', appendSrtPassphrase(output.url, output.streamKey)]
+    }
+    default:
+      return null
+  }
+}
+
+function spawnRelay(channelId: string, output: OutputConfig, port: number): RelayProcess | null {
+  const args = buildRelayArgs(output, port)
+  if (!args) return null
+
+  const entry: RelayProcess = { proc: null as any, port, stopped: false }
+  const proc = spawn(config.ffmpeg.path, args, {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, TZ: clockTz() },
+  })
+  entry.proc = proc
+
+  proc.stdout?.on('data', () => {})
+  proc.stderr?.on('data', (d: Buffer) => {
+    const raw = d.toString()
+    if (raw.includes('bitrate=')) {
+      parseStats(channelId, output.id, raw)
+    } else {
+      const msg = raw.replace(/\r/g, '\n').trim()
+      if (msg) console.log(`[relay/${channelId}/${output.name}] ${msg}`)
+    }
+  })
+
+  proc.on('exit', (code) => {
+    const channel = relayProcs.get(channelId)
+    const registered = channel?.get(output.id)
+    if (registered?.proc === proc) channel?.delete(output.id)
+    const isError = code !== null && code !== 0 && code !== 255
+    if (isError && !entry.stopped) {
+      console.warn(`[relay/${channelId}/${output.name}] Saiu com código ${code} — reconectando relay em 5s...`)
+      setTimeout(async () => {
+        if (entry.stopped) return
+        const current = relayProcs.get(channelId)?.get(output.id)
+        if (current && current.proc !== proc) return
+        const dbOutput = await prisma.streamOutput.findUnique({ where: { id: output.id }, include: { graphic: true } })
+        if (!dbOutput?.active) return
+        const newEntry = spawnRelay(channelId, dbOutput, port)
+        if (!newEntry) return
+        if (!relayProcs.has(channelId)) relayProcs.set(channelId, new Map())
+        relayProcs.get(channelId)!.set(output.id, newEntry)
+      }, 5000)
+    }
+  })
+
+  console.log(`[relay/${channelId}] Relay ${output.type} → ${output.name} (UDP :${port})`)
+  console.log(`[relay/${channelId}] args: ${args.join(' ')}`)
+  return entry
+}
+
+async function ensureRelays(channelId: string, outputs: OutputConfig[]): Promise<void> {
+  if (!relayProcs.has(channelId)) relayProcs.set(channelId, new Map())
+  const relayMap = relayProcs.get(channelId)!
+  for (const output of outputs) {
+    if (!isRelayCapable(output.type) || !output.url) continue
+    const existing = relayMap.get(output.id)
+    if (existing && !existing.stopped && existing.proc.exitCode === null) continue
+    const port  = getOrAllocRelayPort(output.id)
+    const relay = spawnRelay(channelId, output, port)
+    if (relay) relayMap.set(output.id, relay)
+  }
+}
+
+function stopRelays(channelId: string): void {
+  const map = relayProcs.get(channelId)
+  if (!map?.size) return
+  for (const entry of map.values()) {
+    entry.stopped = true
+    try { entry.proc.kill('SIGTERM') } catch {}
+  }
+  relayProcs.delete(channelId)
+  console.log(`[relay/${channelId}] Todos os relays parados`)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 // Callback global chamado quando FFmpeg sai com erro sem ter sido parado manualmente.
 // Permite que o playout avance para o próximo clipe sem depender de importação circular.
@@ -181,6 +310,7 @@ function buildArgs(
   output: OutputConfig,
   isLive = false,
   effectiveGraphic: GraphicConfig | null = null,
+  relayPort: number | null = null,
 ): string[] | null {
   // Resolve URL do logo: relativa → http://localhost:PORT/... (acessível dentro do container)
   const logoUrl = (!isLive && effectiveGraphic?.logoUrl) ? resolveLogoUrl(effectiveGraphic.logoUrl) : null
@@ -227,6 +357,12 @@ function buildArgs(
       '-c:a', 'aac', '-ar', '44100', '-b:a', `${aBitrate}k`,
       ...mapArgs,
     ]
+  }
+
+  // Relay mode: redirect encoded stream to UDP loopback instead of external destination.
+  // The relay process picks it up and forwards to RTMP/SRT without restarting on clip change.
+  if (relayPort !== null && isRelayCapable(output.type)) {
+    return [...input, ...videoCodec, '-f', 'mpegts', `udp://127.0.0.1:${relayPort}?pkt_size=1316`]
   }
 
   switch (output.type) {
@@ -282,10 +418,11 @@ function spawnOutput(
   cueIn: number,
   isLive = false,
   contentGraphic: GraphicConfig | null = null,
+  relayPort: number | null = null,
 ): StreamProcess | null {
   // Prioridade: gráfico do conteúdo (clip/playlist) > gráfico da saída
   const effectiveGraphic = contentGraphic ?? output.graphic ?? null
-  const args = buildArgs(hlsUrl, cueIn, output, isLive, effectiveGraphic)
+  const args = buildArgs(hlsUrl, cueIn, output, isLive, effectiveGraphic, relayPort)
   if (!args) return null
 
   const proc = spawn(config.ffmpeg.path, args, {
@@ -300,9 +437,10 @@ function spawnOutput(
   proc.stdout?.on('data', () => {})
   proc.stderr?.on('data', (d: Buffer) => {
     const raw = d.toString()
-    if (raw.includes('bitrate=')) {
+    // In relay mode, relay process tracks stats (external output); skip stats from content process
+    if (!relayPort && raw.includes('bitrate=')) {
       parseStats(channelId, output.id, raw)
-    } else {
+    } else if (!raw.includes('bitrate=')) {
       const msg = raw.replace(/\r/g, '\n').trim()
       if (msg) console.log(`[stream/${channelId}/${output.name}] ${msg}`)
     }
@@ -329,7 +467,7 @@ function spawnOutput(
           include: { graphic: true },
         })
         if (!dbOutput?.active) return
-        const newSp = spawnOutput(channelId, dbOutput, hlsUrl, 0, false, sp.contentGraphic)
+        const newSp = spawnOutput(channelId, dbOutput, hlsUrl, 0, false, sp.contentGraphic, relayPort)
         if (!newSp) return
         if (!channelProcs.has(channelId)) channelProcs.set(channelId, new Map())
         channelProcs.get(channelId)!.set(output.id, newSp)
@@ -340,7 +478,8 @@ function spawnOutput(
   const gfxInfo = effectiveGraphic
     ? ` | GFX: logo=${effectiveGraphic.logoUrl ?? 'none'} clock=${effectiveGraphic.showClock} text="${effectiveGraphic.lowerText ?? ''}"`
     : ' | GFX: nenhum'
-  console.log(`[stream/${channelId}] Iniciando ${output.type} → ${output.name}${gfxInfo}`)
+  const relayInfo = relayPort ? ` → UDP:${relayPort} (relay)` : ''
+  console.log(`[stream/${channelId}] Iniciando ${output.type} → ${output.name}${relayInfo}${gfxInfo}`)
   console.log(`[stream/${channelId}] FFmpeg args: ${args.join(' ')}`)
   return sp
 }
@@ -353,7 +492,6 @@ export async function startStreaming(
   cueIn = 0,
   contentGraphic: GraphicConfig | null = null,
 ) {
-  await stopStreaming(channelId)
   if (!mediaId) return
 
   const outputs = await prisma.streamOutput.findMany({
@@ -362,10 +500,15 @@ export async function startStreaming(
   })
   if (!outputs.length) return
 
+  // Ensure relay processes are running before restarting content
+  await ensureRelays(channelId, outputs)
+  await stopStreaming(channelId)
+
   const hlsUrl = hlsUrlForMedia(mediaId)
   const map = new Map<string, StreamProcess>()
   for (const output of outputs) {
-    const sp = spawnOutput(channelId, output, hlsUrl, cueIn, false, contentGraphic)
+    const port = isRelayCapable(output.type) ? relayPortMap.get(output.id) ?? null : null
+    const sp = spawnOutput(channelId, output, hlsUrl, cueIn, false, contentGraphic, port)
     if (sp) map.set(output.id, sp)
   }
   if (map.size) channelProcs.set(channelId, map)
@@ -382,6 +525,12 @@ export function stopStreaming(channelId: string) {
   channelProcs.delete(channelId)
   outputStats.delete(channelId)
   return Promise.resolve()
+}
+
+// Stops both content processes and relay processes (use for full stop / cut-to-input / fallback).
+export function stopAllStreaming(channelId: string) {
+  stopStreaming(channelId)
+  stopRelays(channelId)
 }
 
 export async function restartStreaming(
@@ -428,6 +577,7 @@ function buildConcatArgs(
   concatFilePath: string,
   output: OutputConfig,
   contentGraphic: GraphicConfig | null = null,
+  relayPort: number | null = null,
 ): string[] | null {
   const effectiveGraphic = contentGraphic ?? output.graphic ?? null
   const logoUrl = effectiveGraphic?.logoUrl ? resolveLogoUrl(effectiveGraphic.logoUrl) : null
@@ -457,6 +607,11 @@ function buildConcatArgs(
     ...mapArgs,
   ]
 
+  // Relay mode: redirect to UDP loopback
+  if (relayPort !== null && isRelayCapable(output.type)) {
+    return [...input, ...videoCodec, '-f', 'mpegts', `udp://127.0.0.1:${relayPort}?pkt_size=1316`]
+  }
+
   switch (output.type) {
     case 'RTMP': {
       if (!output.url) return null
@@ -485,9 +640,10 @@ function spawnOutputFromConcat(
   output: OutputConfig,
   concatFilePath: string,
   contentGraphic: GraphicConfig | null = null,
+  relayPort: number | null = null,
 ): StreamProcess | null {
   const effectiveGraphic = contentGraphic ?? output.graphic ?? null
-  const args = buildConcatArgs(concatFilePath, output, contentGraphic)
+  const args = buildConcatArgs(concatFilePath, output, contentGraphic, relayPort)
   if (!args) return null
 
   const proc = spawn(config.ffmpeg.path, args, {
@@ -502,9 +658,9 @@ function spawnOutputFromConcat(
   proc.stdout?.on('data', () => {})
   proc.stderr?.on('data', (d: Buffer) => {
     const raw = d.toString()
-    if (raw.includes('bitrate=')) {
+    if (!relayPort && raw.includes('bitrate=')) {
       parseStats(channelId, output.id, raw)
-    } else {
+    } else if (!raw.includes('bitrate=')) {
       const msg = raw.replace(/\r/g, '\n').trim()
       if (msg) console.log(`[stream/${channelId}/${output.name}] ${msg}`)
     }
@@ -526,7 +682,8 @@ function spawnOutputFromConcat(
   const gfxInfo = effectiveGraphic
     ? ` | GFX: logo=${effectiveGraphic.logoUrl ?? 'none'} clock=${effectiveGraphic.showClock}`
     : ' | GFX: nenhum'
-  console.log(`[stream/${channelId}] Iniciando CONCAT ${output.type} → ${output.name}${gfxInfo}`)
+  const relayInfo = relayPort ? ` → UDP:${relayPort} (relay)` : ''
+  console.log(`[stream/${channelId}] Iniciando CONCAT ${output.type} → ${output.name}${relayInfo}${gfxInfo}`)
   console.log(`[stream/${channelId}] FFmpeg concat args: ${args.join(' ')}`)
   return sp
 }
@@ -539,19 +696,22 @@ export async function startStreamingFromPlaylist(
 ): Promise<void> {
   if (!items.length) return
 
-  await stopStreaming(channelId)
-
   const outputs = await prisma.streamOutput.findMany({
     where: { channelId, active: true },
     include: { graphic: true },
   })
   if (!outputs.length) return
 
+  // Ensure relay processes are running before restarting content
+  await ensureRelays(channelId, outputs)
+  await stopStreaming(channelId)
+
   const concatFilePath = await writeConcatFile(channelId, items)
 
   const map = new Map<string, StreamProcess>()
   for (const output of outputs) {
-    const sp = spawnOutputFromConcat(channelId, output, concatFilePath, contentGraphic)
+    const port = isRelayCapable(output.type) ? relayPortMap.get(output.id) ?? null : null
+    const sp = spawnOutputFromConcat(channelId, output, concatFilePath, contentGraphic, port)
     if (sp) map.set(output.id, sp)
   }
   if (map.size) {
@@ -564,12 +724,21 @@ export async function startStreamingFromPlaylist(
 
 export function stopOutput(channelId: string, outputId: string) {
   const sp = channelProcs.get(channelId)?.get(outputId)
-  if (!sp) return
-  sp.stopped = true
-  try { sp.proc.kill('SIGTERM') } catch {}
-  channelProcs.get(channelId)?.delete(outputId)
-  outputStats.get(channelId)?.delete(outputId)
-  console.log(`[stream/${channelId}] Output ${sp.name} parado manualmente`)
+  if (sp) {
+    sp.stopped = true
+    try { sp.proc.kill('SIGTERM') } catch {}
+    channelProcs.get(channelId)?.delete(outputId)
+    outputStats.get(channelId)?.delete(outputId)
+    console.log(`[stream/${channelId}] Output ${sp.name} parado manualmente`)
+  }
+  // Also stop relay for this output if running
+  const relayEntry = relayProcs.get(channelId)?.get(outputId)
+  if (relayEntry) {
+    relayEntry.stopped = true
+    try { relayEntry.proc.kill('SIGTERM') } catch {}
+    relayProcs.get(channelId)?.delete(outputId)
+    console.log(`[relay/${channelId}] Relay de output ${outputId} parado`)
+  }
 }
 
 export async function startOutput(
@@ -585,7 +754,22 @@ export async function startOutput(
     include: { graphic: true },
   })
   if (!output || !output.active) return
-  const sp = spawnOutput(channelId, output, hlsUrlForMedia(mediaId), cueIn, false, contentGraphic)
+
+  // If other outputs in this channel have active relays, start relay for this one too
+  const channelRelays = relayProcs.get(channelId)
+  const isRelayMode = (channelRelays?.size ?? 0) > 0
+
+  let port: number | null = null
+  if (isRelayMode && isRelayCapable(output.type) && output.url) {
+    port = getOrAllocRelayPort(outputId)
+    const relay = spawnRelay(channelId, output, port)
+    if (relay) {
+      if (!relayProcs.has(channelId)) relayProcs.set(channelId, new Map())
+      relayProcs.get(channelId)!.set(outputId, relay)
+    }
+  }
+
+  const sp = spawnOutput(channelId, output, hlsUrlForMedia(mediaId), cueIn, false, contentGraphic, port)
   if (!sp) return
   if (!channelProcs.has(channelId)) channelProcs.set(channelId, new Map())
   channelProcs.get(channelId)!.set(outputId, sp)
@@ -599,6 +783,7 @@ export async function reconnectOutput(
 }
 
 // Para corte de entrada / fallback INPUT_SOURCE.
+// Stops relays first (full streaming reset), then starts direct output.
 // Se contentGraphic estiver presente, usa re-encode para aplicar o overlay.
 // Caso contrário, usa -c copy (baixa latência).
 export async function startStreamingFromUrl(
@@ -606,7 +791,7 @@ export async function startStreamingFromUrl(
   inputUrl: string,
   contentGraphic: GraphicConfig | null = null,
 ) {
-  await stopStreaming(channelId)
+  stopAllStreaming(channelId)
   const outputs = await prisma.streamOutput.findMany({
     where: { channelId, active: true },
     include: { graphic: true },
@@ -617,38 +802,43 @@ export async function startStreamingFromUrl(
     // Re-encode quando há gráfico ativo (necessário para aplicar filtros de overlay)
     const effectiveGraphic = contentGraphic ?? output.graphic ?? null
     const live = !effectiveGraphic  // sem gráfico → copy; com gráfico → re-encode
-    const sp = spawnOutput(channelId, output, inputUrl, 0, live, contentGraphic)
+    const sp = spawnOutput(channelId, output, inputUrl, 0, live, contentGraphic, null)
     if (sp) map.set(output.id, sp)
   }
   if (map.size) channelProcs.set(channelId, map)
 }
 
 // Modo re-encode (-re + libx264): para clips URL na playlist
-// Garante compatibilidade com qualquer codec de entrada (VP9, AV1, etc.)
-// e respeita a velocidade natural do stream (-re)
+// Usa relay para manter conexão RTMP/SRT viva durante transições de clipe.
 export async function startStreamingFromUrlReencode(
   channelId: string,
   inputUrl: string,
   contentGraphic: GraphicConfig | null = null,
 ) {
-  await stopStreaming(channelId)
   const outputs = await prisma.streamOutput.findMany({
     where: { channelId, active: true },
     include: { graphic: true },
   })
   if (!outputs.length) return
+
+  // Ensure relay processes are running before restarting content
+  await ensureRelays(channelId, outputs)
+  await stopStreaming(channelId)
+
   const map = new Map<string, StreamProcess>()
   for (const output of outputs) {
+    const port = isRelayCapable(output.type) ? relayPortMap.get(output.id) ?? null : null
     // isLive=false → usa -re + re-encode (libx264/aac) em vez de -c copy
-    const sp = spawnOutput(channelId, output, inputUrl, 0, false, contentGraphic)
+    const sp = spawnOutput(channelId, output, inputUrl, 0, false, contentGraphic, port)
     if (sp) map.set(output.id, sp)
   }
   if (map.size) channelProcs.set(channelId, map)
 }
 
-// Inicia streaming com fonte gerada (BLACK ou COLORBARS) para manter saída ativa enquanto parado
+// Inicia streaming com fonte gerada (BLACK ou COLORBARS) para manter saída ativa enquanto parado.
+// Stops relays first (full streaming reset), then starts direct fallback output.
 export async function startStreamingFromFallback(channelId: string, fallbackType: 'BLACK' | 'COLORBARS' | string) {
-  await stopStreaming(channelId)
+  stopAllStreaming(channelId)
   const outputs = await prisma.streamOutput.findMany({
     where: { channelId, active: true },
     include: { graphic: true },

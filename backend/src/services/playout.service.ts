@@ -120,7 +120,7 @@ export interface CurrentItem {
   code: string
   title: string
   modality: string
-  sourceType: string      // FILE | URL
+  sourceType: string      // FILE | URL | BREAK
   sourceUrl: string | null
   clientName: string | null
   typeName: string | null
@@ -134,6 +134,8 @@ export interface CurrentItem {
   order: number
   breakNum: number
   loop: boolean
+  maxDuration: number | null
+  isBreak: boolean
 }
 
 // Clients WebSocket por canal
@@ -150,12 +152,16 @@ async function computePlaylistMeta(playlistId: string): Promise<{ totalDuration:
   const items = await prisma.playlistItem.findMany({
     where: { playlistId },
     select: {
+      isBreak: true,
+      maxDuration: true,
       overrideCueIn: true,
       overrideCueOut: true,
       clip: { select: { cueIn: true, cueOut: true, duration: true, media: { select: { duration: true } } } },
     },
   })
   const totalDuration = (items as any[]).reduce((sum: number, item) => {
+    if (item.isBreak) return sum + (item.maxDuration ?? 0)
+    if (!item.clip) return sum
     const cueIn = item.overrideCueIn ?? item.clip.cueIn
     const cueOut = item.overrideCueOut ?? item.clip.cueOut ?? item.clip.media?.duration ?? null
     const dur = cueOut ? cueOut - cueIn : (item.clip.media?.duration ?? item.clip.duration ?? 30)
@@ -216,6 +222,34 @@ function broadcast(channelId: string, state: PlayoutState) {
   }
 }
 
+function makeBreakItem(item: { id: string; order: number; breakNum: number; maxDuration: number | null }): CurrentItem {
+  return {
+    playlistItemId: item.id,
+    clipId: '',
+    mediaId: null,
+    code: 'BREAK',
+    title: 'BREAK',
+    modality: 'BK',
+    sourceType: 'BREAK',
+    sourceUrl: null,
+    clientName: null,
+    typeName: null,
+    typeCode: null,
+    typeBg: null,
+    typeColor: null,
+    // MAX_SAFE_INTEGER when no maxDuration: never auto-advances, only manual
+    duration: item.maxDuration ?? Number.MAX_SAFE_INTEGER,
+    cueIn: 0,
+    cueOut: null,
+    hlsPath: null,
+    order: item.order,
+    breakNum: item.breakNum,
+    loop: false,
+    maxDuration: item.maxDuration ?? null,
+    isBreak: true,
+  }
+}
+
 async function loadItem(playlistId: string, index: number): Promise<CurrentItem | null> {
   const items = await prisma.playlistItem.findMany({
     where: { playlistId },
@@ -232,11 +266,15 @@ async function loadItem(playlistId: string, index: number): Promise<CurrentItem 
   })
   if (index >= items.length) return null
   const item = items[index]
+  if ((item as any).isBreak) return makeBreakItem(item as any)
   const clip = item.clip
+  if (!clip) return null
   const cueIn = item.overrideCueIn ?? clip.cueIn
   const urlClip = isUrlClip(clip.sourceType, clip.sourceUrl)
   const cueOut = item.overrideCueOut ?? clip.cueOut ?? clip.media?.duration ?? null
-  const duration = cueOut ? cueOut - cueIn : (clip.media?.duration ?? clip.duration ?? (urlClip ? 3600 : 30))
+  const duration = (urlClip && item.maxDuration)
+    ? item.maxDuration
+    : cueOut ? cueOut - cueIn : (clip.media?.duration ?? clip.duration ?? (urlClip ? 3600 : 30))
   return {
     playlistItemId: item.id,
     clipId: clip.id,
@@ -258,6 +296,8 @@ async function loadItem(playlistId: string, index: number): Promise<CurrentItem 
     order: item.order,
     breakNum: item.breakNum,
     loop: item.loop,
+    maxDuration: item.maxDuration ?? null,
+    isBreak: false,
   }
 }
 
@@ -266,7 +306,7 @@ async function countItems(playlistId: string): Promise<number> {
 }
 
 // Retorna o primeiro item pronto a partir de fromIndex.
-// Clipes FILE precisam de hlsPath READY. Clipes URL precisam de sourceUrl.
+// BREAK items are always ready. FILE clips need hlsPath. URL clips need sourceUrl.
 async function findNextReadyFrom(
   playlistId: string,
   fromIndex: number
@@ -286,13 +326,17 @@ async function findNextReadyFrom(
   })
   for (let i = fromIndex; i < items.length; i++) {
     const item = items[i]
+    if ((item as any).isBreak) return { index: i, item: makeBreakItem(item as any) }
     const clip = item.clip
+    if (!clip) continue
     const urlClip = isUrlClip(clip.sourceType, clip.sourceUrl)
     if (!urlClip && !clip.media?.hlsPath) continue // FILE sem arquivo — pula
     if (urlClip && !clip.sourceUrl) continue        // URL sem URL — pula
     const cueIn  = item.overrideCueIn  ?? clip.cueIn
     const cueOut = item.overrideCueOut ?? clip.cueOut ?? clip.media?.duration ?? null
-    const duration = cueOut ? cueOut - cueIn : (clip.media?.duration ?? clip.duration ?? (urlClip ? 3600 : 30))
+    const duration = (urlClip && item.maxDuration)
+      ? item.maxDuration
+      : cueOut ? cueOut - cueIn : (clip.media?.duration ?? clip.duration ?? (urlClip ? 3600 : 30))
     return {
       index: i,
       item: {
@@ -316,6 +360,8 @@ async function findNextReadyFrom(
         order: item.order,
         breakNum: item.breakNum,
         loop: item.loop,
+        maxDuration: item.maxDuration ?? null,
+        isBreak: false,
       },
     }
   }
@@ -378,7 +424,9 @@ async function fetchConcatItems(
 
   for (let i = fromIndex; i < rows.length; i++) {
     const row = rows[i]
+    if ((row as any).isBreak) break                          // BREAK item interrompe o concat run
     const clip = row.clip
+    if (!clip) continue
     if (isUrlClip(clip.sourceType, clip.sourceUrl)) break   // para no primeiro URL clip
     if (!clip.media?.hlsPath) continue                       // sem HLS, pula
 
@@ -490,44 +538,62 @@ function startTimer(channelId: string) {
             state.position = 0
             state.currentItem = next.item
             persistState(channelId, state.playlistId!, next.index)
-            const newGraphic = await resolveGraphic(next.item.clipId, state.playlistId, channelId).catch(() => state.activeGraphic)
+            // BREAK items have no clip — pass null to resolveGraphic
+            const nextClipId = next.item.isBreak ? null : (next.item.clipId || null)
+            const newGraphic = await resolveGraphic(nextClipId, state.playlistId, channelId).catch(() => state.activeGraphic)
             state.activeGraphic = newGraphic
 
-            const concatEnd = streamService.getConcatRunEnd(channelId)
-            const isInsideConcat = !isLoopRestart
-              && concatEnd !== undefined && next.index <= concatEnd
-              && !isUrlClip(next.item.sourceType, next.item.sourceUrl)
-
-            if (isInsideConcat) {
-              // FFmpeg já está gerenciando esta transição via concat — apenas atualiza estado
-              console.log(`[playout] Auto-avanço ch=${channelId} → #${next.index} via concat (sem restart FFmpeg)`)
-            } else if (isUrlClip(next.item.sourceType, next.item.sourceUrl) && next.item.sourceUrl) {
+            if (next.item.isBreak) {
+              // BREAK: switch to fallback/input, keep timer running so maxDuration is respected
               streamService.clearConcatRun(channelId)
-              const clipUrl = next.item.sourceUrl
-              console.log(`[playout] Avançando para clip URL ch=${channelId} — resolvendo: ${clipUrl}`)
-              resolveInputUrl({ type: 'YOUTUBE', url: clipUrl, device: null })
-                .then((url) => {
-                  if (url) {
-                    streamService.startStreamingFromUrlReencode(channelId, url, newGraphic).catch((err) => {
-                      console.error(`[playout] Clip URL ch=${channelId} — falha ao reiniciar streaming:`, err)
-                    })
+              console.log(`[playout] BREAK ch=${channelId} — comutando para fallback/entrada`)
+              prisma.channel.findUnique({ where: { id: channelId }, include: { fallbackSource: true } })
+                .then(async (ch) => {
+                  if (ch?.fallbackType === 'INPUT_SOURCE' && ch.fallbackSource) {
+                    const url = await resolveInputUrl(ch.fallbackSource).catch(() => null)
+                    if (url) streamService.startStreamingFromUrl(channelId, url, newGraphic).catch(() => {})
                   } else {
-                    console.warn(`[playout] Clip URL ch=${channelId} — yt-dlp não retornou URL (${clipUrl})`)
+                    streamService.startStreamingFromFallback(channelId, ch?.fallbackType ?? 'BLACK').catch(() => {})
                   }
                 })
-                .catch((err) => console.error(`[playout] Clip URL ch=${channelId} — erro ao resolver URL:`, err))
+                .catch(() => streamService.startStreamingFromFallback(channelId, 'BLACK').catch(() => {}))
             } else {
-              // Fora do concat (ex: clip adicionado após o fim do run original) — inicia novo concat
-              streamService.clearConcatRun(channelId)
-              fetchConcatItems(state.playlistId!, next.index).then(({ items, endIndex }) => {
-                if (items.length > 0) {
-                  streamService.startStreamingFromPlaylist(channelId, items, endIndex, newGraphic).catch(() => {})
-                } else {
+              const concatEnd = streamService.getConcatRunEnd(channelId)
+              const isInsideConcat = !isLoopRestart
+                && concatEnd !== undefined && next.index <= concatEnd
+                && !isUrlClip(next.item.sourceType, next.item.sourceUrl)
+
+              if (isInsideConcat) {
+                // FFmpeg já está gerenciando esta transição via concat — apenas atualiza estado
+                console.log(`[playout] Auto-avanço ch=${channelId} → #${next.index} via concat (sem restart FFmpeg)`)
+              } else if (isUrlClip(next.item.sourceType, next.item.sourceUrl) && next.item.sourceUrl) {
+                streamService.clearConcatRun(channelId)
+                const clipUrl = next.item.sourceUrl
+                console.log(`[playout] Avançando para clip URL ch=${channelId} — resolvendo: ${clipUrl}`)
+                resolveInputUrl({ type: 'YOUTUBE', url: clipUrl, device: null })
+                  .then((url) => {
+                    if (url) {
+                      streamService.startStreamingFromUrlReencode(channelId, url, newGraphic).catch((err) => {
+                        console.error(`[playout] Clip URL ch=${channelId} — falha ao reiniciar streaming:`, err)
+                      })
+                    } else {
+                      console.warn(`[playout] Clip URL ch=${channelId} — yt-dlp não retornou URL (${clipUrl})`)
+                    }
+                  })
+                  .catch((err) => console.error(`[playout] Clip URL ch=${channelId} — erro ao resolver URL:`, err))
+              } else {
+                // Fora do concat (ex: clip adicionado após o fim do run original) — inicia novo concat
+                streamService.clearConcatRun(channelId)
+                fetchConcatItems(state.playlistId!, next.index).then(({ items, endIndex }) => {
+                  if (items.length > 0) {
+                    streamService.startStreamingFromPlaylist(channelId, items, endIndex, newGraphic).catch(() => {})
+                  } else {
+                    streamService.restartStreaming(channelId, next.item.mediaId, next.item.cueIn, newGraphic).catch(() => {})
+                  }
+                }).catch(() => {
                   streamService.restartStreaming(channelId, next.item.mediaId, next.item.cueIn, newGraphic).catch(() => {})
-                }
-              }).catch(() => {
-                streamService.restartStreaming(channelId, next.item.mediaId, next.item.cueIn, newGraphic).catch(() => {})
-              })
+                })
+              }
             }
           } else {
             // Fim da playlist sem loop
@@ -662,7 +728,7 @@ export async function resume(channelId: string): Promise<PlayoutState> {
 export async function stop(channelId: string): Promise<PlayoutState> {
   stopTimer(channelId)
   streamService.clearConcatRun(channelId)
-  streamService.stopStreaming(channelId)
+  streamService.stopAllStreaming(channelId)
   const state = states.get(channelId) ?? defaultState(channelId)
   state.status = 'STOPPED'
   state.position = 0
@@ -697,6 +763,19 @@ async function restartFromIndex(channelId: string, index: number, playlistId: st
   streamService.clearConcatRun(channelId)
   const item = await loadItem(playlistId, index)
   if (!item) return
+
+  if (item.isBreak) {
+    console.log(`[playout] BREAK manual ch=${channelId} — comutando para fallback/entrada`)
+    const ch = await prisma.channel.findUnique({ where: { id: channelId }, include: { fallbackSource: true } }).catch(() => null)
+    if (ch?.fallbackType === 'INPUT_SOURCE' && ch.fallbackSource) {
+      const url = await resolveInputUrl(ch.fallbackSource).catch(() => null)
+      if (url) streamService.startStreamingFromUrl(channelId, url, graphic).catch(() => {})
+    } else {
+      streamService.startStreamingFromFallback(channelId, ch?.fallbackType ?? 'BLACK').catch(() => {})
+    }
+    return
+  }
+
   if (isUrlClip(item.sourceType, item.sourceUrl) && item.sourceUrl) {
     await startStreamingForItem(channelId, item, graphic)
     return
@@ -848,15 +927,61 @@ export function updatePlaylistLoop(channelId: string, loop: boolean) {
   if (state) state.loop = loop
 }
 
+// Insere um item BREAK imediatamente após o item atual na playlist ativa
+export async function insertBreak(channelId: string, afterItemId?: string | null): Promise<PlayoutState> {
+  const state = states.get(channelId)
+  if (!state || !state.playlistId) throw new Error('Nenhuma playlist ativa')
+
+  let insertOrder: number
+  if (afterItemId) {
+    const ref = await prisma.playlistItem.findUnique({ where: { id: afterItemId } })
+    if (!ref) throw new Error('Item de referência não encontrado')
+    insertOrder = ref.order + 1
+  } else {
+    const last = await prisma.playlistItem.findFirst({
+      where: { playlistId: state.playlistId },
+      orderBy: { order: 'desc' },
+    })
+    insertOrder = last ? last.order + 1 : 0
+  }
+
+  await prisma.playlistItem.updateMany({
+    where: { playlistId: state.playlistId, order: { gte: insertOrder } },
+    data: { order: { increment: 1 } },
+  })
+
+  await prisma.playlistItem.create({
+    data: { playlistId: state.playlistId, order: insertOrder, loop: false, breakNum: 0, isBreak: true },
+  })
+
+  const { totalDuration, count } = await computePlaylistMeta(state.playlistId)
+  state.totalPlaylistDuration = totalDuration
+  state.itemCount = count
+  state.updatedAt = Date.now()
+  broadcast(channelId, state)
+  return state
+}
+
 // Insere um clipe imediatamente após o item atual na playlist ativa
-export async function insertClip(channelId: string, clipId: string): Promise<PlayoutState> {
+export async function insertClip(channelId: string, clipId: string, afterItemId?: string | null): Promise<PlayoutState> {
   const state = states.get(channelId)
   if (!state || !state.playlistId) throw new Error('Nenhuma playlist ativa')
 
   const clip = await prisma.clip.findUnique({ where: { id: clipId } })
   if (!clip) throw new Error('Clipe não encontrado')
 
-  const insertOrder = state.currentIndex + 1
+  let insertOrder: number
+  if (afterItemId) {
+    const ref = await prisma.playlistItem.findUnique({ where: { id: afterItemId } })
+    if (!ref) throw new Error('Item de referência não encontrado')
+    insertOrder = ref.order + 1
+  } else {
+    const last = await prisma.playlistItem.findFirst({
+      where: { playlistId: state.playlistId },
+      orderBy: { order: 'desc' },
+    })
+    insertOrder = last ? last.order + 1 : 0
+  }
 
   await prisma.playlistItem.updateMany({
     where: { playlistId: state.playlistId, order: { gte: insertOrder } },

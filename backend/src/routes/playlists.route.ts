@@ -42,6 +42,7 @@ const itemSchema = z.object({
   overrideCueIn:  z.number().min(0).optional().nullable(),
   overrideCueOut: z.number().min(0).optional().nullable(),
   loop:          z.boolean().optional(),
+  maxDuration:   z.number().int().min(1).optional().nullable(),
 })
 
 const reorderSchema = z.array(z.object({ id: z.string(), order: z.number().int() }))

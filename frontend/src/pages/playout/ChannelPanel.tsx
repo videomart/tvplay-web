@@ -4,7 +4,7 @@ import {
   Play, Pause, Square, SkipForward, SkipBack,
   Radio, Wifi, WifiOff, ListVideo, MonitorPlay, MonitorOff, Antenna,
   ChevronDown, ChevronUp, RefreshCw, RotateCcw, GripVertical, ArrowLeftRight, Trash2, Repeat,
-  Camera,
+  Camera, Timer,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
@@ -17,6 +17,7 @@ import { channelsApi, type Channel, type FallbackType } from '../../api/channels
 import { inputSourcesApi } from '../../api/input-sources.api'
 import { settingsApi } from '../../api/settings.api'
 import { usePlayoutSocket } from '../../hooks/usePlayoutSocket'
+import { usePlayoutSelection } from '../../stores/playoutSelection.store'
 import { Button } from '../../components/ui/Button'
 import { Badge } from '../../components/ui/Badge'
 import { Modal } from '../../components/ui/Modal'
@@ -262,9 +263,10 @@ function OutputRow({
 
 function PlaylistItemRow({
   item, isCurrent, isPlayed, isDragging, isDragOver,
-  playoutStatus,
-  onJump, onClipPlay, onClipStop, onToggleLoop, onDelete,
+  playoutStatus, rowIdx, isSelected,
+  onJump, onSelect, onClipPlay, onClipStop, onToggleLoop, onDelete, onSetTimer,
   loopPending, clipPlayPending, clipStopPending, deletePending,
+  timerEditId, timerEditVal, setTimerEditId, setTimerEditVal, commitTimer,
   onDragStart, onDragOver, onDragEnd, onDrop,
 }: {
   item: PlaylistItemRow
@@ -273,16 +275,25 @@ function PlaylistItemRow({
   isDragging: boolean
   isDragOver: boolean
   playoutStatus: string
+  rowIdx: number
+  isSelected: boolean
   onJump: () => void
+  onSelect: () => void
   onClipPlay: () => void
   onClipStop: () => void
   onToggleLoop: () => void
   onDelete: () => void
+  onSetTimer: () => void
   loopPending: boolean
   clipPlayPending: boolean
   clipStopPending: boolean
   deletePending: boolean
   graphicName: string | null
+  timerEditId: string | null
+  timerEditVal: string
+  setTimerEditId: (id: string | null) => void
+  setTimerEditVal: (v: string) => void
+  commitTimer: (itemId: string) => void
   onDragStart: () => void
   onDragOver: (e: React.DragEvent) => void
   onDragEnd: () => void
@@ -290,6 +301,79 @@ function PlaylistItemRow({
 }) {
   // Drag só começa a partir do grip handle — evita interceptar clicks em botões
   const fromHandle = useRef(false)
+  const lightRow = rowIdx % 2 !== 0 && !isCurrent
+
+  // ─── BREAK item — renderização simplificada ───────────────────────────────
+  if (item.isBreak) {
+    return (
+      <div
+        draggable
+        onDragStart={(e) => {
+          if (!fromHandle.current) { e.preventDefault(); return }
+          fromHandle.current = false
+          onDragStart()
+        }}
+        onDragOver={onDragOver}
+        onDragEnd={() => { fromHandle.current = false; onDragEnd() }}
+        onDrop={(e) => { e.preventDefault(); onDrop() }}
+        className={clsx(
+          'flex items-center gap-1.5 px-2 py-1.5 rounded transition-all',
+          isCurrent
+            ? 'bg-black ring-2 ring-yellow-400/80 shadow-[inset_3px_0_0_0_rgb(250_204_21)]'
+            : 'bg-black border border-yellow-900/50',
+          isDragging ? 'opacity-30' : '',
+          isDragOver ? 'border-t-2 border-brand-400' : '',
+        )}
+      >
+        <GripVertical
+          onMouseDown={() => { fromHandle.current = true }}
+          onMouseUp={() => { fromHandle.current = false }}
+          className="h-3.5 w-3.5 flex-shrink-0 cursor-grab active:cursor-grabbing text-yellow-800"
+        />
+        <span className="w-5 flex-shrink-0 flex items-center justify-end">
+          {isCurrent
+            ? <span className="h-2 w-2 rounded-full bg-yellow-400 animate-pulse flex-shrink-0" />
+            : <span className="text-[10px] font-mono text-yellow-700">{item.index + 1}</span>}
+        </span>
+        <span className="flex-1 text-center text-xs font-bold text-yellow-400 tracking-widest uppercase">
+          ⏸ BREAK
+        </span>
+        {timerEditId === item.id ? (
+          <input
+            autoFocus
+            className="w-14 bg-gray-900 text-yellow-300 text-[10px] font-mono rounded px-1 py-0.5 border border-yellow-600/60 outline-none flex-shrink-0"
+            placeholder="mm:ss"
+            value={timerEditVal}
+            onChange={(e) => setTimerEditVal(e.target.value)}
+            onBlur={() => commitTimer(item.id)}
+            onKeyDown={(e) => { if (e.key === 'Enter') commitTimer(item.id); if (e.key === 'Escape') setTimerEditId(null) }}
+          />
+        ) : (
+          <button
+            onClick={onSetTimer}
+            title={item.maxDuration ? `Duração: ${Math.floor(item.maxDuration/60)}:${String(item.maxDuration%60).padStart(2,'0')}` : 'Definir duração do BREAK'}
+            className={clsx(
+              'flex-shrink-0 flex items-center gap-0.5 px-1 py-0.5 rounded text-[9px] font-medium transition-colors',
+              item.maxDuration ? 'text-yellow-400 hover:text-yellow-300 bg-yellow-500/10' : 'text-yellow-800 hover:text-yellow-500'
+            )}
+          >
+            <Timer className="h-3 w-3" />
+            {item.maxDuration && `${Math.floor(item.maxDuration/60)}:${String(item.maxDuration%60).padStart(2,'0')}`}
+          </button>
+        )}
+        {(!isCurrent || playoutStatus === 'STOPPED' || playoutStatus === 'IDLE') && (
+          <button
+            onClick={onDelete}
+            disabled={deletePending}
+            title="Remover BREAK"
+            className="flex-shrink-0 p-0.5 rounded text-yellow-800 hover:text-red-400 transition-colors disabled:opacity-40"
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div
@@ -306,7 +390,9 @@ function PlaylistItemRow({
         'flex items-center gap-1.5 px-2 rounded transition-all',
         isCurrent  ? 'py-2 bg-emerald-500/25 ring-2 ring-emerald-400/80 shadow-[inset_3px_0_0_0_rgb(52_211_153)]' : 'py-1.5',
         isPlayed   ? 'opacity-35' : '',
-        !isCurrent && !isPlayed ? 'hover:bg-gray-800/40' : '',
+        !isCurrent ? (lightRow ? 'bg-gray-200' : 'bg-gray-800') : '',
+        !isCurrent && !isPlayed ? (lightRow ? 'hover:bg-gray-300' : 'hover:bg-gray-700') : '',
+        isSelected ? 'ring-2 ring-cyan-500/70 ring-inset' : '',
         isDragging ? 'opacity-30' : '',
         isDragOver ? 'border-t-2 border-brand-400' : '',
       )}
@@ -317,7 +403,7 @@ function PlaylistItemRow({
         onMouseUp={() => { fromHandle.current = false }}
         className={clsx(
           'h-3.5 w-3.5 flex-shrink-0 cursor-grab active:cursor-grabbing',
-          isCurrent ? 'text-emerald-600' : 'text-gray-700'
+          isCurrent ? 'text-emerald-600' : lightRow ? 'text-gray-500' : 'text-gray-700'
         )}
       />
 
@@ -329,7 +415,7 @@ function PlaylistItemRow({
             <span className="text-[10px] font-bold text-emerald-300">▶</span>
           </>
         ) : (
-          <span className="text-[10px] font-mono text-gray-600">{item.index + 1}</span>
+          <span className={clsx('text-[10px] font-mono', lightRow ? 'text-gray-500' : 'text-gray-600')}>{item.index + 1}</span>
         )}
       </span>
 
@@ -345,18 +431,19 @@ function PlaylistItemRow({
       {/* Código */}
       <span className={clsx(
         'text-[10px] font-mono flex-shrink-0 w-14 truncate pl-2',
-        isCurrent ? 'text-emerald-300/80' : 'text-gray-600'
+        isCurrent ? 'text-emerald-300/80' : lightRow ? 'text-gray-700' : 'text-gray-600'
       )} title={item.code}>
         {item.code}
       </span>
 
-      {/* Título — clicável para pular */}
+      {/* Título — clique para selecionar posição, duplo-clique para pular */}
       <button
-        onClick={onJump}
-        title="Ir para este clipe"
+        onClick={onSelect}
+        onDoubleClick={onJump}
+        title={isSelected ? 'Clique para desselecionar · Duplo clique para ir para este clipe' : 'Clique para selecionar posição · Duplo clique para ir para este clipe'}
         className={clsx(
           'flex-1 text-left text-xs truncate transition-colors min-w-0 pl-1',
-          isCurrent ? 'text-emerald-50 font-bold' : isPlayed ? 'text-gray-500' : 'text-gray-300 hover:text-white'
+          isCurrent ? 'text-emerald-50 font-bold cursor-default' : isPlayed ? 'text-gray-500 cursor-pointer' : lightRow ? 'text-gray-900 hover:text-black cursor-pointer' : 'text-gray-300 hover:text-white cursor-pointer'
         )}
       >
         {item.title}
@@ -391,7 +478,7 @@ function PlaylistItemRow({
       )}
 
       {/* Duração */}
-      <span className="text-[10px] font-mono text-gray-600 flex-shrink-0 w-10 text-right">
+      <span className={clsx('text-[10px] font-mono flex-shrink-0 w-10 text-right', lightRow ? 'text-gray-700' : 'text-gray-600')}>
         {formatTime(item.duration)}
       </span>
 
@@ -441,6 +528,33 @@ function PlaylistItemRow({
         )}
       </div>
 
+      {/* Timer — só para URL clips */}
+      {['URL', 'YOUTUBE'].includes(item.sourceType) && (
+        timerEditId === item.id ? (
+          <input
+            autoFocus
+            className="w-14 bg-gray-700 text-gray-100 text-[10px] font-mono rounded px-1 py-0.5 border border-amber-500/60 outline-none flex-shrink-0"
+            placeholder="mm:ss"
+            value={timerEditVal}
+            onChange={(e) => setTimerEditVal(e.target.value)}
+            onBlur={() => commitTimer(item.id)}
+            onKeyDown={(e) => { if (e.key === 'Enter') commitTimer(item.id); if (e.key === 'Escape') setTimerEditId(null) }}
+          />
+        ) : (
+          <button
+            onClick={onSetTimer}
+            title={item.maxDuration ? `Timer: avança após ${Math.floor(item.maxDuration/60)}:${String(item.maxDuration%60).padStart(2,'0')}` : 'Definir timer de avanço'}
+            className={clsx(
+              'flex-shrink-0 flex items-center gap-0.5 px-1 py-0.5 rounded text-[9px] font-medium transition-colors',
+              item.maxDuration ? 'text-amber-400 hover:text-amber-300 bg-amber-500/10' : 'text-gray-700 hover:text-gray-400'
+            )}
+          >
+            <Timer className="h-3 w-3" />
+            {item.maxDuration && `${Math.floor(item.maxDuration/60)}:${String(item.maxDuration%60).padStart(2,'0')}`}
+          </button>
+        )
+      )}
+
       {/* Loop toggle */}
       <button
         onClick={onToggleLoop}
@@ -448,7 +562,7 @@ function PlaylistItemRow({
         title={item.loop ? 'Desativar loop' : 'Ativar loop'}
         className={clsx(
           'flex-shrink-0 p-0.5 rounded transition-colors disabled:opacity-40',
-          item.loop ? 'text-amber-400 hover:text-amber-300' : 'text-gray-700 hover:text-gray-400'
+          item.loop ? 'text-amber-500 hover:text-amber-400' : lightRow ? 'text-gray-500 hover:text-gray-700' : 'text-gray-700 hover:text-gray-400'
         )}
       >
         <RotateCcw className="h-3 w-3" />
@@ -460,7 +574,7 @@ function PlaylistItemRow({
           onClick={onDelete}
           disabled={deletePending}
           title="Remover da playlist"
-          className="flex-shrink-0 p-0.5 rounded text-gray-700 hover:text-red-400 transition-colors disabled:opacity-40"
+          className={clsx('flex-shrink-0 p-0.5 rounded transition-colors disabled:opacity-40', lightRow ? 'text-gray-500 hover:text-red-600' : 'text-gray-700 hover:text-red-400')}
         >
           <Trash2 className="h-3 w-3" />
         </button>
@@ -510,6 +624,9 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
   }, [sysSettings, defaultsApplied])
   const [dragIdx, setDragIdx] = useState<number | null>(null)
   const [overIdx, setOverIdx] = useState<number | null>(null)
+  const { selectedByChannel, setSelected, clearSelected } = usePlayoutSelection()
+  const selectedItemId = selectedByChannel[channel.id] ?? null
+  const setSelectedItemId = (id: string | null) => id === null ? clearSelected(channel.id) : setSelected(channel.id, id)
   const [monitorSrc, setMonitorSrc] = useState<string | null>(null)
   const [monitorStartAt, setMonitorStartAt] = useState(0)
   const [serverPreviewUrl, setServerPreviewUrl] = useState<string | null>(null)
@@ -670,6 +787,38 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
     onSuccess: () => refetchItems(),
     onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao alterar loop'),
   })
+
+  const [timerEditId, setTimerEditId] = useState<string | null>(null)
+  const [timerEditVal, setTimerEditVal] = useState('')
+
+  const setMaxDurationMut = useMutation({
+    mutationFn: ({ itemId, maxDuration }: { itemId: string; maxDuration: number | null }) =>
+      playlistsApi.updateItem(state?.playlistId ?? '', itemId, { maxDuration }),
+    onSuccess: () => refetchItems(),
+    onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao definir timer'),
+  })
+
+  function openTimerEdit(item: { id: string; maxDuration: number | null }) {
+    setTimerEditId(item.id)
+    const v = item.maxDuration
+    setTimerEditVal(v ? `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}` : '')
+  }
+
+  function commitTimer(itemId: string) {
+    const raw = timerEditVal.trim()
+    let secs: number | null = null
+    if (raw) {
+      if (raw.includes(':')) {
+        const [m, s] = raw.split(':').map(Number)
+        secs = (m || 0) * 60 + (s || 0)
+      } else {
+        secs = parseInt(raw, 10) * 60
+      }
+      if (!secs || secs <= 0) secs = null
+    }
+    setMaxDurationMut.mutate({ itemId, maxDuration: secs })
+    setTimerEditId(null)
+  }
 
   const togglePlaylistLoopMut = useMutation({
     mutationFn: () => playoutApi.togglePlaylistLoop(channel.id),
@@ -862,27 +1011,6 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                   </>
                 : item?.sourceType === 'URL'
                   ? (() => {
-                      // Quando outputs estão transmitindo ativamente: mostra indicador de status
-                      // (iframe reinicia do início ao ser remontado — não reflete posição real do broadcast)
-                      if (streamingUp) {
-                        const allStats = outputs.filter(o => o.streaming).map(o => formatBitrate(o.stats)).filter(Boolean)
-                        return (
-                          <>
-                            <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-black">
-                              <div className="flex items-center gap-2">
-                                <span className="h-2.5 w-2.5 rounded-full bg-emerald-400 animate-pulse" />
-                                <p className="text-sm text-emerald-400 font-bold tracking-wide">ON AIR</p>
-                              </div>
-                              <p className="text-xs text-white font-medium text-center px-4 truncate max-w-full">{item.title}</p>
-                              {allStats.length > 0 && (
-                                <p className="text-[11px] font-mono text-emerald-300/70">{allStats.join(' · ')}</p>
-                              )}
-                              <p className="text-[10px] text-gray-600 text-center">yt-dlp → re-encode → saída</p>
-                            </div>
-                            {state?.activeGraphic && <GraphicOverlay graphic={state.activeGraphic} />}
-                          </>
-                        )
-                      }
                       const embed = embedUrlForMonitor(item.sourceUrl)
                       return embed ? (
                         <>
@@ -893,6 +1021,12 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                             allowFullScreen
                             title={item.title}
                           />
+                          {streamingUp && (
+                            <div className="absolute top-2 right-2 flex items-center gap-1 bg-emerald-600/80 backdrop-blur-sm px-1.5 py-0.5 rounded text-[9px] font-bold text-white">
+                              <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
+                              ON AIR
+                            </div>
+                          )}
                           {state?.activeGraphic && <GraphicOverlay graphic={state.activeGraphic} />}
                         </>
                       ) : (
@@ -1134,6 +1268,14 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
               <SkipForward className="h-3.5 w-3.5" />
             </button>
 
+            {selectedItemId && (
+              <span className="flex items-center gap-1 text-[9px] text-cyan-400 border border-cyan-700/40 rounded px-1.5 py-0.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />
+                #{(playlistItems.findIndex(p => p.id === selectedItemId) + 1)}
+                <button onClick={() => setSelectedItemId(null)} className="ml-0.5 text-cyan-600 hover:text-cyan-300">✕</button>
+              </span>
+            )}
+
             <div className="w-px h-3.5 bg-gray-700 mx-0.5" />
 
             {/* Info da playlist */}
@@ -1221,14 +1363,23 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                       isDragging={dragIdx === idx}
                       isDragOver={overIdx === idx && dragIdx !== idx}
                       playoutStatus={status}
+                      rowIdx={idx}
+                      isSelected={pi.id === selectedItemId}
+                      onSelect={() => setSelectedItemId(pi.id === selectedItemId ? null : pi.id)}
                       onJump={() => jumpMut.mutate(idx)}
                       onClipPlay={() => handleClipPlay(idx)}
                       onClipStop={() => stopMut.mutate()}
                       onToggleLoop={() => toggleLoopMut.mutate(pi.id)}
                       onDelete={() => deleteItemMut.mutate(pi.id)}
+                      onSetTimer={() => openTimerEdit(pi)}
                       loopPending={toggleLoopMut.isPending && toggleLoopMut.variables === pi.id}
                       deletePending={deleteItemMut.isPending && deleteItemMut.variables === pi.id}
                       graphicName={pi.graphicName}
+                      timerEditId={timerEditId}
+                      timerEditVal={timerEditVal}
+                      setTimerEditId={setTimerEditId}
+                      setTimerEditVal={setTimerEditVal}
+                      commitTimer={commitTimer}
                       clipPlayPending={(jumpMut.isPending || pauseMut.isPending || resumeMut.isPending) && idx === currentIndex}
                       clipStopPending={stopMut.isPending}
                       onDragStart={() => handleDragStart(idx)}

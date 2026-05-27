@@ -1,7 +1,7 @@
 import { spawn, ChildProcess } from 'child_process'
 import { prisma } from '../lib/prisma'
 import { config } from '../config'
-import { stopStreaming } from './stream.service'
+import { stopAllStreaming } from './stream.service'
 
 interface CameraSession {
   proc: ChildProcess
@@ -77,7 +77,7 @@ export async function startCamera(channelId: string): Promise<ChildProcess> {
   // Para o timer do playout E o streaming antes de iniciar câmera.
   // Sem isso, o timer continua avançando clips e matando o FFmpeg da câmera em loop.
   onCameraStartCb?.(channelId)
-  await stopStreaming(channelId)
+  stopAllStreaming(channelId)
 
   const outputs = await prisma.streamOutput.findMany({
     where: { channelId, active: true },

@@ -57,11 +57,13 @@ export interface PlaylistItemRow {
   typeColor: string | null
   duration: number
   loop: boolean
+  maxDuration: number | null
   clientName: string | null
   breakNum: number
   mediaReady: boolean
   sourceType: string
   graphicName: string | null
+  isBreak: boolean
 }
 
 export interface OutputStats {
@@ -109,8 +111,10 @@ export const playoutApi = {
     api.post<{ id: string; loop: boolean }>(`/playout/${channelId}/items/${itemId}/toggle-loop`).then((r) => r.data),
   reorderItems: (playlistId: string, items: { id: string; order: number }[]) =>
     api.put(`/playlists/${playlistId}/reorder`, items).then((r) => r.data),
-  insertClip: (channelId: string, clipId: string) =>
-    api.post<PlayoutState>(`/playout/${channelId}/insert`, { clipId }).then((r) => r.data),
+  insertClip: (channelId: string, clipId: string, afterItemId?: string | null) =>
+    api.post<PlayoutState>(`/playout/${channelId}/insert`, { clipId, afterItemId }).then((r) => r.data),
+  insertBreak: (channelId: string, afterItemId?: string | null) =>
+    api.post<PlayoutState>(`/playout/${channelId}/insert-break`, { afterItemId }).then((r) => r.data),
   removeItem: (channelId: string, itemId: string) =>
     api.delete<PlayoutState>(`/playout/${channelId}/items/${itemId}`).then((r) => r.data),
   setFallback: (channelId: string, fallbackType: 'BLACK' | 'COLORBARS' | 'INPUT_SOURCE', fallbackSourceId?: string | null) =>
