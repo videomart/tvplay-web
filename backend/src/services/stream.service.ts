@@ -74,13 +74,8 @@ function buildRelayArgs(output: OutputConfig, port: number): string[] | null {
     case 'RTMP': {
       if (!output.url) return null
       const dest = output.streamKey ? `${output.url}/${output.streamKey}` : output.url
-      return [
-        '-hide_banner', '-loglevel', 'warning', '-stats',
-        // Reconnect flags ensure RTMP connection recovers automatically
-        '-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5',
-        '-f', 'mpegts', '-i', udpUrl,
-        ...codec, '-f', 'flv', dest,
-      ]
+      // UDP input does not support -reconnect flags — reconnect is handled at app level (exit handler)
+      return [...inputArgs, ...codec, '-f', 'flv', dest]
     }
     case 'SRT': {
       if (!output.url) return null
@@ -126,13 +121,14 @@ function spawnRelay(channelId: string, output: OutputConfig, port: number): Rela
       console.warn(`[relay/${channelId}/${output.name}] Saiu com código ${code} — reconectando relay em 5s...`)
       setTimeout(async () => {
         if (entry.stopped) return
+        // If the channel relay map was deleted (stopRelays called), don't resurrect
+        if (!relayProcs.has(channelId)) return
         const current = relayProcs.get(channelId)?.get(output.id)
         if (current && current.proc !== proc) return
         const dbOutput = await prisma.streamOutput.findUnique({ where: { id: output.id }, include: { graphic: true } })
         if (!dbOutput?.active) return
         const newEntry = spawnRelay(channelId, dbOutput, port)
         if (!newEntry) return
-        if (!relayProcs.has(channelId)) relayProcs.set(channelId, new Map())
         relayProcs.get(channelId)!.set(output.id, newEntry)
       }, 5000)
     }
