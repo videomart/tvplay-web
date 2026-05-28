@@ -1584,7 +1584,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
           ) : (
             <div className="space-y-1 max-h-80 overflow-y-auto pr-1">
               {playlists.map((pl) => {
-                const isActive = pl.id === state?.playlistId
+                const isActive = pl.id === state?.playlistId && (status === 'PLAYING' || status === 'PAUSED')
                 const isSelected = pl.id === selectedPlaylistId
                 return (
                   <div
