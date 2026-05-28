@@ -4,7 +4,7 @@ import {
   Play, Pause, Square, SkipForward, SkipBack,
   Radio, Wifi, WifiOff, ListVideo, MonitorPlay, MonitorOff, Antenna,
   ChevronDown, ChevronUp, RefreshCw, RotateCcw, GripVertical, ArrowLeftRight, Trash2, Repeat,
-  Camera, Timer, Copy, FilePlus, Eraser,
+  Camera, Timer, Copy, Eraser,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
@@ -615,6 +615,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
   const [selectedPlaylistId, setSelectedPlaylistId] = useState('')
   const [saveAsOpen, setSaveAsOpen] = useState(false)
   const [saveAsName, setSaveAsName] = useState('')
+  const [playlistChannelFilter, setPlaylistChannelFilter] = useState<'all' | string>('all')
   const [monitorOpen, setMonitorOpen] = useState(true)
   const [fallbackOpen, setFallbackOpen] = useState(true)
   const [signalSelectorOpen, setSignalSelectorOpen] = useState(false)
@@ -734,9 +735,16 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
 
   // ─── Queries ────────────────────────────────────────────────────────────────
 
-  const { data: playlists = [] } = useQuery({
-    queryKey: ['playlists-all'],
-    queryFn: () => playlistsApi.list(),
+  const { data: allChannels = [] } = useQuery({
+    queryKey: ['channels'],
+    queryFn: channelsApi.list,
+    staleTime: 60_000,
+    enabled: selectPlaylistOpen,
+  })
+
+  const { data: playlists = [], refetch: refetchPlaylists } = useQuery({
+    queryKey: ['playlists-all', playlistChannelFilter],
+    queryFn: () => playlistsApi.list(playlistChannelFilter !== 'all' ? { channelId: playlistChannelFilter } : undefined),
     enabled: selectPlaylistOpen,
   })
 
@@ -874,12 +882,18 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
       date: new Date().toISOString().slice(0, 10),
       channelId: channel.id,
     }),
-    onSuccess: (pl) => {
+    onSuccess: (pl: any) => {
       setSelectedPlaylistId(pl.id)
-      toast.success(`Nova playlist "${pl.name}" criada — clique em Iniciar para usar`)
-      setSelectPlaylistOpen(true)
+      toast.success(`Nova playlist "${pl.name}" criada`)
+      refetchPlaylists()
     },
     onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao criar playlist'),
+  })
+
+  const deletePlaylistMut = useMutation({
+    mutationFn: (id: string) => playlistsApi.delete(id),
+    onSuccess: () => { toast.success('Playlist excluída'); refetchPlaylists() },
+    onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao excluir'),
   })
 
   function handleDragStart(idx: number) { setDragIdx(idx) }
@@ -1355,40 +1369,28 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
               <ArrowLeftRight className="h-3.5 w-3.5" />
             </button>
 
-            {/* Gestão de playlist — apenas em stop/idle */}
-            {(status === 'STOPPED' || status === 'IDLE') && (
+            {/* Salvar como / Limpar grid — apenas em stop/idle com playlist ativa */}
+            {(status === 'STOPPED' || status === 'IDLE') && state?.playlistId && (
               <>
                 <button
-                  onClick={() => newPlaylistMut.mutate()}
-                  disabled={newPlaylistMut.isPending}
-                  title="Nova playlist vazia"
-                  className="flex-shrink-0 text-gray-600 hover:text-emerald-400 transition-colors disabled:opacity-30"
+                  onClick={() => { setSaveAsName(''); setSaveAsOpen(true) }}
+                  title="Salvar como (clonar com outro nome)"
+                  className="flex-shrink-0 text-gray-600 hover:text-sky-400 transition-colors"
                 >
-                  <FilePlus className="h-3.5 w-3.5" />
+                  <Copy className="h-3.5 w-3.5" />
                 </button>
-                {state?.playlistId && (
-                  <>
-                    <button
-                      onClick={() => { setSaveAsName(''); setSaveAsOpen(true) }}
-                      title="Salvar como (clonar com outro nome)"
-                      className="flex-shrink-0 text-gray-600 hover:text-sky-400 transition-colors"
-                    >
-                      <Copy className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (playlistItems.length === 0) return
-                        if (!confirm('Remover todos os itens do grid?')) return
-                        clearItemsMut.mutate()
-                      }}
-                      disabled={clearItemsMut.isPending || playlistItems.length === 0}
-                      title="Limpar grid (remover todos os itens)"
-                      className="flex-shrink-0 text-gray-600 hover:text-red-400 transition-colors disabled:opacity-30"
-                    >
-                      <Eraser className="h-3.5 w-3.5" />
-                    </button>
-                  </>
-                )}
+                <button
+                  onClick={() => {
+                    if (playlistItems.length === 0) return
+                    if (!confirm('Remover todos os itens do grid?')) return
+                    clearItemsMut.mutate()
+                  }}
+                  disabled={clearItemsMut.isPending || playlistItems.length === 0}
+                  title="Limpar grid (remover todos os itens)"
+                  className="flex-shrink-0 text-gray-600 hover:text-red-400 transition-colors disabled:opacity-30"
+                >
+                  <Eraser className="h-3.5 w-3.5" />
+                </button>
               </>
             )}
             {playlistItems.length > 0 && (
@@ -1493,49 +1495,111 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
         </div>
       )}
 
-      {/* ── Modal: selecionar playlist ────────────────────────────────────── */}
+      {/* ── Modal: gerenciar / selecionar playlist ──────────────────────── */}
       <Modal
         open={selectPlaylistOpen}
         onClose={() => setSelectPlaylistOpen(false)}
-        title={`Selecionar Playlist — ${channel.name}`}
+        title="Playlists"
       >
         <div className="space-y-3">
-          {playlists.length === 0 ? (
-            <p className="text-sm text-gray-500 text-center py-4">
-              Nenhuma playlist cadastrada para este canal.
-            </p>
-          ) : (
-            <div className="space-y-1 max-h-72 overflow-y-auto">
-              {playlists.map((pl) => (
+
+          {/* Filtro de canal + botão Nova */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex gap-1 flex-1 flex-wrap">
+              <button
+                onClick={() => setPlaylistChannelFilter('all')}
+                className={clsx(
+                  'px-2.5 py-1 rounded text-xs font-medium transition-colors',
+                  playlistChannelFilter === 'all'
+                    ? 'bg-brand-600/30 text-brand-300 ring-1 ring-brand-500/30'
+                    : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                )}
+              >
+                Todos
+              </button>
+              {allChannels.map((ch: any) => (
                 <button
-                  key={pl.id}
-                  onClick={() => setSelectedPlaylistId(pl.id)}
+                  key={ch.id}
+                  onClick={() => setPlaylistChannelFilter(ch.id)}
                   className={clsx(
-                    'w-full text-left px-3 py-2.5 rounded-lg text-sm transition-colors',
-                    selectedPlaylistId === pl.id
-                      ? 'bg-brand-600/20 text-brand-300 ring-1 ring-brand-500/30'
-                      : 'hover:bg-white/5 text-gray-300'
+                    'px-2.5 py-1 rounded text-xs font-medium transition-colors',
+                    playlistChannelFilter === ch.id
+                      ? 'bg-brand-600/30 text-brand-300 ring-1 ring-brand-500/30'
+                      : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
                   )}
                 >
-                  <p className="font-medium">{pl.name}</p>
-                  <p className="text-[11px] text-gray-500 mt-0.5">
-                    {new Date(pl.date).toLocaleDateString('pt-BR')}
-                    {pl._count && ` · ${pl._count.items} clipes`}
-                    {pl.channel && ` · ${pl.channel.name}`}
-                  </p>
+                  {ch.name}
                 </button>
               ))}
             </div>
+            <Button
+              size="sm"
+              variant="secondary"
+              loading={newPlaylistMut.isPending}
+              onClick={() => newPlaylistMut.mutate()}
+            >
+              + Nova
+            </Button>
+          </div>
+
+          {/* Lista */}
+          {playlists.length === 0 ? (
+            <p className="text-sm text-gray-500 text-center py-6">Nenhuma playlist encontrada.</p>
+          ) : (
+            <div className="space-y-1 max-h-80 overflow-y-auto pr-1">
+              {playlists.map((pl) => {
+                const isActive = pl.id === state?.playlistId
+                const isSelected = pl.id === selectedPlaylistId
+                return (
+                  <div
+                    key={pl.id}
+                    className={clsx(
+                      'flex items-center gap-2 px-3 py-2 rounded-lg transition-colors',
+                      isSelected
+                        ? 'bg-brand-600/20 ring-1 ring-brand-500/30'
+                        : 'hover:bg-white/5'
+                    )}
+                  >
+                    <button
+                      className="flex-1 text-left min-w-0"
+                      onClick={() => setSelectedPlaylistId(pl.id)}
+                    >
+                      <p className={clsx('text-sm font-medium truncate', isSelected ? 'text-brand-300' : 'text-gray-300')}>
+                        {isActive && <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 mr-1.5 mb-0.5" />}
+                        {pl.name}
+                      </p>
+                      <p className="text-[11px] text-gray-500 mt-0.5">
+                        {new Date(pl.date).toLocaleDateString('pt-BR')}
+                        {pl._count ? ` · ${pl._count.items} itens` : ''}
+                        {pl.channel ? ` · ${pl.channel.name}` : ''}
+                      </p>
+                    </button>
+                    <button
+                      title={isActive ? 'Playlist em uso — não pode excluir' : 'Excluir playlist'}
+                      disabled={isActive || deletePlaylistMut.isPending}
+                      onClick={() => {
+                        if (!confirm(`Excluir "${pl.name}"?`)) return
+                        deletePlaylistMut.mutate(pl.id)
+                      }}
+                      className="flex-shrink-0 p-1 rounded text-gray-700 hover:text-red-400 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
           )}
-          <div className="flex gap-2 justify-end pt-2">
-            <Button variant="secondary" onClick={() => setSelectPlaylistOpen(false)}>Cancelar</Button>
+
+          <div className="flex gap-2 justify-end pt-1 border-t border-gray-800">
+            <Button variant="secondary" onClick={() => setSelectPlaylistOpen(false)}>Fechar</Button>
             <Button
               disabled={!selectedPlaylistId}
               onClick={() => { setSelectPlaylistOpen(false); playMut.mutate() }}
               loading={playMut.isPending}
               icon={<Play className="h-4 w-4" />}
             >
-              Iniciar
+              Usar selecionada
             </Button>
           </div>
         </div>
