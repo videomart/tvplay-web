@@ -8,6 +8,7 @@ export interface ClipType {
   fontBackColor: string
   active: boolean
   createdAt: string
+  _count?: { clips: number }
 }
 
 export const clipTypesApi = {
@@ -15,5 +16,6 @@ export const clipTypesApi = {
   get: (id: string) => api.get<ClipType>(`/clip-types/${id}`).then((r) => r.data),
   create: (data: Partial<ClipType>) => api.post<ClipType>('/clip-types', data).then((r) => r.data),
   update: (id: string, data: Partial<ClipType>) => api.put<ClipType>(`/clip-types/${id}`, data).then((r) => r.data),
-  delete: (id: string) => api.delete(`/clip-types/${id}`),
+  delete: (id: string, replacementTypeId?: string) =>
+    api.delete(`/clip-types/${id}`, { data: replacementTypeId ? { replacementTypeId } : undefined }),
 }

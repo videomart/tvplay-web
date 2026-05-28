@@ -14,7 +14,10 @@ export default async function clipTypeRoutes(app: FastifyInstance) {
   const auth = { preHandler: [app.authenticate] }
 
   app.get('/', auth, async () => {
-    return prisma.clipType.findMany({ orderBy: { name: 'asc' } })
+    return prisma.clipType.findMany({
+      orderBy: { name: 'asc' },
+      include: { _count: { select: { clips: true } } },
+    })
   })
 
   app.get('/:id', auth, async (request: any, reply) => {
@@ -48,10 +51,28 @@ export default async function clipTypeRoutes(app: FastifyInstance) {
   })
 
   app.delete('/:id', auth, async (request: any, reply) => {
-    await prisma.clipType.update({
-      where: { id: request.params.id },
-      data: { active: false },
-    }).catch(() => null)
+    const { id } = request.params
+    const { replacementTypeId } = (request.body ?? {}) as { replacementTypeId?: string }
+
+    const type = await prisma.clipType.findUnique({
+      where: { id },
+      include: { _count: { select: { clips: true } } },
+    })
+    if (!type) return reply.status(404).send({ error: 'Tipo não encontrado' })
+
+    const clipCount = (type as any)._count.clips
+
+    if (clipCount > 0) {
+      if (!replacementTypeId) {
+        return reply.status(409).send({ error: 'Tipo possui clipes vinculados', clipCount })
+      }
+      const replacement = await prisma.clipType.findUnique({ where: { id: replacementTypeId } })
+      if (!replacement) return reply.status(400).send({ error: 'Tipo substituto não encontrado' })
+
+      await prisma.clip.updateMany({ where: { typeId: id }, data: { typeId: replacementTypeId } })
+    }
+
+    await prisma.clipType.delete({ where: { id } })
     return reply.status(204).send()
   })
 }

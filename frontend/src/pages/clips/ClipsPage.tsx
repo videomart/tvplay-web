@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, Search, Upload, CheckCircle2, Clock, XCircle, Play, Scissors, Film, Link, HardDrive } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -66,6 +67,7 @@ function formatDur(sec?: number) {
 
 export default function ClipsPage() {
   const qc = useQueryClient()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [open, setOpen] = useState(false)
   const [previewClip, setPreviewClip] = useState<Clip | null>(null)
   const [urlPreviewClip, setUrlPreviewClip] = useState<Clip | null>(null)
@@ -77,6 +79,7 @@ export default function ClipsPage() {
   const [playerTime, setPlayerTime] = useState(0)
   const [search, setSearch] = useState('')
   const [modalityFilter, setModalityFilter] = useState('')
+  const [typeFilter, setTypeFilter] = useState(() => searchParams.get('typeId') ?? '')
   const [page, setPage] = useState(1)
   const [sortBy, setSortBy] = useState('title')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
@@ -105,8 +108,8 @@ export default function ClipsPage() {
   const fileRefModal = useRef<HTMLInputElement>(null)
 
   const { data, isLoading } = useQuery({
-    queryKey: ['clips', search, modalityFilter, page, sortBy, sortDir],
-    queryFn: () => clipsApi.list({ search: search || undefined, modality: modalityFilter || undefined, page, sortBy, sortDir }),
+    queryKey: ['clips', search, modalityFilter, typeFilter, page, sortBy, sortDir],
+    queryFn: () => clipsApi.list({ search: search || undefined, modality: modalityFilter || undefined, typeId: typeFilter || undefined, page, sortBy, sortDir }),
     refetchInterval: (query) =>
       query.state.data?.items.some((c) => c.media?.ingestStatus === 'PROCESSING') ? 3000 : false,
   })
@@ -308,7 +311,7 @@ export default function ClipsPage() {
       </div>
 
       {/* Filtros */}
-      <div className="flex gap-3 flex-wrap">
+      <div className="flex gap-3 flex-wrap items-center">
         <div className="w-72">
           <Input placeholder="Buscar por título ou código..." value={search} onChange={(e) => setSearch(e.target.value)} icon={<Search className="h-4 w-4" />} />
         </div>
@@ -317,9 +320,25 @@ export default function ClipsPage() {
           onChange={(e) => setModalityFilter(e.target.value)}
           className="rounded-lg bg-gray-800 border border-gray-700 text-gray-100 text-sm px-3 py-2 focus:outline-none focus:border-brand-500"
         >
-          <option value="">Todos os tipos</option>
+          <option value="">Todas as modalidades</option>
           {Object.entries(MODALITY_LABELS).map(([k, v]) => <option key={k} value={k}>{k} — {v}</option>)}
         </select>
+        <select
+          value={typeFilter}
+          onChange={(e) => { setTypeFilter(e.target.value); setPage(1); setSearchParams(e.target.value ? { typeId: e.target.value } : {}) }}
+          className="rounded-lg bg-gray-800 border border-gray-700 text-gray-100 text-sm px-3 py-2 focus:outline-none focus:border-brand-500"
+        >
+          <option value="">Todos os tipos de clipe</option>
+          {types.map((t) => <option key={t.id} value={t.id}>[{t.code}] {t.name}</option>)}
+        </select>
+        {typeFilter && (
+          <button
+            onClick={() => { setTypeFilter(''); setSearchParams({}); setPage(1) }}
+            className="text-xs text-brand-400 hover:text-brand-300 transition-colors"
+          >
+            ✕ Limpar filtro de tipo
+          </button>
+        )}
       </div>
 
       {/* Barra de progresso de upload */}
