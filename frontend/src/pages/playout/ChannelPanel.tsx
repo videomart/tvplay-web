@@ -4,7 +4,7 @@ import {
   Play, Pause, Square, SkipForward, SkipBack,
   Radio, Wifi, WifiOff, ListVideo, MonitorPlay, MonitorOff, Antenna,
   ChevronDown, ChevronUp, RefreshCw, RotateCcw, GripVertical, Trash2, Repeat,
-  Camera, Timer, Copy, Eraser, FolderOpen,
+  Camera, Timer, Copy, Eraser, FolderOpen, Plus,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
@@ -611,12 +611,11 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
 
   const camera = useCameraStream(channel.id)
   const [cameraOpen, setCameraOpen] = useState(false)
-  const [selectPlaylistOpen, setSelectPlaylistOpen] = useState(false)
+  const [roteiroOpen, setRoteiroOpen] = useState(true)
   const [selectedPlaylistId, setSelectedPlaylistId] = useState('')
   const [appendMode, setAppendMode] = useState<'replace' | 'append'>('replace')
   const [saveAsOpen, setSaveAsOpen] = useState(false)
   const [saveAsName, setSaveAsName] = useState('')
-  const [playlistChannelFilter, setPlaylistChannelFilter] = useState<'all' | string>('all')
   const [monitorOpen, setMonitorOpen] = useState(true)
   const [fallbackOpen, setFallbackOpen] = useState(true)
   const [signalSelectorOpen, setSignalSelectorOpen] = useState(false)
@@ -736,17 +735,11 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
 
   // ─── Queries ────────────────────────────────────────────────────────────────
 
-  const { data: allChannels = [] } = useQuery({
-    queryKey: ['channels'],
-    queryFn: channelsApi.list,
-    staleTime: 60_000,
-    enabled: selectPlaylistOpen,
-  })
-
-  const { data: playlists = [], refetch: refetchPlaylists } = useQuery({
-    queryKey: ['playlists-all', playlistChannelFilter],
-    queryFn: () => playlistsApi.list(playlistChannelFilter !== 'all' ? { channelId: playlistChannelFilter } : undefined),
-    enabled: selectPlaylistOpen,
+  const { data: roteiros = [], refetch: refetchRoteiros } = useQuery({
+    queryKey: ['playlists-panel', channel.id],
+    queryFn: () => playlistsApi.list({ channelId: channel.id }),
+    enabled: roteiroOpen,
+    staleTime: 10_000,
   })
 
   const { data: inputSources = [] } = useQuery({
@@ -886,22 +879,21 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
     onSuccess: (pl: any) => {
       setSelectedPlaylistId(pl.id)
       toast.success(`Novo roteiro "${pl.name}" criado`)
-      refetchPlaylists()
+      refetchRoteiros()
     },
     onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao criar roteiro'),
   })
 
   const deletePlaylistMut = useMutation({
     mutationFn: (id: string) => playlistsApi.delete(id),
-    onSuccess: () => { toast.success('Roteiro excluído'); refetchPlaylists() },
+    onSuccess: () => { toast.success('Roteiro excluído'); refetchRoteiros() },
     onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao excluir'),
   })
 
   const appendFromMut = useMutation({
-    mutationFn: () => playlistsApi.appendFrom(state!.playlistId!, selectedPlaylistId),
+    mutationFn: (sourceId: string) => playlistsApi.appendFrom(state!.playlistId!, sourceId),
     onSuccess: (data) => {
       toast.success(`${data.appended} itens adicionados ao roteiro`)
-      setSelectPlaylistOpen(false)
       refetchItems()
     },
     onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao incluir itens'),
@@ -924,7 +916,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
   const onErr = (e: any) => toast.error(e.response?.data?.error ?? 'Erro')
 
   const playMut = useMutation({
-    mutationFn: () => playoutApi.play(channel.id, selectedPlaylistId),
+    mutationFn: (playlistId: string) => playoutApi.play(channel.id, playlistId),
     onSuccess: () => toast.success('Reprodução iniciada'),
     onError: onErr,
   })
@@ -956,8 +948,8 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
   })
 
   function handlePlay() {
-    if (!selectedPlaylistId) { setSelectPlaylistOpen(true); return }
-    playMut.mutate()
+    if (!selectedPlaylistId) { setRoteiroOpen(true); return }
+    playMut.mutate(selectedPlaylistId)
   }
 
   function handleClipPlay(idx: number) {
@@ -1272,6 +1264,118 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
         </div>
       )}
 
+      {/* ── Painel de roteiros ───────────────────────────────────────────── */}
+      {roteiroOpen && (
+        <div className="border-b border-gray-800/60 bg-gray-900/30">
+
+          {/* Cabeçalho: label + modo + novo */}
+          <div className="flex items-center justify-between px-3 py-1.5 border-b border-gray-800/40">
+            <div className="flex items-center gap-3">
+              <span className="text-[10px] uppercase tracking-widest text-gray-500 font-semibold">Roteiros</span>
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="radio"
+                  name={`mode-${channel.id}`}
+                  checked={appendMode === 'replace'}
+                  onChange={() => setAppendMode('replace')}
+                  className="accent-brand-500 h-3 w-3"
+                />
+                <span className="text-[10px] text-gray-400">Substituir</span>
+              </label>
+              <label className={clsx('flex items-center gap-1.5', state?.playlistId ? 'cursor-pointer' : 'opacity-30 cursor-not-allowed')}>
+                <input
+                  type="radio"
+                  name={`mode-${channel.id}`}
+                  checked={appendMode === 'append'}
+                  onChange={() => setAppendMode('append')}
+                  disabled={!state?.playlistId}
+                  className="accent-emerald-500 h-3 w-3"
+                />
+                <span className="text-[10px] text-gray-400">Incluir ao final</span>
+              </label>
+            </div>
+            <button
+              onClick={() => newPlaylistMut.mutate()}
+              disabled={newPlaylistMut.isPending}
+              className="text-[10px] text-gray-600 hover:text-brand-400 transition-colors disabled:opacity-40"
+            >
+              + Novo
+            </button>
+          </div>
+
+          {/* Lista de roteiros */}
+          <div className="max-h-44 overflow-y-auto">
+            {roteiros.length === 0 ? (
+              <p className="text-[11px] text-gray-600 text-center py-3">Nenhum roteiro para este canal.</p>
+            ) : roteiros.map((pl) => {
+              const isCurrent = pl.id === state?.playlistId
+              const isLocked = isCurrent && (status === 'PLAYING' || status === 'PAUSED')
+              return (
+                <div
+                  key={pl.id}
+                  className={clsx(
+                    'flex items-center gap-2 px-3 py-1.5 group',
+                    isCurrent ? 'bg-brand-900/20' : 'hover:bg-white/[0.03]'
+                  )}
+                >
+                  <span className={clsx('h-1.5 w-1.5 rounded-full flex-shrink-0 mt-0.5', isCurrent ? 'bg-emerald-400' : 'bg-transparent')} />
+                  <div className="flex-1 min-w-0">
+                    <p className={clsx('text-[12px] font-medium truncate leading-tight', isCurrent ? 'text-white' : 'text-gray-300')}>{pl.name}</p>
+                    <p className="text-[10px] text-gray-600 leading-tight">
+                      {new Date(pl.date).toLocaleDateString('pt-BR')} · {pl._count?.items ?? 0} itens
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-0.5 flex-shrink-0">
+                    {/* Selecionar / Incluir ao final */}
+                    <button
+                      onClick={() => {
+                        if (appendMode === 'append') {
+                          appendFromMut.mutate(pl.id)
+                        } else {
+                          setSelectedPlaylistId(pl.id)
+                          playMut.mutate(pl.id)
+                        }
+                      }}
+                      disabled={playMut.isPending || appendFromMut.isPending}
+                      title={appendMode === 'append' ? 'Incluir itens ao final do roteiro atual' : 'Usar este roteiro'}
+                      className="p-1 rounded text-gray-600 hover:text-brand-400 disabled:opacity-30 transition-colors"
+                    >
+                      {appendMode === 'append'
+                        ? <Plus className="h-3 w-3" />
+                        : <Play className="h-3 w-3" />}
+                    </button>
+                    {/* Salvar como — só para o roteiro ativo */}
+                    {isCurrent ? (
+                      <button
+                        onClick={() => { setSaveAsName(''); setSaveAsOpen(true) }}
+                        title="Salvar como (clonar com novo nome)"
+                        className="p-1 rounded text-gray-600 hover:text-sky-400 transition-colors"
+                      >
+                        <Copy className="h-3 w-3" />
+                      </button>
+                    ) : (
+                      <span className="w-5" />
+                    )}
+                    {/* Excluir */}
+                    <button
+                      onClick={() => {
+                        if (!confirm(`Excluir "${pl.name}"?`)) return
+                        deletePlaylistMut.mutate(pl.id)
+                      }}
+                      disabled={isLocked || deletePlaylistMut.isPending}
+                      title={isLocked ? 'Roteiro em uso — não pode excluir' : 'Excluir roteiro'}
+                      className="p-1 rounded text-gray-600 hover:text-red-400 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {/* ── Playlist de itens ─────────────────────────────────────────────── */}
       {state?.playlistId ? (
         <div className="border-t border-gray-800">
@@ -1371,25 +1475,18 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
               <Repeat className="h-3.5 w-3.5" />
             </button>
 
-            {/* Selecionar roteiro */}
+            {/* Toggle painel de roteiros */}
             <button
-              onClick={() => setSelectPlaylistOpen(true)}
-              title="Selecionar roteiro"
-              className="flex-shrink-0 text-gray-600 hover:text-brand-400 transition-colors"
+              onClick={() => setRoteiroOpen((v) => !v)}
+              title={roteiroOpen ? 'Ocultar roteiros' : 'Selecionar roteiro'}
+              className={clsx('flex-shrink-0 transition-colors', roteiroOpen ? 'text-brand-400 hover:text-brand-300' : 'text-gray-600 hover:text-brand-400')}
             >
               <FolderOpen className="h-3.5 w-3.5" />
             </button>
 
-            {/* Salvar como / Limpar grid — apenas em stop/idle com playlist ativa */}
+            {/* Limpar grid — apenas em stop/idle com playlist ativa */}
             {(status === 'STOPPED' || status === 'IDLE') && state?.playlistId && (
               <>
-                <button
-                  onClick={() => { setSaveAsName(''); setSaveAsOpen(true) }}
-                  title="Salvar como (clonar com outro nome)"
-                  className="flex-shrink-0 text-gray-600 hover:text-sky-400 transition-colors"
-                >
-                  <Copy className="h-3.5 w-3.5" />
-                </button>
                 <button
                   onClick={() => {
                     if (playlistItems.length === 0) return
@@ -1505,151 +1602,6 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
           </Button>
         </div>
       )}
-
-      {/* ── Modal: gerenciar / selecionar playlist ──────────────────────── */}
-      <Modal
-        open={selectPlaylistOpen}
-        onClose={() => setSelectPlaylistOpen(false)}
-        title="Selecionar Roteiro"
-      >
-        <div className="space-y-3">
-
-          {/* Filtro de canal + botão Nova */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex gap-1 flex-1 flex-wrap">
-              <button
-                onClick={() => setPlaylistChannelFilter('all')}
-                className={clsx(
-                  'px-2.5 py-1 rounded text-xs font-medium transition-colors',
-                  playlistChannelFilter === 'all'
-                    ? 'bg-brand-600/30 text-brand-300 ring-1 ring-brand-500/30'
-                    : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-                )}
-              >
-                Todos
-              </button>
-              {allChannels.map((ch: any) => (
-                <button
-                  key={ch.id}
-                  onClick={() => setPlaylistChannelFilter(ch.id)}
-                  className={clsx(
-                    'px-2.5 py-1 rounded text-xs font-medium transition-colors',
-                    playlistChannelFilter === ch.id
-                      ? 'bg-brand-600/30 text-brand-300 ring-1 ring-brand-500/30'
-                      : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-                  )}
-                >
-                  {ch.name}
-                </button>
-              ))}
-            </div>
-            <Button
-              size="sm"
-              variant="secondary"
-              loading={newPlaylistMut.isPending}
-              onClick={() => newPlaylistMut.mutate()}
-            >
-              + Nova
-            </Button>
-          </div>
-
-          {/* Modo: substituir ou incluir ao final */}
-          <div className="flex items-center gap-4 px-1">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="radio"
-                name={`appendMode-${channel.id}`}
-                checked={appendMode === 'replace'}
-                onChange={() => setAppendMode('replace')}
-                className="accent-brand-500"
-              />
-              <span className="text-xs text-gray-300">Substituir roteiro atual</span>
-            </label>
-            <label className={clsx('flex items-center gap-2', state?.playlistId ? 'cursor-pointer' : 'opacity-40 cursor-not-allowed')}>
-              <input
-                type="radio"
-                name={`appendMode-${channel.id}`}
-                checked={appendMode === 'append'}
-                onChange={() => setAppendMode('append')}
-                disabled={!state?.playlistId}
-                className="accent-emerald-500"
-              />
-              <span className="text-xs text-gray-300">Incluir ao final do atual</span>
-            </label>
-          </div>
-
-          {/* Lista */}
-          {playlists.length === 0 ? (
-            <p className="text-sm text-gray-500 text-center py-6">Nenhum roteiro encontrado.</p>
-          ) : (
-            <div className="space-y-1 max-h-80 overflow-y-auto pr-1">
-              {playlists.map((pl) => {
-                const isActive = pl.id === state?.playlistId && (status === 'PLAYING' || status === 'PAUSED')
-                const isSelected = pl.id === selectedPlaylistId
-                return (
-                  <div
-                    key={pl.id}
-                    className={clsx(
-                      'flex items-center gap-2 px-3 py-2 rounded-lg transition-colors',
-                      isSelected
-                        ? 'bg-brand-600/20 ring-1 ring-brand-500/30'
-                        : 'hover:bg-white/5'
-                    )}
-                  >
-                    <button
-                      className="flex-1 text-left min-w-0"
-                      onClick={() => setSelectedPlaylistId(pl.id)}
-                    >
-                      <p className={clsx('text-sm font-medium truncate', isSelected ? 'text-brand-300' : 'text-gray-300')}>
-                        {isActive && <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 mr-1.5 mb-0.5" />}
-                        {pl.name}
-                      </p>
-                      <p className="text-[11px] text-gray-500 mt-0.5">
-                        {new Date(pl.date).toLocaleDateString('pt-BR')}
-                        {pl._count ? ` · ${pl._count.items} itens` : ''}
-                        {pl.channel ? ` · ${pl.channel.name}` : ''}
-                      </p>
-                    </button>
-                    <button
-                      title={isActive ? 'Roteiro em uso — não pode excluir' : 'Excluir roteiro'}
-                      disabled={isActive || deletePlaylistMut.isPending}
-                      onClick={() => {
-                        if (!confirm(`Excluir "${pl.name}"?`)) return
-                        deletePlaylistMut.mutate(pl.id)
-                      }}
-                      className="flex-shrink-0 p-1 rounded text-gray-700 hover:text-red-400 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-
-          <div className="flex gap-2 justify-end pt-1 border-t border-gray-800">
-            <Button variant="secondary" onClick={() => setSelectPlaylistOpen(false)}>Fechar</Button>
-            {appendMode === 'append' ? (
-              <Button
-                disabled={!selectedPlaylistId || !state?.playlistId}
-                onClick={() => appendFromMut.mutate()}
-                loading={appendFromMut.isPending}
-              >
-                Incluir ao final
-              </Button>
-            ) : (
-              <Button
-                disabled={!selectedPlaylistId}
-                onClick={() => { setSelectPlaylistOpen(false); playMut.mutate() }}
-                loading={playMut.isPending}
-                icon={<Play className="h-4 w-4" />}
-              >
-                Usar selecionada
-              </Button>
-            )}
-          </div>
-        </div>
-      </Modal>
 
       {/* ── Modal: salvar como ───────────────────────────────────────────── */}
       <Modal
