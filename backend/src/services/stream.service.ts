@@ -580,11 +580,11 @@ function buildConcatArgs(
 
   const input: string[] = [
     '-hide_banner', '-loglevel', 'warning', '-stats',
+    '-re',  // must be before -i; after -i it's treated as an output flag and FFmpeg rejects it
     '-f', 'concat', '-safe', '0',
     '-protocol_whitelist', 'file,http,https,tcp,tls,crypto',
     '-i', concatFilePath,
     ...(logoUrl ? ['-stream_loop', '-1', '-i', logoUrl] : []),
-    '-re',
   ]
 
   const aBitrate = output.audioBitrate ?? 128
