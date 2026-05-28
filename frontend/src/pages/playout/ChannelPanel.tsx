@@ -124,8 +124,9 @@ function ColorBars() {
 // ─── Barra de progresso do clipe ─────────────────────────────────────────────
 
 function ClipProgressBar({ position, duration }: { position: number; duration: number }) {
-  const pct = duration > 0 ? Math.min((position / duration) * 100, 100) : 0
-  const remaining = Math.max(0, duration - position)
+  const isInfinite = duration >= Number.MAX_SAFE_INTEGER / 2
+  const pct = (!isInfinite && duration > 0) ? Math.min((position / duration) * 100, 100) : 0
+  const remaining = isInfinite ? null : Math.max(0, duration - position)
   return (
     <div className="space-y-1">
       <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
@@ -134,10 +135,19 @@ function ClipProgressBar({ position, duration }: { position: number; duration: n
           style={{ width: `${pct}%` }}
         />
       </div>
-      <div className="flex justify-between text-[11px] font-mono text-gray-500">
-        <span>{formatTime(position)}</span>
-        <span className="text-gray-600">clipe</span>
-        <span className="text-red-400/80">-{formatTime(remaining)}</span>
+      <div className="flex items-center justify-between gap-1 text-[11px] font-mono">
+        <span className="flex items-center gap-1 text-gray-500 min-w-0">
+          <span className="text-[9px] font-bold uppercase tracking-wide text-gray-600 flex-shrink-0">DUR</span>
+          <span>{isInfinite ? '∞' : formatTime(duration)}</span>
+        </span>
+        <span className="flex items-center gap-0.5 text-emerald-400 flex-shrink-0">
+          <ChevronUp className="h-3 w-3" />
+          {formatTime(position)}
+        </span>
+        <span className="flex items-center gap-0.5 text-red-400 flex-shrink-0">
+          <ChevronDown className="h-3 w-3" />
+          {remaining !== null ? formatTime(remaining) : '—'}
+        </span>
       </div>
     </div>
   )
@@ -320,7 +330,7 @@ function PlaylistItemRow({
           'flex items-center gap-1.5 px-2 py-1.5 rounded transition-all',
           isCurrent
             ? 'bg-black ring-2 ring-yellow-400/80 shadow-[inset_3px_0_0_0_rgb(250_204_21)]'
-            : 'bg-black border border-yellow-900/50',
+            : 'bg-black border-l-2 border-l-yellow-600/60',
           isDragging ? 'opacity-30' : '',
           isDragOver ? 'border-t-2 border-brand-400' : '',
         )}
@@ -388,10 +398,10 @@ function PlaylistItemRow({
       onDrop={(e) => { e.preventDefault(); onDrop() }}
       className={clsx(
         'flex items-center gap-1.5 px-2 rounded transition-all',
-        isCurrent  ? 'py-2 bg-emerald-500/25 ring-2 ring-emerald-400/80 shadow-[inset_3px_0_0_0_rgb(52_211_153)]' : 'py-1.5',
+        isCurrent  ? 'py-2 bg-emerald-600/40 ring-2 ring-emerald-400/80 shadow-[inset_3px_0_0_0_rgb(52_211_153)]' : 'py-1.5',
         isPlayed   ? 'opacity-35' : '',
         !isCurrent ? (lightRow ? 'bg-gray-200' : 'bg-gray-800') : '',
-        !isCurrent && !isPlayed ? (lightRow ? 'hover:bg-gray-300' : 'hover:bg-gray-700') : '',
+        !isCurrent && !isPlayed ? (lightRow ? 'hover:bg-gray-100' : 'hover:bg-gray-600') : '',
         isSelected ? 'ring-2 ring-cyan-500/70 ring-inset' : '',
         isDragging ? 'opacity-30' : '',
         isDragOver ? 'border-t-2 border-brand-400' : '',
@@ -1003,7 +1013,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
             {/* Câmera tem prioridade — substitui qualquer outro conteúdo no monitor */}
             {camera.active && camera.previewStream ? (
               <CameraMonitorPreview stream={camera.previewStream} graphic={state?.activeGraphic} />
-            ) : status === 'PLAYING' || status === 'PAUSED' ? (
+            ) : (status === 'PLAYING' || status === 'PAUSED') && !item?.isBreak ? (
               monitorSrc
                 ? <>
                     <VideoPlayer src={monitorSrc} startAt={monitorStartAt} autoPlay muted className="w-full h-full" />
@@ -1278,10 +1288,18 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
 
             <div className="w-px h-3.5 bg-gray-700 mx-0.5" />
 
-            {/* Info da playlist */}
+            {/* Info da playlist / on-air */}
             <ListVideo className="h-3 w-3 text-gray-600 flex-shrink-0" />
-            <span className="text-[10px] text-gray-500 font-semibold truncate flex-1 min-w-0">
-              {state.name}
+            <span className="text-[10px] font-bold truncate flex-1 min-w-0 text-white">
+              {item?.isBreak
+                ? '⏸ BREAK'
+                : (status === 'PLAYING' || status === 'PAUSED') && item
+                  ? `${item.code} • ${item.title}`
+                  : channel.fallbackType === 'COLORBARS'
+                    ? '⬛ Barras de cor'
+                    : channel.fallbackType === 'INPUT_SOURCE' && channel.fallbackSource
+                      ? `⬛ ${channel.fallbackSource.name}`
+                      : '⬛ Black'}
             </span>
 
             {/* Loop da playlist */}

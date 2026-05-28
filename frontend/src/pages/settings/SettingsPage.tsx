@@ -57,6 +57,7 @@ export default function SettingsPage() {
     defaultPlaylistOpen: true,
   })
   const [clockOffsetHours, setClockOffsetHours] = useState(0)
+  const [defaultBreakDuration, setDefaultBreakDuration] = useState(300)
   const [channelNames, setChannelNames] = useState<Record<string, { name: string; description: string }>>({})
 
   useEffect(() => {
@@ -73,6 +74,7 @@ export default function SettingsPage() {
         defaultPlaylistOpen: settings.defaultPlaylistOpen,
       })
       setClockOffsetHours(settings.clockOffsetHours ?? 0)
+      setDefaultBreakDuration(settings.defaultBreakDuration ?? 300)
     }
   }, [settings])
 
@@ -344,11 +346,33 @@ export default function SettingsPage() {
             </div>
           </div>
 
+          {/* Duração padrão do BREAK */}
+          <div className="border-t border-gray-800 pt-4 space-y-2">
+            <h3 className="text-sm font-semibold text-white">BREAK — Duração Padrão</h3>
+            <p className="text-xs text-gray-500">
+              Tempo aplicado automaticamente ao inserir um item BREAK na playlist. Pode ser ajustado individualmente em cada BREAK.
+            </p>
+            <div className="flex items-center gap-3">
+              <label className="text-sm text-gray-300 flex-shrink-0">Duração (segundos):</label>
+              <input
+                type="number"
+                min={0}
+                max={86400}
+                value={defaultBreakDuration}
+                onChange={(e) => setDefaultBreakDuration(Math.max(0, Number(e.target.value)))}
+                className={inputCls + ' w-28'}
+              />
+              <span className="text-xs text-gray-500">
+                {Math.floor(defaultBreakDuration / 60)}:{String(defaultBreakDuration % 60).padStart(2, '0')} min
+              </span>
+            </div>
+          </div>
+
           <div className="flex justify-end pt-2">
             <Button
               icon={<Save className="h-4 w-4" />}
               loading={saveMut.isPending}
-              onClick={() => saveMut.mutate({ ...playoutDefaults, clockOffsetHours })}
+              onClick={() => saveMut.mutate({ ...playoutDefaults, clockOffsetHours, defaultBreakDuration })}
             >
               Salvar
             </Button>

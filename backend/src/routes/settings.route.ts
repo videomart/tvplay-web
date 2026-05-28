@@ -20,7 +20,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
       companyName, logoUrl, email,
       defaultMonitorOpen, defaultFallbackOpen,
       defaultOutputsOpen, defaultPlaylistOpen,
-      clockOffsetHours,
+      clockOffsetHours, defaultBreakDuration,
     } = request.body as {
       companyName?: string
       logoUrl?: string | null
@@ -30,6 +30,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
       defaultOutputsOpen?: boolean
       defaultPlaylistOpen?: boolean
       clockOffsetHours?: number
+      defaultBreakDuration?: number
     }
 
     const result = await prisma.systemSettings.upsert({
@@ -39,21 +40,23 @@ export default async function settingsRoutes(app: FastifyInstance) {
         companyName: companyName ?? 'TVPlay',
         logoUrl: logoUrl ?? null,
         email: email ?? null,
-        defaultMonitorOpen:  defaultMonitorOpen  ?? true,
-        defaultFallbackOpen: defaultFallbackOpen ?? true,
-        defaultOutputsOpen:  defaultOutputsOpen  ?? true,
-        defaultPlaylistOpen: defaultPlaylistOpen ?? true,
-        clockOffsetHours:    clockOffsetHours    ?? 0,
+        defaultMonitorOpen:   defaultMonitorOpen   ?? true,
+        defaultFallbackOpen:  defaultFallbackOpen  ?? true,
+        defaultOutputsOpen:   defaultOutputsOpen   ?? true,
+        defaultPlaylistOpen:  defaultPlaylistOpen  ?? true,
+        clockOffsetHours:     clockOffsetHours     ?? 0,
+        defaultBreakDuration: defaultBreakDuration ?? 300,
       },
       update: {
-        ...(companyName        !== undefined && { companyName }),
-        ...(logoUrl            !== undefined && { logoUrl }),
-        ...(email              !== undefined && { email }),
-        ...(defaultMonitorOpen  !== undefined && { defaultMonitorOpen }),
-        ...(defaultFallbackOpen !== undefined && { defaultFallbackOpen }),
-        ...(defaultOutputsOpen  !== undefined && { defaultOutputsOpen }),
-        ...(defaultPlaylistOpen !== undefined && { defaultPlaylistOpen }),
-        ...(clockOffsetHours    !== undefined && { clockOffsetHours }),
+        ...(companyName           !== undefined && { companyName }),
+        ...(logoUrl               !== undefined && { logoUrl }),
+        ...(email                 !== undefined && { email }),
+        ...(defaultMonitorOpen    !== undefined && { defaultMonitorOpen }),
+        ...(defaultFallbackOpen   !== undefined && { defaultFallbackOpen }),
+        ...(defaultOutputsOpen    !== undefined && { defaultOutputsOpen }),
+        ...(defaultPlaylistOpen   !== undefined && { defaultPlaylistOpen }),
+        ...(clockOffsetHours      !== undefined && { clockOffsetHours }),
+        ...(defaultBreakDuration  !== undefined && { defaultBreakDuration }),
       },
     })
 

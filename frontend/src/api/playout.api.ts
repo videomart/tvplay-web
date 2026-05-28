@@ -21,6 +21,9 @@ export interface CurrentItem {
   order: number
   breakNum: number
   loop: boolean
+  isBreak: boolean
+  graphicName: string | null
+  mediaReady: boolean
 }
 
 export interface ActiveGraphic {

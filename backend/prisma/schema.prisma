@@ -359,6 +359,9 @@ model SystemSettings {
   // Fuso horário do relógio no gráfico de stream (offset UTC em horas inteiras)
   clockOffsetHours Int @default(0)
 
+  // Duração padrão do item BREAK ao inserir (em segundos)
+  defaultBreakDuration Int @default(300)
+
   updatedAt DateTime @updatedAt
 
   @@map("system_settings")

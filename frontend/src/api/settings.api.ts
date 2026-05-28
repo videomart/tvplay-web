@@ -10,6 +10,7 @@ export interface SystemSettings {
   defaultOutputsOpen: boolean
   defaultPlaylistOpen: boolean
   clockOffsetHours: number
+  defaultBreakDuration: number
   updatedAt: string
 }
 

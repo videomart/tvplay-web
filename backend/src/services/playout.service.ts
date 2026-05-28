@@ -950,8 +950,11 @@ export async function insertBreak(channelId: string, afterItemId?: string | null
     data: { order: { increment: 1 } },
   })
 
+  const sysSettings = await prisma.systemSettings.findUnique({ where: { id: 'singleton' } })
+  const defaultBreakDuration = sysSettings?.defaultBreakDuration ?? 300
+
   await prisma.playlistItem.create({
-    data: { playlistId: state.playlistId, order: insertOrder, loop: false, breakNum: 0, isBreak: true },
+    data: { playlistId: state.playlistId, order: insertOrder, loop: false, breakNum: 0, isBreak: true, maxDuration: defaultBreakDuration },
   })
 
   const { totalDuration, count } = await computePlaylistMeta(state.playlistId)
