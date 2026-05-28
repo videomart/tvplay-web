@@ -63,4 +63,10 @@ export const playlistsApi = {
 
   reorder: (playlistId: string, items: { id: string; order: number }[]) =>
     api.put(`/playlists/${playlistId}/reorder`, items),
+
+  clone: (playlistId: string, name?: string) =>
+    api.post<Playlist>(`/playlists/${playlistId}/clone`, { name }).then((r) => r.data),
+
+  clearItems: (playlistId: string) =>
+    api.delete(`/playlists/${playlistId}/items`),
 }

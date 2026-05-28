@@ -4,7 +4,7 @@ import {
   Play, Pause, Square, SkipForward, SkipBack,
   Radio, Wifi, WifiOff, ListVideo, MonitorPlay, MonitorOff, Antenna,
   ChevronDown, ChevronUp, RefreshCw, RotateCcw, GripVertical, ArrowLeftRight, Trash2, Repeat,
-  Camera, Timer,
+  Camera, Timer, Copy, FilePlus, Eraser,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
@@ -613,6 +613,8 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
   const [cameraOpen, setCameraOpen] = useState(false)
   const [selectPlaylistOpen, setSelectPlaylistOpen] = useState(false)
   const [selectedPlaylistId, setSelectedPlaylistId] = useState('')
+  const [saveAsOpen, setSaveAsOpen] = useState(false)
+  const [saveAsName, setSaveAsName] = useState('')
   const [monitorOpen, setMonitorOpen] = useState(true)
   const [fallbackOpen, setFallbackOpen] = useState(true)
   const [signalSelectorOpen, setSignalSelectorOpen] = useState(false)
@@ -849,6 +851,35 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
     mutationFn: (itemId: string) => playoutApi.removeItem(channel.id, itemId),
     onSuccess: () => { toast.success('Item removido'); refetchItems() },
     onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao remover item'),
+  })
+
+  const clonePlaylistMut = useMutation({
+    mutationFn: (name: string) => playlistsApi.clone(state!.playlistId!, name || undefined),
+    onSuccess: (pl) => {
+      toast.success(`Playlist "${pl.name}" salva`)
+      setSaveAsOpen(false)
+      setSaveAsName('')
+    },
+    onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao salvar como'),
+  })
+
+  const clearItemsMut = useMutation({
+    mutationFn: () => playlistsApi.clearItems(state!.playlistId!),
+    onSuccess: () => { toast.success('Grid limpo'); refetchItems() },
+    onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao limpar grid'),
+  })
+
+  const newPlaylistMut = useMutation({
+    mutationFn: () => playlistsApi.create({
+      date: new Date().toISOString().slice(0, 10),
+      channelId: channel.id,
+    }),
+    onSuccess: (pl) => {
+      setSelectedPlaylistId(pl.id)
+      toast.success(`Nova playlist "${pl.name}" criada — clique em Iniciar para usar`)
+      setSelectPlaylistOpen(true)
+    },
+    onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao criar playlist'),
   })
 
   function handleDragStart(idx: number) { setDragIdx(idx) }
@@ -1323,6 +1354,43 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
             >
               <ArrowLeftRight className="h-3.5 w-3.5" />
             </button>
+
+            {/* Gestão de playlist — apenas em stop/idle */}
+            {(status === 'STOPPED' || status === 'IDLE') && (
+              <>
+                <button
+                  onClick={() => newPlaylistMut.mutate()}
+                  disabled={newPlaylistMut.isPending}
+                  title="Nova playlist vazia"
+                  className="flex-shrink-0 text-gray-600 hover:text-emerald-400 transition-colors disabled:opacity-30"
+                >
+                  <FilePlus className="h-3.5 w-3.5" />
+                </button>
+                {state?.playlistId && (
+                  <>
+                    <button
+                      onClick={() => { setSaveAsName(''); setSaveAsOpen(true) }}
+                      title="Salvar como (clonar com outro nome)"
+                      className="flex-shrink-0 text-gray-600 hover:text-sky-400 transition-colors"
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (playlistItems.length === 0) return
+                        if (!confirm('Remover todos os itens do grid?')) return
+                        clearItemsMut.mutate()
+                      }}
+                      disabled={clearItemsMut.isPending || playlistItems.length === 0}
+                      title="Limpar grid (remover todos os itens)"
+                      className="flex-shrink-0 text-gray-600 hover:text-red-400 transition-colors disabled:opacity-30"
+                    >
+                      <Eraser className="h-3.5 w-3.5" />
+                    </button>
+                  </>
+                )}
+              </>
+            )}
             {playlistItems.length > 0 && (
               <span className="text-[10px] text-gray-700 flex-shrink-0">
                 {playlistItems.length} · {formatTime(totalPlaylistDuration)}
@@ -1468,6 +1536,40 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
               icon={<Play className="h-4 w-4" />}
             >
               Iniciar
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ── Modal: salvar como ───────────────────────────────────────────── */}
+      <Modal
+        open={saveAsOpen}
+        onClose={() => setSaveAsOpen(false)}
+        title="Salvar Playlist Como"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-400">
+            Cria uma cópia da playlist atual com todos os itens. O original não é alterado.
+          </p>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Nome da nova playlist</label>
+            <input
+              autoFocus
+              value={saveAsName}
+              onChange={(e) => setSaveAsName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') clonePlaylistMut.mutate(saveAsName) }}
+              placeholder="Deixe vazio para gerar nome automático"
+              className="w-full rounded-lg bg-gray-800 border border-gray-700 text-gray-100 placeholder-gray-600 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 transition-colors text-sm px-3 py-2"
+            />
+          </div>
+          <div className="flex gap-2 justify-end pt-1">
+            <Button variant="secondary" onClick={() => setSaveAsOpen(false)}>Cancelar</Button>
+            <Button
+              loading={clonePlaylistMut.isPending}
+              icon={<Copy className="h-4 w-4" />}
+              onClick={() => clonePlaylistMut.mutate(saveAsName)}
+            >
+              Salvar cópia
             </Button>
           </div>
         </div>

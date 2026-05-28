@@ -139,6 +139,52 @@ export default async function playlistRoutes(app: FastifyInstance) {
     return reply.status(204).send()
   })
 
+  // Clona uma playlist (todos os itens) com um nome novo
+  app.post('/:id/clone', auth, async (request: any, reply) => {
+    const { name } = (request.body ?? {}) as { name?: string }
+    const source = await prisma.playlist.findUnique({
+      where: { id: request.params.id },
+      include: { items: { orderBy: { order: 'asc' } } },
+    })
+    if (!source) return reply.status(404).send({ error: 'Playlist não encontrada' })
+
+    const resolvedName = name?.trim() ? name.trim() : await generateName(new Date(source.date))
+    const clone = await prisma.playlist.create({
+      data: {
+        date: source.date,
+        name: resolvedName,
+        channelId: source.channelId,
+        notes: source.notes ?? undefined,
+        autoStart: source.autoStart,
+        startTime: source.startTime,
+        loop: source.loop,
+        graphicId: source.graphicId,
+        items: {
+          create: source.items.map((item) => ({
+            clipId:         item.clipId ?? undefined,
+            order:          item.order,
+            breakNum:       item.breakNum,
+            blockOrder:     item.blockOrder,
+            isBreak:        item.isBreak,
+            maxDuration:    item.maxDuration,
+            loop:           item.loop,
+            overrideCueIn:  item.overrideCueIn,
+            overrideCueOut: item.overrideCueOut,
+          })),
+        },
+      },
+      include: { channel: { select: { id: true, name: true, number: true } }, _count: { select: { items: true } } },
+    })
+    return reply.status(201).send(clone)
+  })
+
+  // Remove todos os itens de uma playlist sem deletar a playlist
+  app.delete('/:id/items', auth, async (request: any, reply) => {
+    if (await assertNotLocked(request.params.id, reply)) return
+    await prisma.playlistItem.deleteMany({ where: { playlistId: request.params.id } })
+    return reply.status(204).send()
+  })
+
   // ─── Itens ────────────────────────────────────────────────────────────────
 
   app.post('/:id/items', auth, async (request: any, reply) => {
