@@ -178,6 +178,41 @@ export default async function playlistRoutes(app: FastifyInstance) {
     return reply.status(201).send(clone)
   })
 
+  // Adiciona ao final os itens de outro roteiro (append-from)
+  app.post('/:id/append-from/:sourceId', auth, async (request: any, reply) => {
+    const { id, sourceId } = request.params as { id: string; sourceId: string }
+    if (await assertNotLocked(id, reply)) return
+
+    const sourceItems = await prisma.playlistItem.findMany({
+      where: { playlistId: sourceId },
+      orderBy: { order: 'asc' },
+    })
+    if (sourceItems.length === 0) return reply.send({ appended: 0 })
+
+    const maxPos = await prisma.playlistItem.aggregate({
+      where: { playlistId: id },
+      _max: { order: true },
+    })
+    const startOrder = (maxPos._max.order ?? -1) + 1
+
+    await prisma.playlistItem.createMany({
+      data: sourceItems.map((item, idx) => ({
+        playlistId:     id,
+        order:          startOrder + idx,
+        breakNum:       item.breakNum,
+        blockOrder:     item.blockOrder,
+        clipId:         item.clipId ?? undefined,
+        isBreak:        item.isBreak,
+        maxDuration:    item.maxDuration,
+        loop:           item.loop,
+        overrideCueIn:  item.overrideCueIn,
+        overrideCueOut: item.overrideCueOut,
+        graphicId:      (item as any).graphicId ?? null,
+      })),
+    })
+    return reply.send({ appended: sourceItems.length })
+  })
+
   // Remove todos os itens de uma playlist sem deletar a playlist
   app.delete('/:id/items', auth, async (request: any, reply) => {
     if (await assertNotLocked(request.params.id, reply)) return

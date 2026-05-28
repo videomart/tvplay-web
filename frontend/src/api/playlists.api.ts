@@ -69,4 +69,7 @@ export const playlistsApi = {
 
   clearItems: (playlistId: string) =>
     api.delete(`/playlists/${playlistId}/items`),
+
+  appendFrom: (targetId: string, sourceId: string) =>
+    api.post<{ appended: number }>(`/playlists/${targetId}/append-from/${sourceId}`).then(r => r.data),
 }
