@@ -623,6 +623,8 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
   const [defaultsApplied, setDefaultsApplied] = useState(false)
   const playlistScrollRef = useRef<HTMLDivElement>(null)
   const currentItemRef = useRef<HTMLDivElement>(null)
+  const userScrolledRef = useRef(false)        // operador moveu o scroll manualmente
+  const programmaticScrollRef = useRef(false)  // evita que o scroll programático acione o detector manual
 
   // Aplica defaults do SystemSettings na primeira carga
   useEffect(() => {
@@ -654,13 +656,22 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
   const currentIndex = state?.currentIndex ?? 0
   const itemCount = state?.itemCount ?? 0
 
-  // Auto-scroll: mantém o clipe atual no topo da área visível do grid
+  // Auto-scroll: quando item entra no ar, posiciona no topo do grid.
+  // Após o scroll, o operador pode rolar livremente.
+  // Na próxima troca de item, volta ao topo independentemente.
   useEffect(() => {
     const container = playlistScrollRef.current
     const item = currentItemRef.current
     if (!container || !item || !playlistOpen) return
+
+    // Novo item entrou no ar — reseta flag de scroll manual e força posicionamento no topo
+    userScrolledRef.current = false
+
     const itemTop = item.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop
+    programmaticScrollRef.current = true
     container.scrollTo({ top: Math.max(0, itemTop), behavior: 'smooth' })
+    const t = setTimeout(() => { programmaticScrollRef.current = false }, 600)
+    return () => clearTimeout(t)
   }, [currentIndex, playlistOpen])
 
   // Refetch items ao trocar de playlist (ex: "usar este roteiro" enquanto outro está ativo)
@@ -1398,7 +1409,13 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
 
           {/* Itens com DnD */}
           {playlistOpen && (
-            <div ref={playlistScrollRef} className="max-h-72 overflow-y-auto py-1">
+            <div
+              ref={playlistScrollRef}
+              className="max-h-72 overflow-y-auto py-1"
+              onScroll={() => {
+                if (!programmaticScrollRef.current) userScrolledRef.current = true
+              }}
+            >
               {playlistItems.length === 0 ? (
                 <p className="text-[11px] text-gray-600 text-center py-3">Carregando...</p>
               ) : (
