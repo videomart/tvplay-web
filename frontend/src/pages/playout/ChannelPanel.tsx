@@ -269,35 +269,6 @@ function OutputRow({
   )
 }
 
-// ─── Tipo de mídia da fonte ───────────────────────────────────────────────────
-
-function getMediaType(item: PlaylistItemRow): string {
-  if (item.isBreak) return ''
-  if (item.sourceType === 'URL') {
-    const url = item.sourceUrl ?? ''
-    if (/youtube\.com|youtu\.be/i.test(url)) return 'YT'
-    if (/twitch\.tv/i.test(url)) return 'LIVE'
-    if (/^srt:/i.test(url)) return 'SRT'
-    if (/^rtmps?:/i.test(url)) return 'RTMP'
-    if (/^rtsp:/i.test(url)) return 'RTSP'
-    if (/^udp:/i.test(url)) return 'UDP'
-    return 'URL'
-  }
-  return item.mediaReady ? 'FILE' : 'ERR'
-}
-
-const MEDIA_STYLE: Record<string, string> = {
-  YT:   'bg-red-900/50 text-red-400 border-red-700/40',
-  LIVE: 'bg-purple-900/50 text-purple-400 border-purple-700/40',
-  SRT:  'bg-blue-900/50 text-blue-300 border-blue-700/40',
-  RTMP: 'bg-orange-900/50 text-orange-400 border-orange-700/40',
-  RTSP: 'bg-sky-900/50 text-sky-400 border-sky-700/40',
-  UDP:  'bg-gray-800 text-gray-500 border-gray-600/40',
-  URL:  'bg-sky-900/50 text-sky-400 border-sky-700/40',
-  FILE: 'bg-gray-800 text-gray-400 border-gray-700/50',
-  ERR:  'bg-orange-900/50 text-orange-400 border-orange-700/40',
-}
-
 // ─── Linha de item do playlist (com drag-and-drop) ───────────────────────────
 
 function PlaylistItemRow({
@@ -496,17 +467,6 @@ function PlaylistItemRow({
           AO AR
         </span>
       )}
-
-      {/* Tipo de mídia — coluna fixa w-10 */}
-      {(() => {
-        const mt = getMediaType(item)
-        const cls = MEDIA_STYLE[mt]
-        return cls ? (
-          <span className={clsx('text-[9px] px-0.5 py-0.5 rounded border flex-shrink-0 font-medium w-10 text-center', cls)}>
-            {mt}
-          </span>
-        ) : <span className="w-10 flex-shrink-0" />
-      })()}
 
       {/* Gráfico — coluna fixa w-8 */}
       <span
@@ -1428,7 +1388,6 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
               <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-200 w-8 flex-shrink-0">Tipo</span>
               <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-500 w-14 flex-shrink-0 pl-2">Cód.</span>
               <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-200 flex-1 min-w-0 pl-1">Título</span>
-              <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-200 w-10 text-center flex-shrink-0">Mídia</span>
               <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-500 w-8 text-center flex-shrink-0">GFX</span>
               <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-200 w-10 text-right flex-shrink-0">Dur.</span>
               <span className="w-8 flex-shrink-0" />

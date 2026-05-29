@@ -19,6 +19,36 @@ function formatTime(sec: number) {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
+function getClipMediaType(clip: any): string {
+  if (clip.sourceType === 'URL') {
+    const url = clip.sourceUrl ?? ''
+    if (/youtube\.com|youtu\.be/i.test(url)) return 'YT'
+    if (/twitch\.tv/i.test(url)) return 'LIVE'
+    if (/^srt:/i.test(url)) return 'SRT'
+    if (/^rtmps?:/i.test(url)) return 'RTMP'
+    if (/^rtsp:/i.test(url)) return 'RTSP'
+    if (/^udp:/i.test(url)) return 'UDP'
+    return 'URL'
+  }
+  if (!clip.media) return 'ERR'
+  if (clip.media.ingestStatus === 'READY') return 'FILE'
+  if (clip.media.ingestStatus === 'ERROR') return 'ERR'
+  return 'PROC'
+}
+
+const CLIP_MEDIA_STYLE: Record<string, string> = {
+  YT:   'bg-red-900/50 text-red-400 border-red-700/40',
+  LIVE: 'bg-purple-900/50 text-purple-400 border-purple-700/40',
+  SRT:  'bg-blue-900/50 text-blue-300 border-blue-700/40',
+  RTMP: 'bg-orange-900/50 text-orange-400 border-orange-700/40',
+  RTSP: 'bg-sky-900/50 text-sky-400 border-sky-700/40',
+  UDP:  'bg-gray-800 text-gray-500 border-gray-600/40',
+  URL:  'bg-sky-900/50 text-sky-400 border-sky-700/40',
+  FILE: 'bg-gray-800 text-gray-400 border-gray-700/50',
+  ERR:  'bg-orange-900/50 text-orange-400 border-orange-700/40',
+  PROC: 'bg-amber-500/10 text-amber-400 border-amber-700/30',
+}
+
 interface ClipLibraryPanelProps {
   channels: Channel[]
 }
@@ -425,8 +455,18 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
         </button>
       </div>
 
+      {/* Cabeçalho das colunas da biblioteca */}
+      <div className="flex items-center gap-1.5 px-3 py-1 border-b border-gray-800 bg-gray-900/90 sticky top-0 z-10">
+        <span className="text-[9px] font-bold text-gray-600 uppercase tracking-wide w-6 flex-shrink-0">Tipo</span>
+        <span className="text-[9px] font-bold text-gray-600 uppercase tracking-wide w-16 flex-shrink-0">Código</span>
+        <span className="text-[9px] font-bold text-gray-600 uppercase tracking-wide flex-1 min-w-0">Título</span>
+        <span className="text-[9px] font-bold text-gray-600 uppercase tracking-wide w-10 text-center flex-shrink-0">Mídia</span>
+        <span className="text-[9px] font-bold text-gray-600 uppercase tracking-wide w-10 text-right flex-shrink-0">Dur.</span>
+        <span className="w-5 flex-shrink-0" />
+      </div>
+
       {/* Lista de clipes */}
-      <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-gray-800/50 mt-1">
+      <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-gray-800/50">
         {clips.length === 0 ? (
           <p className="text-[11px] text-gray-600 text-center py-5">
             {isFetching ? 'Buscando...' : 'Nenhum clipe encontrado'}
@@ -437,6 +477,8 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
               insertMut.isPending &&
               (insertMut.variables as any)?.clipId === clip.id &&
               (insertMut.variables as any)?.channelId === targetChannelId
+            const mt = getClipMediaType(clip)
+            const mtStyle = CLIP_MEDIA_STYLE[mt] ?? 'bg-gray-800 text-gray-500 border-gray-600/40'
             return (
               <div
                 key={clip.id}
@@ -478,10 +520,17 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
                   </span>
                 )}
 
-                {clip.media?.duration != null && (
-                  <span className="text-[10px] font-mono text-gray-600 flex-shrink-0">
+                {/* Badge tipo de mídia */}
+                <span className={clsx('text-[9px] px-1 py-0.5 rounded border flex-shrink-0 font-mono font-medium w-10 text-center', mtStyle)}>
+                  {mt}
+                </span>
+
+                {clip.media?.duration != null ? (
+                  <span className="text-[10px] font-mono text-gray-600 flex-shrink-0 w-10 text-right">
                     {formatTime(clip.media.duration)}
                   </span>
+                ) : (
+                  <span className="w-10 flex-shrink-0" />
                 )}
 
                 <button
