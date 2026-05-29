@@ -505,16 +505,24 @@ async function startStreamingForItem(
     const clipUrl = item.sourceUrl
     console.log(`[playout] startStreamingForItem ch=${channelId} — URL clip, resolvendo: ${clipUrl}`)
     resolveInputUrl({ type: 'YOUTUBE', url: clipUrl, device: null })
-      .then((url) => {
+      .then(async (url) => {
         if (url) {
           streamService.startStreamingFromUrlReencode(channelId, url, graphic).catch((err) => {
             console.error(`[playout] startStreamingForItem ch=${channelId} — falha re-encode:`, err)
           })
         } else {
-          console.warn(`[playout] startStreamingForItem ch=${channelId} — yt-dlp sem URL (${clipUrl})`)
+          console.warn(`[playout] startStreamingForItem ch=${channelId} — yt-dlp sem URL (${clipUrl}), ativando fallback`)
+          const ch = await prisma.channel.findUnique({
+            where: { id: channelId },
+            select: { fallbackType: true, fallbackSourceId: true },
+          }).catch(() => null)
+          streamService.startStreamingFromFallback(channelId, ch?.fallbackType ?? 'BLACK').catch(() => {})
         }
       })
-      .catch((err) => console.error(`[playout] startStreamingForItem ch=${channelId} — erro resolve:`, err))
+      .catch((err) => {
+        console.error(`[playout] startStreamingForItem ch=${channelId} — erro resolve:`, err)
+        streamService.startStreamingFromFallback(channelId, 'BLACK').catch(() => {})
+      })
   } else {
     streamService.restartStreaming(channelId, item.mediaId, item.cueIn, graphic).catch(() => {})
   }
