@@ -45,6 +45,13 @@ export function useCameraStream(channelId: string) {
 
   const enumerateDevices = useCallback(async () => {
     setError(null)
+
+    // mediaDevices só existe em contextos seguros (HTTPS ou localhost)
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError('Câmera requer conexão segura (HTTPS). Acesse o sistema via HTTPS para usar esta funcionalidade.')
+      return
+    }
+
     try {
       // Solicita permissão explicitamente — sem isso os labels ficam vazios e devices podem sumir
       const tempStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
