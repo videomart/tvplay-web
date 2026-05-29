@@ -39,7 +39,7 @@ export interface Playlist {
 }
 
 export const playlistsApi = {
-  list: (params?: { channelId?: string; date?: string }) =>
+  list: (params?: { channelId?: string; date?: string; excludeAutoSave?: boolean }) =>
     api.get<Playlist[]>('/playlists', { params }).then((r) => r.data),
 
   get: (id: string) =>

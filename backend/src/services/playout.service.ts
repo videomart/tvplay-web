@@ -214,8 +214,8 @@ export function setPlaylistIfIdle(channelId: string, playlistId: string): void {
   state.currentIndex = 0
   state.currentItem = null
   state.updatedAt = Date.now()
-  broadcast(channelId, state)
   persistState(channelId, playlistId, 0).catch(console.error)
+  // Não broadcast aqui — insertClip/insertBreak farão broadcast após gravar no DB
 }
 
 export function subscribeWS(channelId: string, ws: WSClient) {

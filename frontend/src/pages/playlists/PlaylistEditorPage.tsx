@@ -39,7 +39,7 @@ const ITEM_MEDIA_STYLE: Record<string, string> = {
   RTSP:  'bg-sky-900/50 text-sky-400 border-sky-700/40',
   UDP:   'bg-gray-800 text-gray-500 border-gray-600/40',
   URL:   'bg-sky-900/50 text-sky-400 border-sky-700/40',
-  ARQ:   'bg-emerald-500/10 text-emerald-400 border-emerald-700/30',
+  ARQ:   'bg-gray-800 text-gray-400 border-gray-700/50',
   '!ARQ':'bg-orange-900/50 text-orange-400 border-orange-700/40',
   '⏳':  'bg-amber-500/10 text-amber-400 border-amber-700/30',
 }

@@ -294,7 +294,7 @@ const MEDIA_STYLE: Record<string, string> = {
   RTSP: 'bg-sky-900/50 text-sky-400 border-sky-700/40',
   UDP:  'bg-gray-800 text-gray-500 border-gray-600/40',
   URL:  'bg-sky-900/50 text-sky-400 border-sky-700/40',
-  ARQ:  'bg-gray-800/50 text-gray-600 border-gray-700/30',
+  ARQ:  'bg-gray-800 text-gray-400 border-gray-700/50',
   '!ARQ': 'bg-orange-900/50 text-orange-400 border-orange-700/40',
 }
 

@@ -54,9 +54,10 @@ export default async function playlistRoutes(app: FastifyInstance) {
 
   app.get('/', auth, async (request: any) => {
     const { channelId, date } = request.query
-    const where: any = { isAutoSave: false }
+    const where: any = {}
     if (channelId) where.channelId = channelId
     if (date) where.date = new Date(date)
+    if (request.query.excludeAutoSave !== 'false') where.isAutoSave = false
 
     const playlists = await prisma.playlist.findMany({
       where,

@@ -50,12 +50,14 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
   const hasActivePlaylist = !!activePlaylistId
   const playoutStatus = (playoutState as any)?.status ?? 'IDLE'
 
-  const { data: roteiros = [] } = useQuery({
+  const { data: allPlaylists = [] } = useQuery({
     queryKey: ['playlists-panel', targetChannelId],
-    queryFn: () => playlistsApi.list({ channelId: targetChannelId }),
+    queryFn: () => playlistsApi.list({ channelId: targetChannelId, excludeAutoSave: false }),
     enabled: !!targetChannelId,
     staleTime: 10_000,
   })
+  const roteiros = allPlaylists.filter((pl) => !pl.isAutoSave)
+  const autoSavePlaylist = allPlaylists.find((pl) => pl.isAutoSave) ?? null
 
   const { data: activeItems = [] } = useQuery({
     queryKey: ['playout-items', targetChannelId],
@@ -92,6 +94,8 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
     onSuccess: () => {
       toast.success('BREAK inserido')
       qc.invalidateQueries({ queryKey: ['playout-items', targetChannelId] })
+      qc.invalidateQueries({ queryKey: ['playout-state', targetChannelId] })
+      qc.invalidateQueries({ queryKey: ['playlists-panel', targetChannelId] })
       clearSelected(targetChannelId)
     },
     onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao inserir BREAK'),
@@ -103,6 +107,8 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
     onSuccess: (_data, { channelId }) => {
       toast.success('Clipe inserido')
       qc.invalidateQueries({ queryKey: ['playout-items', channelId] })
+      qc.invalidateQueries({ queryKey: ['playout-state', channelId] })
+      qc.invalidateQueries({ queryKey: ['playlists-panel', channelId] })
       clearSelected(channelId)
     },
     onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao inserir clipe'),
@@ -211,7 +217,7 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
       {/* Lista de roteiros */}
       <div className="border-b border-gray-800/60">
         <div className="max-h-40 overflow-y-auto">
-          {roteiros.length === 0 ? (
+          {roteiros.length === 0 && !autoSavePlaylist ? (
             <div className="flex items-center gap-2 px-3 py-1.5">
               <span className="h-1.5 w-1.5 flex-shrink-0" />
               <p className="flex-1 min-w-0 text-[11px] text-gray-600 italic truncate">
@@ -228,6 +234,54 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
             </div>
           ) : (
             <>
+              {/* Roteiro de trabalho (autosave) */}
+              {autoSavePlaylist && (
+                <div
+                  className={clsx(
+                    'flex items-center gap-2 px-3 py-1.5 cursor-pointer select-none border-b border-amber-900/30',
+                    autoSavePlaylist.id === activePlaylistId ? 'bg-amber-900/20' : 'bg-amber-950/10 hover:bg-amber-900/15',
+                  )}
+                  onClick={() => setSelectedRoteiroId(autoSavePlaylist.id === selectedRoteiroId ? null : autoSavePlaylist.id)}
+                  onDoubleClick={() => handleInsertRoteiro(autoSavePlaylist.id, 'Roteiro de trabalho')}
+                  title="Roteiro de trabalho — clipes inseridos diretamente no canal"
+                >
+                  <span className={clsx(
+                    'h-1.5 w-1.5 rounded-full flex-shrink-0',
+                    autoSavePlaylist.id === activePlaylistId ? 'bg-amber-400' : 'bg-amber-700'
+                  )} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[11px] font-semibold text-amber-400 truncate leading-tight">Roteiro de trabalho</p>
+                    <p className="text-[10px] text-amber-700 leading-tight">{autoSavePlaylist._count?.items ?? 0} itens · não salvo</p>
+                  </div>
+                  <div className="flex items-center gap-0.5 flex-shrink-0">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); playRotMut.mutate(autoSavePlaylist.id) }}
+                      disabled={playRotMut.isPending}
+                      title="Iniciar roteiro de trabalho"
+                      className="p-1 rounded text-amber-700 hover:text-amber-400 disabled:opacity-30 transition-colors"
+                    >
+                      <Play className="h-3 w-3" />
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); cloneRotMut.mutate(autoSavePlaylist.id) }}
+                      disabled={cloneRotMut.isPending}
+                      title="Salvar como roteiro nomeado"
+                      className="p-1 rounded text-amber-700 hover:text-amber-400 disabled:opacity-30 transition-colors"
+                    >
+                      <Copy className="h-3 w-3" />
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); if (!confirm('Limpar roteiro de trabalho?')) return; deleteRotMut.mutate(autoSavePlaylist.id) }}
+                      disabled={deleteRotMut.isPending}
+                      title="Limpar roteiro de trabalho"
+                      className="p-1 rounded text-amber-700 hover:text-red-400 disabled:opacity-20 transition-colors"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {roteiros.map((pl) => {
                 const isCurrent = pl.id === activePlaylistId
                 const isLocked = isCurrent && (playoutStatus === 'PLAYING' || playoutStatus === 'PAUSED')
