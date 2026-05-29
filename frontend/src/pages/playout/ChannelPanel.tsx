@@ -1257,8 +1257,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
       )}
 
       {/* ── Playlist de itens ─────────────────────────────────────────────── */}
-      {state?.playlistId ? (
-        <div className="border-t border-gray-800">
+      <div className="border-t border-gray-800">
           {/* Header da playlist com transport controls integrados */}
           <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-gray-800/50">
             {/* Controles de transporte */}
@@ -1420,63 +1419,62 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
             </div>
           )}
 
-          {/* Itens com DnD */}
+          {/* Itens com DnD — ou mensagem de estado vazio */}
           {playlistOpen && (
-            <div
-              ref={playlistScrollRef}
-              className="max-h-72 overflow-y-auto py-1"
-              onScroll={() => {
-                if (!programmaticScrollRef.current) userScrolledRef.current = true
-              }}
-            >
-              {playlistItems.length === 0 ? (
-                <p className="text-[11px] text-gray-600 text-center py-3">Carregando...</p>
-              ) : (
-                playlistItems.map((pi, idx) => (
-                  <div key={pi.id} ref={idx === currentIndex ? currentItemRef : undefined}>
-                    <PlaylistItemRow
-                      item={pi}
-                      isCurrent={idx === currentIndex}
-                      isPlayed={idx < currentIndex}
-                      isDragging={dragIdx === idx}
-                      isDragOver={overIdx === idx && dragIdx !== idx}
-                      playoutStatus={status}
-                      rowIdx={idx}
-                      isSelected={pi.id === selectedItemId}
-                      onSelect={() => setSelectedItemId(pi.id === selectedItemId ? null : pi.id)}
-                      onJump={() => jumpMut.mutate(idx)}
-                      onClipPlay={() => handleClipPlay(idx)}
-                      onClipStop={() => stopMut.mutate()}
-                      onToggleLoop={() => toggleLoopMut.mutate(pi.id)}
-                      onDelete={() => deleteItemMut.mutate(pi.id)}
-                      onSetTimer={() => openTimerEdit(pi)}
-                      loopPending={toggleLoopMut.isPending && toggleLoopMut.variables === pi.id}
-                      deletePending={deleteItemMut.isPending && deleteItemMut.variables === pi.id}
-                      graphicName={pi.graphicName}
-                      timerEditId={timerEditId}
-                      timerEditVal={timerEditVal}
-                      setTimerEditId={setTimerEditId}
-                      setTimerEditVal={setTimerEditVal}
-                      commitTimer={commitTimer}
-                      clipPlayPending={(jumpMut.isPending || pauseMut.isPending || resumeMut.isPending) && idx === currentIndex}
-                      clipStopPending={stopMut.isPending}
-                      onDragStart={() => handleDragStart(idx)}
-                      onDragOver={(e) => handleDragOver(e, idx)}
-                      onDragEnd={handleDragEnd}
-                      onDrop={() => handleDrop(idx)}
-                      liveElapsed={idx === currentIndex && pi.sourceType === 'URL' ? position : null}
-                    />
-                  </div>
-                ))
-              )}
-            </div>
+            state?.playlistId ? (
+              <div
+                ref={playlistScrollRef}
+                className="max-h-72 overflow-y-auto py-1"
+                onScroll={() => {
+                  if (!programmaticScrollRef.current) userScrolledRef.current = true
+                }}
+              >
+                {playlistItems.length === 0 ? (
+                  <p className="text-[11px] text-gray-600 text-center py-3">Carregando...</p>
+                ) : (
+                  playlistItems.map((pi, idx) => (
+                    <div key={pi.id} ref={idx === currentIndex ? currentItemRef : undefined}>
+                      <PlaylistItemRow
+                        item={pi}
+                        isCurrent={idx === currentIndex}
+                        isPlayed={idx < currentIndex}
+                        isDragging={dragIdx === idx}
+                        isDragOver={overIdx === idx && dragIdx !== idx}
+                        playoutStatus={status}
+                        rowIdx={idx}
+                        isSelected={pi.id === selectedItemId}
+                        onSelect={() => setSelectedItemId(pi.id === selectedItemId ? null : pi.id)}
+                        onJump={() => jumpMut.mutate(idx)}
+                        onClipPlay={() => handleClipPlay(idx)}
+                        onClipStop={() => stopMut.mutate()}
+                        onToggleLoop={() => toggleLoopMut.mutate(pi.id)}
+                        onDelete={() => deleteItemMut.mutate(pi.id)}
+                        onSetTimer={() => openTimerEdit(pi)}
+                        loopPending={toggleLoopMut.isPending && toggleLoopMut.variables === pi.id}
+                        deletePending={deleteItemMut.isPending && deleteItemMut.variables === pi.id}
+                        graphicName={pi.graphicName}
+                        timerEditId={timerEditId}
+                        timerEditVal={timerEditVal}
+                        setTimerEditId={setTimerEditId}
+                        setTimerEditVal={setTimerEditVal}
+                        commitTimer={commitTimer}
+                        clipPlayPending={(jumpMut.isPending || pauseMut.isPending || resumeMut.isPending) && idx === currentIndex}
+                        clipStopPending={stopMut.isPending}
+                        onDragStart={() => handleDragStart(idx)}
+                        onDragOver={(e) => handleDragOver(e, idx)}
+                        onDragEnd={handleDragEnd}
+                        onDrop={() => handleDrop(idx)}
+                        liveElapsed={idx === currentIndex && pi.sourceType === 'URL' ? position : null}
+                      />
+                    </div>
+                  ))
+                )}
+              </div>
+            ) : (
+              <p className="text-[11px] text-gray-600 italic px-3 py-3">Selecione um roteiro na Biblioteca.</p>
+            )
           )}
         </div>
-      ) : (
-        <div className="px-4 py-3 border-t border-gray-800">
-          <p className="text-[11px] text-gray-600 italic">Selecione um roteiro na Biblioteca.</p>
-        </div>
-      )}
 
       {/* ── Modal: salvar como ───────────────────────────────────────────── */}
       <Modal
