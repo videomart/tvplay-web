@@ -25,8 +25,8 @@ export default function PlayoutPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="p-6 flex flex-col h-full gap-4">
+      <div className="flex items-center justify-between flex-shrink-0">
         <h1 className="text-2xl font-bold text-white flex items-center gap-3">
           <Radio className="h-6 w-6 text-brand-400" />
           Playout
@@ -39,7 +39,7 @@ export default function PlayoutPage() {
       </div>
 
       {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 flex-1 min-h-0">
           {[1, 2].map((i) => (
             <div key={i} className="card h-56 animate-pulse bg-gray-900" />
           ))}
@@ -50,7 +50,7 @@ export default function PlayoutPage() {
           <p className="text-gray-500">Nenhum canal ativo. Crie canais em <strong>Canais</strong>.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 flex-1 min-h-0 auto-rows-fr">
           {buildGrid()}
         </div>
       )}
