@@ -44,11 +44,25 @@ export function useCameraStream(channelId: string) {
   }, [channelId])
 
   const enumerateDevices = useCallback(async () => {
+    setError(null)
     try {
-      await navigator.mediaDevices
-        .getUserMedia({ video: true, audio: true })
-        .then((s) => s.getTracks().forEach((t) => t.stop()))
-        .catch(() => {})
+      // Solicita permissão explicitamente — sem isso os labels ficam vazios e devices podem sumir
+      const tempStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+      tempStream.getTracks().forEach((t) => t.stop())
+    } catch (e: any) {
+      const name = (e as DOMException).name
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+        setError('Permissão de câmera/microfone negada. Clique no ícone de cadeado na barra de endereços e permita o acesso.')
+      } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+        setError('Nenhuma câmera ou microfone encontrado. Verifique se os dispositivos estão conectados.')
+      } else if (name === 'NotReadableError') {
+        setError('Câmera em uso por outro aplicativo. Feche outros programas que possam estar usando a câmera.')
+      } else {
+        setError('Erro ao acessar câmera: ' + ((e as Error).message ?? name ?? 'desconhecido'))
+      }
+      return
+    }
+    try {
       const all = await navigator.mediaDevices.enumerateDevices()
       setVideoDevices(
         all.filter((d) => d.kind === 'videoinput')
@@ -59,7 +73,7 @@ export function useCameraStream(channelId: string) {
            .map((d, i) => ({ deviceId: d.deviceId, label: d.label || `Microfone ${i + 1}` }))
       )
     } catch (e: any) {
-      setError('Não foi possível listar dispositivos: ' + (e.message ?? e))
+      setError('Erro ao listar dispositivos: ' + ((e as Error).message ?? e))
     }
   }, [])
 
