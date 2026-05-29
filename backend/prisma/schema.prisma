@@ -220,6 +220,7 @@ model Playlist {
   id    String   @id @default(cuid())
   date  DateTime @db.Date
   name  String
+  isAutoSave  Boolean  @default(false)
   locked      Boolean  @default(false)
   loop        Boolean  @default(false)
   autoStart   Boolean  @default(false)

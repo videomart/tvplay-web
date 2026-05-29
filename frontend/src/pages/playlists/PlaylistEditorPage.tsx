@@ -14,6 +14,36 @@ import { Input } from '../../components/ui/Input'
 import { Modal } from '../../components/ui/Modal'
 import { Badge } from '../../components/ui/Badge'
 
+function getItemMediaType(clip: any): string {
+  if (clip.sourceType === 'URL') {
+    const url = clip.sourceUrl ?? ''
+    if (/youtube\.com|youtu\.be/i.test(url)) return 'YT'
+    if (/twitch\.tv/i.test(url)) return 'LIVE'
+    if (/^srt:/i.test(url)) return 'SRT'
+    if (/^rtmps?:/i.test(url)) return 'RTMP'
+    if (/^rtsp:/i.test(url)) return 'RTSP'
+    if (/^udp:/i.test(url)) return 'UDP'
+    return 'URL'
+  }
+  if (!clip.media) return '!ARQ'
+  if (clip.media.ingestStatus === 'READY') return 'ARQ'
+  if (clip.media.ingestStatus === 'ERROR') return '!ARQ'
+  return '⏳'
+}
+
+const ITEM_MEDIA_STYLE: Record<string, string> = {
+  YT:    'bg-red-900/50 text-red-400 border-red-700/40',
+  LIVE:  'bg-purple-900/50 text-purple-400 border-purple-700/40',
+  SRT:   'bg-blue-900/50 text-blue-300 border-blue-700/40',
+  RTMP:  'bg-orange-900/50 text-orange-400 border-orange-700/40',
+  RTSP:  'bg-sky-900/50 text-sky-400 border-sky-700/40',
+  UDP:   'bg-gray-800 text-gray-500 border-gray-600/40',
+  URL:   'bg-sky-900/50 text-sky-400 border-sky-700/40',
+  ARQ:   'bg-emerald-500/10 text-emerald-400 border-emerald-700/30',
+  '!ARQ':'bg-orange-900/50 text-orange-400 border-orange-700/40',
+  '⏳':  'bg-amber-500/10 text-amber-400 border-amber-700/30',
+}
+
 function formatDur(sec?: number) {
   if (!sec && sec !== 0) return '?'
   const m = Math.floor(sec / 60), s = Math.floor(sec % 60)
@@ -284,25 +314,16 @@ export default function PlaylistEditorPage() {
                   {/* Duração */}
                   <span className="text-xs font-mono text-gray-400 shrink-0">{formatDur(dur)}</span>
 
-                  {/* Status mídia */}
-                  {(clip as any).sourceType === 'URL' ? (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded shrink-0 bg-sky-500/10 text-sky-400 border border-sky-700/30 font-medium">
-                      URL
-                    </span>
-                  ) : !media ? (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded shrink-0 bg-orange-900/50 text-orange-400 border border-orange-700/40 font-medium">
-                      sem arquivo
-                    </span>
-                  ) : (
-                    <span className={clsx(
-                      'text-[10px] px-1.5 py-0.5 rounded shrink-0',
-                      media.ingestStatus === 'READY'
-                        ? 'bg-emerald-500/10 text-emerald-400'
-                        : 'bg-amber-500/10 text-amber-400'
-                    )}>
-                      {media.ingestStatus === 'READY' ? '✓' : '⏳'}
-                    </span>
-                  )}
+                  {/* Tipo de mídia */}
+                  {(() => {
+                    const mt = getItemMediaType(clip)
+                    const style = ITEM_MEDIA_STYLE[mt] ?? 'bg-gray-800 text-gray-500 border-gray-600/40'
+                    return (
+                      <span className={clsx('text-[10px] px-1.5 py-0.5 rounded shrink-0 border font-mono font-medium w-12 text-center', style)}>
+                        {mt}
+                      </span>
+                    )
+                  })()}
 
                   {/* Timer — só para URL clips */}
                   {(['URL', 'YOUTUBE'].includes((clip as any).sourceType)) && (

@@ -204,6 +204,20 @@ export function getAllStates(): PlayoutState[] {
   return Array.from(states.values())
 }
 
+// Ativa uma playlist sem iniciar playback — usado pelo autosave ao inserir o primeiro clipe
+export function setPlaylistIfIdle(channelId: string, playlistId: string): void {
+  if (!states.has(channelId)) states.set(channelId, defaultState(channelId))
+  const state = states.get(channelId)!
+  if (state.playlistId) return
+  state.playlistId = playlistId
+  state.status = 'STOPPED'
+  state.currentIndex = 0
+  state.currentItem = null
+  state.updatedAt = Date.now()
+  broadcast(channelId, state)
+  persistState(channelId, playlistId, 0).catch(console.error)
+}
+
 export function subscribeWS(channelId: string, ws: WSClient) {
   if (!wsClients.has(channelId)) wsClients.set(channelId, new Set())
   wsClients.get(channelId)!.add(ws)

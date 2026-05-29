@@ -3,6 +3,22 @@ import * as playout from '../services/playout.service'
 import * as streamService from '../services/stream.service'
 import { prisma } from '../lib/prisma'
 
+async function getOrCreateAutoSave(channelId: string): Promise<string> {
+  const existing = await prisma.playlist.findFirst({
+    where: { channelId, isAutoSave: true },
+  })
+  if (existing) return existing.id
+  const created = await prisma.playlist.create({
+    data: {
+      channelId,
+      isAutoSave: true,
+      date: new Date('2099-01-01'),
+      name: `__autosave__${channelId}`,
+    },
+  })
+  return created.id
+}
+
 export default async function playoutRoutes(app: FastifyInstance) {
   const auth = { preHandler: [app.authenticate] }
 
@@ -222,7 +238,12 @@ export default async function playoutRoutes(app: FastifyInstance) {
   app.post('/:channelId/insert', auth, async (request: any, reply) => {
     const { clipId, afterItemId } = request.body as { clipId: string; afterItemId?: string | null }
     if (!clipId) return reply.status(400).send({ error: 'clipId é obrigatório' })
-    return playout.insertClip(request.params.channelId, clipId, afterItemId).catch((e) =>
+    const { channelId } = request.params
+    if (!playout.getState(channelId).playlistId) {
+      const autoSaveId = await getOrCreateAutoSave(channelId)
+      playout.setPlaylistIfIdle(channelId, autoSaveId)
+    }
+    return playout.insertClip(channelId, clipId, afterItemId).catch((e) =>
       reply.status(400).send({ error: e.message })
     )
   })
@@ -230,7 +251,12 @@ export default async function playoutRoutes(app: FastifyInstance) {
   // Insere um item BREAK na posição selecionada (afterItemId) ou no final se não houver seleção
   app.post('/:channelId/insert-break', auth, async (request: any, reply) => {
     const { afterItemId } = (request.body ?? {}) as { afterItemId?: string | null }
-    return playout.insertBreak(request.params.channelId, afterItemId).catch((e) =>
+    const { channelId } = request.params
+    if (!playout.getState(channelId).playlistId) {
+      const autoSaveId = await getOrCreateAutoSave(channelId)
+      playout.setPlaylistIfIdle(channelId, autoSaveId)
+    }
+    return playout.insertBreak(channelId, afterItemId).catch((e) =>
       reply.status(400).send({ error: e.message })
     )
   })

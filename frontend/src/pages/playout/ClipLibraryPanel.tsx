@@ -19,10 +19,6 @@ function formatTime(sec: number) {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
-function todayISO() {
-  return new Date().toISOString().slice(0, 10)
-}
-
 interface ClipLibraryPanelProps {
   channels: Channel[]
 }
@@ -112,24 +108,8 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
     onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao inserir clipe'),
   })
 
-  const createAndPlayMut = useMutation({
-    mutationFn: async ({ channelId, clipId }: { channelId: string; clipId: string }) => {
-      const playlist = await playlistsApi.create({ date: todayISO(), channelId })
-      await playlistsApi.addItem(playlist.id, { clipId, order: 0 })
-      await playoutApi.play(channelId, playlist.id)
-      return playlist
-    },
-    onSuccess: (playlist, { channelId }) => {
-      toast.success(`Roteiro "${playlist.name}" criado e iniciado`)
-      qc.invalidateQueries({ queryKey: ['playout-items', channelId] })
-      qc.invalidateQueries({ queryKey: ['playout-state', channelId] })
-      qc.invalidateQueries({ queryKey: ['playlists-panel'] })
-    },
-    onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao criar roteiro'),
-  })
-
   const newPlaylistMut = useMutation({
-    mutationFn: () => playlistsApi.create({ date: todayISO(), channelId: targetChannelId }),
+    mutationFn: () => playlistsApi.create({ date: new Date().toISOString().slice(0, 10), channelId: targetChannelId }),
     onSuccess: (playlist) => {
       toast.success(`Roteiro "${playlist.name}" criado`)
       qc.invalidateQueries({ queryKey: ['playlists-panel'] })
@@ -196,11 +176,7 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
   })
 
   function handleInsertClick(clipId: string) {
-    if (!hasActivePlaylist) {
-      createAndPlayMut.mutate({ channelId: targetChannelId, clipId })
-    } else {
-      insertMut.mutate({ channelId: targetChannelId, clipId })
-    }
+    insertMut.mutate({ channelId: targetChannelId, clipId })
   }
 
   const clips = data?.items ?? []
@@ -404,7 +380,7 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
         ) : (
           clips.map((clip) => {
             const isPending =
-              (insertMut.isPending || createAndPlayMut.isPending) &&
+              insertMut.isPending &&
               (insertMut.variables as any)?.clipId === clip.id &&
               (insertMut.variables as any)?.channelId === targetChannelId
             return (

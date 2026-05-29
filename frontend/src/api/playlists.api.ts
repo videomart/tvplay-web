@@ -33,6 +33,7 @@ export interface Playlist {
   items?: PlaylistItem[]
   graphicId?: string | null
   graphic?: { id: string; name: string }
+  isAutoSave?: boolean
   _count?: { items: number }
   _noMediaCount?: number
 }

@@ -54,7 +54,7 @@ export default async function playlistRoutes(app: FastifyInstance) {
 
   app.get('/', auth, async (request: any) => {
     const { channelId, date } = request.query
-    const where: any = {}
+    const where: any = { isAutoSave: false }
     if (channelId) where.channelId = channelId
     if (date) where.date = new Date(date)
 

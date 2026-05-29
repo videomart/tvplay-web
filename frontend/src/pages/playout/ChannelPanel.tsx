@@ -4,7 +4,7 @@ import {
   Play, Pause, Square, SkipForward, SkipBack,
   Radio, Wifi, WifiOff, MonitorPlay, MonitorOff, Antenna,
   ChevronDown, ChevronUp, RefreshCw, RotateCcw, GripVertical, Trash2, Repeat,
-  Camera, Timer, Copy, Eraser,
+  Camera, Timer, Copy, X,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
@@ -1370,7 +1370,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                   title="Limpar grid (remover todos os itens)"
                   className="flex-shrink-0 text-gray-600 hover:text-red-400 transition-colors disabled:opacity-30"
                 >
-                  <Eraser className="h-3.5 w-3.5" />
+                  <X className="h-3.5 w-3.5" />
                 </button>
               </>
             )}
