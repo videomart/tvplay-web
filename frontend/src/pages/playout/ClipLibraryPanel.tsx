@@ -96,9 +96,10 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
     staleTime: 5_000,
   })
 
-  const activeClipIds = new Set(
-    activeItems.filter((i) => !i.isBreak && i.clipId).map((i) => i.clipId as string)
-  )
+  // Conta quantas vezes cada clip aparece no roteiro ativo (para exibir ×N)
+  const activeClipCounts = activeItems
+    .filter((i) => !i.isBreak && i.clipId)
+    .reduce((acc, i) => { acc.set(i.clipId!, (acc.get(i.clipId!) ?? 0) + 1); return acc }, new Map<string, number>())
 
   const { data: types = [] } = useQuery({
     queryKey: ['clip-types'],
@@ -460,6 +461,7 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
         <span className="text-[9px] font-bold text-gray-600 uppercase tracking-wide w-6 flex-shrink-0">Tipo</span>
         <span className="text-[9px] font-bold text-gray-600 uppercase tracking-wide w-16 flex-shrink-0">Código</span>
         <span className="text-[9px] font-bold text-gray-600 uppercase tracking-wide flex-1 min-w-0">Título</span>
+        <span className="text-[9px] font-bold text-emerald-700 uppercase tracking-wide w-5 text-center flex-shrink-0">✓</span>
         <span className="text-[9px] font-bold text-gray-600 uppercase tracking-wide w-10 text-center flex-shrink-0">Mídia</span>
         <span className="text-[9px] font-bold text-gray-600 uppercase tracking-wide w-10 text-right flex-shrink-0">Dur.</span>
         <span className="w-5 flex-shrink-0" />
@@ -479,10 +481,16 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
               (insertMut.variables as any)?.channelId === targetChannelId
             const mt = getClipMediaType(clip)
             const mtStyle = CLIP_MEDIA_STYLE[mt] ?? 'bg-gray-800 text-gray-500 border-gray-600/40'
+            const inPlaylistCount = activeClipCounts.get(clip.id) ?? 0
             return (
               <div
                 key={clip.id}
-                className="flex items-center gap-1.5 px-3 py-2 hover:bg-gray-800/30 transition-colors"
+                className={clsx(
+                  'flex items-center gap-1.5 px-3 py-2 transition-colors',
+                  inPlaylistCount > 0
+                    ? 'bg-emerald-950/20 hover:bg-emerald-950/30 border-l-2 border-emerald-700/40'
+                    : 'hover:bg-gray-800/30 border-l-2 border-transparent'
+                )}
               >
                 {clip.type ? (
                   <Badge
@@ -511,14 +519,17 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
                   </span>
                 )}
 
-                {activeClipIds.has(clip.id) && (
-                  <span
-                    title="Já está no roteiro ativo"
-                    className="text-[9px] bg-emerald-900/40 text-emerald-400 px-1 py-0.5 rounded font-mono flex-shrink-0 border border-emerald-700/40"
-                  >
-                    ✓
-                  </span>
-                )}
+                {/* Coluna fixa: indicador de presença no roteiro ativo */}
+                <span className="w-5 flex-shrink-0 text-center">
+                  {inPlaylistCount > 0 && (
+                    <span
+                      title={inPlaylistCount === 1 ? 'Já está no roteiro ativo' : `Está ${inPlaylistCount}× no roteiro ativo`}
+                      className="text-[9px] font-bold text-emerald-400"
+                    >
+                      {inPlaylistCount === 1 ? '✓' : `×${inPlaylistCount}`}
+                    </span>
+                  )}
+                </span>
 
                 {/* Badge tipo de mídia */}
                 <span className={clsx('text-[9px] px-1 py-0.5 rounded border flex-shrink-0 font-mono font-medium w-10 text-center', mtStyle)}>
