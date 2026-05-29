@@ -71,19 +71,55 @@ export default async function playlistRoutes(app: FastifyInstance) {
     })
 
     const ids = playlists.map((p) => p.id)
-    const noMediaItems = ids.length > 0
-      ? await prisma.playlistItem.findMany({
-          // Só conta clips FILE sem arquivo — clips URL (sourceType=URL) são considerados prontos
-          where: { playlistId: { in: ids }, clip: { mediaId: null, sourceType: 'FILE' } },
-          select: { playlistId: true },
-        })
-      : []
+
+    const [noMediaItems, sourceItems] = ids.length > 0
+      ? await Promise.all([
+          prisma.playlistItem.findMany({
+            where: { playlistId: { in: ids }, clip: { mediaId: null, sourceType: 'FILE' } },
+            select: { playlistId: true },
+          }),
+          prisma.playlistItem.findMany({
+            where: { playlistId: { in: ids }, isBreak: false },
+            select: { playlistId: true, clip: { select: { sourceType: true, sourceUrl: true } } },
+          }),
+        ])
+      : [[], []]
+
     const noMediaMap = noMediaItems.reduce(
       (m, i) => m.set(i.playlistId, (m.get(i.playlistId) ?? 0) + 1),
       new Map<string, number>()
     )
 
-    return playlists.map((p) => ({ ...p, _noMediaCount: noMediaMap.get(p.id) ?? 0 }))
+    // Conta FILE e detecta subtipos de URL por playlist
+    type MediaSummary = { fileCount: number; urlTypes: Set<string> }
+    const mediaMap = new Map<string, MediaSummary>()
+    for (const item of sourceItems) {
+      if (!item.clip) continue
+      if (!mediaMap.has(item.playlistId)) mediaMap.set(item.playlistId, { fileCount: 0, urlTypes: new Set() })
+      const m = mediaMap.get(item.playlistId)!
+      if (item.clip.sourceType === 'FILE') {
+        m.fileCount++
+      } else if (item.clip.sourceType === 'URL') {
+        const url = item.clip.sourceUrl ?? ''
+        if (/youtube\.com|youtu\.be/i.test(url))  m.urlTypes.add('YT')
+        else if (/twitch\.tv/i.test(url))          m.urlTypes.add('LIVE')
+        else if (/^srt:/i.test(url))               m.urlTypes.add('SRT')
+        else if (/^rtmps?:/i.test(url))            m.urlTypes.add('RTMP')
+        else if (/^rtsp:/i.test(url))              m.urlTypes.add('RTSP')
+        else if (/^udp:/i.test(url))               m.urlTypes.add('UDP')
+        else                                        m.urlTypes.add('URL')
+      }
+    }
+
+    return playlists.map((p) => {
+      const mt = mediaMap.get(p.id)
+      return {
+        ...p,
+        _noMediaCount: noMediaMap.get(p.id) ?? 0,
+        _fileCount:    mt?.fileCount ?? 0,
+        _urlTypes:     mt ? Array.from(mt.urlTypes) : [] as string[],
+      }
+    })
   })
 
   app.get('/:id', auth, async (request: any, reply) => {

@@ -195,11 +195,30 @@ export default function PlaylistsListPage() {
                   </div>
                 </Td>
                 <Td>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-400">{pl._count?.items ?? 0} itens</span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-sm text-gray-400 mr-0.5">{pl._count?.items ?? 0}</span>
+                    {(pl._fileCount ?? 0) > 0 && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-400 border border-gray-700/50 font-mono font-medium">
+                        FILE {pl._fileCount}
+                      </span>
+                    )}
+                    {(pl._urlTypes ?? []).map((t) => (
+                      <span key={t} className={clsx(
+                        'text-[10px] px-1.5 py-0.5 rounded border font-mono font-medium',
+                        t === 'YT'   && 'bg-red-900/50 text-red-400 border-red-700/40',
+                        t === 'LIVE' && 'bg-purple-900/50 text-purple-400 border-purple-700/40',
+                        t === 'SRT'  && 'bg-blue-900/50 text-blue-300 border-blue-700/40',
+                        t === 'RTMP' && 'bg-orange-900/50 text-orange-400 border-orange-700/40',
+                        t === 'RTSP' && 'bg-sky-900/50 text-sky-400 border-sky-700/40',
+                        t === 'UDP'  && 'bg-gray-800 text-gray-500 border-gray-600/40',
+                        t === 'URL'  && 'bg-sky-900/50 text-sky-400 border-sky-700/40',
+                      )}>
+                        {t}
+                      </span>
+                    ))}
                     {(pl._noMediaCount ?? 0) > 0 && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-900/50 text-orange-400 border border-orange-700/40 font-medium">
-                        {pl._noMediaCount} sem arquivo
+                        {pl._noMediaCount} s/arq
                       </span>
                     )}
                   </div>

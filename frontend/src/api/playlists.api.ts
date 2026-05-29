@@ -36,6 +36,8 @@ export interface Playlist {
   isAutoSave?: boolean
   _count?: { items: number }
   _noMediaCount?: number
+  _fileCount?: number
+  _urlTypes?: string[]
 }
 
 export const playlistsApi = {
