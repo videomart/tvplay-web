@@ -27,18 +27,24 @@ const selectCls = 'w-full bg-gray-800 border border-gray-700 text-white text-sm 
 export function CameraModal({ open, onClose, channelName, camera }: CameraModalProps) {
   const { active, error, previewStream, videoDevices, audioDevices, start, stop, enumerateDevices } = camera
 
-  const [selectedVideo, setSelectedVideo] = useState('')
-  const [selectedAudio, setSelectedAudio] = useState('')
+  const [selectedVideo, setSelectedVideo] = useState(() => localStorage.getItem('camera-video-device') ?? '')
+  const [selectedAudio, setSelectedAudio] = useState(() => localStorage.getItem('camera-audio-device') ?? '')
   const [starting, setStarting] = useState(false)
 
   const previewRef = useRef<HTMLVideoElement>(null)
 
   useEffect(() => {
-    if (videoDevices.length && !selectedVideo) setSelectedVideo(videoDevices[0].deviceId)
+    if (!videoDevices.length) return
+    const saved = localStorage.getItem('camera-video-device')
+    const exists = saved && videoDevices.some((d) => d.deviceId === saved)
+    setSelectedVideo(exists ? saved! : videoDevices[0].deviceId)
   }, [videoDevices])
 
   useEffect(() => {
-    if (audioDevices.length && !selectedAudio) setSelectedAudio(audioDevices[0].deviceId)
+    if (!audioDevices.length) return
+    const saved = localStorage.getItem('camera-audio-device')
+    const exists = saved && audioDevices.some((d) => d.deviceId === saved)
+    setSelectedAudio(exists ? saved! : audioDevices[0].deviceId)
   }, [audioDevices])
 
   // Vincula o MediaStream ao elemento de vídeo
@@ -50,7 +56,12 @@ export function CameraModal({ open, onClose, channelName, camera }: CameraModalP
 
   async function handleStart() {
     setStarting(true)
-    try { await start(selectedVideo, selectedAudio) } catch {}
+    try {
+      await start(selectedVideo, selectedAudio)
+      // Grava a última configuração para uso futuro
+      localStorage.setItem('camera-video-device', selectedVideo)
+      localStorage.setItem('camera-audio-device', selectedAudio)
+    } catch {}
     setStarting(false)
   }
 

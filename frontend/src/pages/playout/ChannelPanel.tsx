@@ -625,7 +625,9 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
   })
 
   const camera = useCameraStream(channel.id)
-  const [cameraOpen, setCameraOpen] = useState(false)  // modal de configuração da webcam
+  const [cameraOpen, setCameraOpen] = useState(false)
+  // true apenas quando o operador fez CUT para a câmera — controla o monitor
+  const [cameraIsLive, setCameraIsLive] = useState(false)
   const [saveAsOpen, setSaveAsOpen] = useState(false)
   const [saveAsName, setSaveAsName] = useState('')
   const [monitorOpen, setMonitorOpen] = useState(true)
@@ -809,16 +811,19 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
 
   const cutToInputMut = useMutation({
     mutationFn: (sourceId: string) => playoutApi.cutToInput(channel.id, sourceId),
-    onSuccess: () => {
+    onSuccess: (_data, sourceId) => {
       toast.success('Cortando para entrada...')
       qc.invalidateQueries({ queryKey: ['channels'] })
+      // câmera sai do monitor ao cortar para outra entrada
+      const src = inputSources.find((s) => s.id === sourceId)
+      setCameraIsLive(src?.type === 'WEBCAM')
     },
     onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao comutar entrada'),
   })
 
   const cutToCameraMut = useMutation({
     mutationFn: () => playoutApi.cutToCamera(channel.id),
-    onSuccess: () => toast.success('Cortando para câmera...'),
+    onSuccess: () => { toast.success('Cortando para câmera...'); setCameraIsLive(true) },
     onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao comutar para câmera'),
   })
 
@@ -915,7 +920,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
 
   const playMut = useMutation({
     mutationFn: (playlistId: string) => playoutApi.play(channel.id, playlistId),
-    onSuccess: () => toast.success('Reprodução iniciada'),
+    onSuccess: () => { toast.success('Reprodução iniciada'); setCameraIsLive(false) },
     onError: onErr,
   })
   const pauseMut = useMutation({
@@ -1046,7 +1051,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
         <div className="px-3 pt-3 pb-2 border-b border-gray-800">
           <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-black">
             {/* Câmera tem prioridade — substitui qualquer outro conteúdo no monitor */}
-            {camera.active && camera.previewStream ? (
+            {cameraIsLive && camera.active && camera.previewStream ? (
               <CameraMonitorPreview stream={camera.previewStream} graphic={state?.activeGraphic} />
             ) : (status === 'PLAYING' || status === 'PAUSED') && !item?.isBreak ? (
               monitorSrc
