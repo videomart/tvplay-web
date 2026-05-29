@@ -689,6 +689,15 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
     return () => clearTimeout(t)
   }, [currentIndex, playlistOpen])
 
+  // Quando o playout entra em PLAYING, a câmera não é mais a fonte do monitor
+  const prevStatusRef = useRef(status)
+  useEffect(() => {
+    if (prevStatusRef.current !== 'PLAYING' && status === 'PLAYING') {
+      setCameraIsLive(false)
+    }
+    prevStatusRef.current = status
+  }, [status])
+
   // Refetch items ao trocar de playlist (ex: "usar este roteiro" enquanto outro está ativo)
   const prevPlaylistIdRef = useRef<string | null | undefined>(undefined)
   useEffect(() => {
@@ -800,11 +809,13 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
   const fallbackMut = useMutation({
     mutationFn: (data: { fallbackType: FallbackType; fallbackSourceId?: string | null }) =>
       playoutApi.setFallback(channel.id, data.fallbackType, data.fallbackSourceId),
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       toast.success('Sinal de fallback atualizado')
       setFallbackOpen(true)
       setSignalSelectorOpen(false)
       qc.invalidateQueries({ queryKey: ['channels'] })
+      // Se fallback mudou para algo que não é câmera, sai do monitor de câmera
+      if (vars.fallbackType !== 'INPUT_SOURCE') setCameraIsLive(false)
     },
     onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao definir fallback'),
   })
