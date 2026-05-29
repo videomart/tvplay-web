@@ -123,10 +123,23 @@ function ColorBars() {
 
 // ─── Barra de progresso do clipe ─────────────────────────────────────────────
 
-function ClipProgressBar({ position, duration }: { position: number; duration: number }) {
-  const isInfinite = duration >= Number.MAX_SAFE_INTEGER / 2
-  const pct = (!isInfinite && duration > 0) ? Math.min((position / duration) * 100, 100) : 0
-  const remaining = isInfinite ? null : Math.max(0, duration - position)
+function ClipProgressBar({ position, duration, isLive = false }: { position: number; duration: number; isLive?: boolean }) {
+  if (isLive) {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-600/20 border border-red-600/40 text-red-400 text-[9px] font-bold uppercase tracking-wide animate-pulse flex-shrink-0">
+          <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
+          AO VIVO
+        </span>
+        <span className="text-[11px] font-mono text-sky-400 flex-shrink-0">
+          {formatTime(position)}
+        </span>
+        <span className="text-[10px] text-gray-600 flex-shrink-0">decorridos</span>
+      </div>
+    )
+  }
+  const pct = duration > 0 ? Math.min((position / duration) * 100, 100) : 0
+  const remaining = Math.max(0, duration - position)
   return (
     <div className="space-y-1">
       <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
@@ -138,7 +151,7 @@ function ClipProgressBar({ position, duration }: { position: number; duration: n
       <div className="flex items-center justify-between gap-1 text-[11px] font-mono">
         <span className="flex items-center gap-1 text-gray-500 min-w-0">
           <span className="text-[9px] font-bold uppercase tracking-wide text-gray-600 flex-shrink-0">DUR</span>
-          <span>{isInfinite ? '∞' : formatTime(duration)}</span>
+          <span>{formatTime(duration)}</span>
         </span>
         <span className="flex items-center gap-0.5 text-emerald-400 flex-shrink-0">
           <ChevronUp className="h-3 w-3" />
@@ -146,7 +159,7 @@ function ClipProgressBar({ position, duration }: { position: number; duration: n
         </span>
         <span className="flex items-center gap-0.5 text-red-400 flex-shrink-0">
           <ChevronDown className="h-3 w-3" />
-          {remaining !== null ? formatTime(remaining) : '—'}
+          {formatTime(remaining)}
         </span>
       </div>
     </div>
@@ -1384,7 +1397,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
           {/* Barras de progresso compactas */}
           {item && (
             <div className="px-3 pt-1.5 pb-1 space-y-1 border-b border-gray-800/40">
-              <ClipProgressBar position={position} duration={item.duration} />
+              <ClipProgressBar position={position} duration={item.duration} isLive={item.sourceType === 'URL'} />
               {totalPlaylistDuration > 0 && (
                 <PlaylistProgressBar elapsed={totalElapsed} total={totalPlaylistDuration} />
               )}
