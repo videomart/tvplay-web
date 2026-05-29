@@ -121,11 +121,55 @@ services:
     container_name: tvplay_web
     restart: unless-stopped
     ports:
-      - '3000:80'
+      - '3000:80'   # acesso direto local (sem SSL)
+    environment:
+      # Preencha para habilitar HTTPS automático via Let's Encrypt
+      # VIRTUAL_HOST: vps.avideomart.com.br
+      # VIRTUAL_PORT: '80'
+      # LETSENCRYPT_HOST: vps.avideomart.com.br
+      # LETSENCRYPT_EMAIL: bolais@videomart.com.br
     depends_on:
       - api
+
+  # ── Proxy reverso HTTPS (Let's Encrypt automático) ───────────────────────────
+  # Descomente este bloco e as variáveis VIRTUAL_HOST/LETSENCRYPT_* no serviço web
+  # para habilitar HTTPS com renovação automática de certificado.
+  # Pré-requisito: portas 80 e 443 abertas no servidor e domínio apontando para o IP.
+  #
+  # nginx-proxy:
+  #   image: nginxproxy/nginx-proxy
+  #   container_name: tvplay_proxy
+  #   restart: unless-stopped
+  #   ports:
+  #     - '80:80'
+  #     - '443:443'
+  #   volumes:
+  #     - /var/run/docker.sock:/tmp/docker.sock:ro
+  #     - nginx-certs:/etc/nginx/certs
+  #     - nginx-vhost:/etc/nginx/vhost.d
+  #     - nginx-html:/usr/share/nginx/html
+  #
+  # acme-companion:
+  #   image: nginxproxy/acme-companion
+  #   container_name: tvplay_acme
+  #   restart: unless-stopped
+  #   depends_on:
+  #     - nginx-proxy
+  #   environment:
+  #     - NGINX_PROXY_CONTAINER=tvplay_proxy
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock:ro
+  #     - nginx-certs:/etc/nginx/certs
+  #     - nginx-vhost:/etc/nginx/vhost.d
+  #     - nginx-html:/usr/share/nginx/html
+  #     - acme-state:/etc/acme.sh
+  # ─────────────────────────────────────────────────────────────────────────────
 
 volumes:
   pgdata:
   miniodata:
   media_storage:
+  # nginx-certs:
+  # nginx-vhost:
+  # nginx-html:
+  # acme-state:
