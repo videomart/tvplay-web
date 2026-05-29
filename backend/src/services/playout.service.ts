@@ -705,6 +705,7 @@ function startTimer(channelId: string) {
 export async function play(channelId: string, playlistId: string): Promise<PlayoutState> {
   console.log(`[playout] play ch=${channelId} playlist=${playlistId}`)
   stopTimer(channelId)
+  streamService.stopAllStreaming(channelId)  // garante que processos anteriores (câmera, entrada) param
   const playlist = await prisma.playlist.findUnique({ where: { id: playlistId } })
   if (!playlist) throw new Error('Playlist não encontrada')
 
