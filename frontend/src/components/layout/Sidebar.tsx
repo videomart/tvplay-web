@@ -8,7 +8,7 @@ import { clsx } from 'clsx'
 const primaryNav = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/playout',   icon: Radio,           label: 'Playout' },
-  { to: '/playlists', icon: ListVideo,       label: 'Playlists' },
+  { to: '/roteiros',  icon: ListVideo,       label: 'Roteiros' },
   { to: '/clips',     icon: Film,            label: 'Clipes' },
   { to: '/graphics',  icon: Layers,          label: 'Gráficos' },
 ]

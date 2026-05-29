@@ -38,8 +38,8 @@ export default function App() {
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard"        element={<DashboardPage />} />
           <Route path="playout"          element={<PlayoutPage />} />
-          <Route path="playlists"        element={<PlaylistsListPage />} />
-          <Route path="playlists/:id"    element={<PlaylistEditorPage />} />
+          <Route path="roteiros"        element={<PlaylistsListPage />} />
+          <Route path="roteiros/:id"    element={<PlaylistEditorPage />} />
           <Route path="channels"         element={<ChannelsPage />} />
           <Route path="clients"          element={<ClientsPage />} />
           <Route path="clip-types"       element={<ClipTypesPage />} />

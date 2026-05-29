@@ -171,7 +171,7 @@ export default function PlaylistEditorPage() {
       {/* Toolbar */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800 bg-gray-900">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" icon={<ArrowLeft className="h-4 w-4" />} onClick={() => navigate('/playlists')}>
+          <Button variant="ghost" size="sm" icon={<ArrowLeft className="h-4 w-4" />} onClick={() => navigate('/roteiros')}>
             Playlists
           </Button>
           <ChevronRight className="h-4 w-4 text-gray-600" />

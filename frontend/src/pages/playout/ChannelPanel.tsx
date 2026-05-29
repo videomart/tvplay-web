@@ -4,7 +4,7 @@ import {
   Play, Pause, Square, SkipForward, SkipBack,
   Radio, Wifi, WifiOff, MonitorPlay, MonitorOff, Antenna,
   ChevronDown, ChevronUp, RefreshCw, RotateCcw, GripVertical, Trash2, Repeat,
-  Camera, Timer, Copy, Eraser, FolderOpen, Plus,
+  Camera, Timer, Copy, Eraser,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
@@ -611,9 +611,6 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
 
   const camera = useCameraStream(channel.id)
   const [cameraOpen, setCameraOpen] = useState(false)
-  const [roteiroOpen, setRoteiroOpen] = useState(true)
-  const [selectedPlaylistId, setSelectedPlaylistId] = useState('')
-  const [appendMode, setAppendMode] = useState<'replace' | 'append'>('replace')
   const [saveAsOpen, setSaveAsOpen] = useState(false)
   const [saveAsName, setSaveAsName] = useState('')
   const [monitorOpen, setMonitorOpen] = useState(true)
@@ -654,11 +651,6 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
   const totalPlaylistDuration = state?.totalPlaylistDuration ?? 0
   const currentIndex = state?.currentIndex ?? 0
   const itemCount = state?.itemCount ?? 0
-
-  // Sincroniza selectedPlaylistId com o estado do WebSocket (restaura após navegar ou após stop)
-  useEffect(() => {
-    if (state?.playlistId) setSelectedPlaylistId(state.playlistId)
-  }, [state?.playlistId])
 
   // Auto-scroll para manter o clipe atual próximo ao centro do grid
   useEffect(() => {
@@ -734,13 +726,6 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
   }
 
   // ─── Queries ────────────────────────────────────────────────────────────────
-
-  const { data: roteiros = [], refetch: refetchRoteiros } = useQuery({
-    queryKey: ['playlists-panel', channel.id],
-    queryFn: () => playlistsApi.list({ channelId: channel.id }),
-    enabled: roteiroOpen,
-    staleTime: 10_000,
-  })
 
   const { data: inputSources = [] } = useQuery({
     queryKey: ['input-sources'],
@@ -871,34 +856,6 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
     onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao limpar grid'),
   })
 
-  const newPlaylistMut = useMutation({
-    mutationFn: () => playlistsApi.create({
-      date: new Date().toISOString().slice(0, 10),
-      channelId: channel.id,
-    }),
-    onSuccess: (pl: any) => {
-      setSelectedPlaylistId(pl.id)
-      toast.success(`Novo roteiro "${pl.name}" criado`)
-      refetchRoteiros()
-    },
-    onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao criar roteiro'),
-  })
-
-  const deletePlaylistMut = useMutation({
-    mutationFn: (id: string) => playlistsApi.delete(id),
-    onSuccess: () => { toast.success('Roteiro excluído'); refetchRoteiros() },
-    onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao excluir'),
-  })
-
-  const appendFromMut = useMutation({
-    mutationFn: (sourceId: string) => playlistsApi.appendFrom(state!.playlistId!, sourceId),
-    onSuccess: (data) => {
-      toast.success(`${data.appended} itens adicionados ao roteiro`)
-      refetchItems()
-    },
-    onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao incluir itens'),
-  })
-
   function handleDragStart(idx: number) { setDragIdx(idx) }
   function handleDragOver(e: React.DragEvent, idx: number) { e.preventDefault(); setOverIdx(idx) }
   function handleDragEnd() { setDragIdx(null); setOverIdx(null) }
@@ -948,8 +905,8 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
   })
 
   function handlePlay() {
-    if (!selectedPlaylistId) { setRoteiroOpen(true); return }
-    playMut.mutate(selectedPlaylistId)
+    if (!state?.playlistId) return
+    playMut.mutate(state.playlistId)
   }
 
   function handleClipPlay(idx: number) {
@@ -1264,144 +1221,6 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
         </div>
       )}
 
-      {/* ── Painel de roteiros ───────────────────────────────────────────── */}
-      {roteiroOpen && (
-        <div className="border-b border-gray-800/60 bg-gray-900/30">
-
-          {/* Cabeçalho: label + modo */}
-          <div className="flex items-center gap-3 px-3 py-1.5 border-b border-gray-800/40">
-            <span className="text-[10px] uppercase tracking-widest text-gray-500 font-semibold">Roteiros</span>
-            <label className="flex items-center gap-1.5 cursor-pointer">
-              <input
-                type="radio"
-                name={`mode-${channel.id}`}
-                checked={appendMode === 'replace'}
-                onChange={() => setAppendMode('replace')}
-                className="accent-brand-500 h-3 w-3"
-              />
-              <span className="text-[10px] text-gray-400">Substituir</span>
-            </label>
-            <label className={clsx('flex items-center gap-1.5', state?.playlistId ? 'cursor-pointer' : 'opacity-30 cursor-not-allowed')}>
-              <input
-                type="radio"
-                name={`mode-${channel.id}`}
-                checked={appendMode === 'append'}
-                onChange={() => setAppendMode('append')}
-                disabled={!state?.playlistId}
-                className="accent-emerald-500 h-3 w-3"
-              />
-              <span className="text-[10px] text-gray-400">Incluir ao final</span>
-            </label>
-          </div>
-
-          {/* Lista de roteiros */}
-          <div className="max-h-44 overflow-y-auto">
-            {roteiros.length === 0 ? (
-              /* Empty state — mesma estrutura de linha para alinhamento consistente */
-              <div className="flex items-center gap-2 px-3 py-1.5">
-                <span className="h-1.5 w-1.5 flex-shrink-0" />
-                <p className="flex-1 min-w-0 text-[11px] text-gray-600 italic truncate">
-                  Não há roteiros disponíveis, crie um novo...
-                </p>
-                <div className="flex items-center gap-0.5 flex-shrink-0">
-                  <button
-                    onClick={() => newPlaylistMut.mutate()}
-                    disabled={newPlaylistMut.isPending}
-                    title="Criar novo roteiro"
-                    className="p-1 rounded text-gray-600 hover:text-brand-400 disabled:opacity-40 transition-colors"
-                  >
-                    <Plus className="h-3 w-3" />
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <>
-                {roteiros.map((pl) => {
-                  const isCurrent = pl.id === state?.playlistId
-                  const isLocked = isCurrent && (status === 'PLAYING' || status === 'PAUSED')
-                  return (
-                    <div
-                      key={pl.id}
-                      className={clsx(
-                        'flex items-center gap-2 px-3 py-1.5',
-                        isCurrent ? 'bg-brand-900/20' : 'hover:bg-white/[0.03]'
-                      )}
-                    >
-                      <span className={clsx('h-1.5 w-1.5 rounded-full flex-shrink-0 mt-0.5', isCurrent ? 'bg-emerald-400' : 'bg-transparent')} />
-                      <div className="flex-1 min-w-0">
-                        <p className={clsx('text-[12px] font-medium truncate leading-tight', isCurrent ? 'text-white' : 'text-gray-300')}>{pl.name}</p>
-                        <p className="text-[10px] text-gray-600 leading-tight">
-                          {new Date(pl.date).toLocaleDateString('pt-BR')} · {pl._count?.items ?? 0} itens
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-0.5 flex-shrink-0">
-                        {/* Selecionar / Incluir ao final */}
-                        <button
-                          onClick={() => {
-                            if (appendMode === 'append') {
-                              appendFromMut.mutate(pl.id)
-                            } else {
-                              setSelectedPlaylistId(pl.id)
-                              playMut.mutate(pl.id)
-                            }
-                          }}
-                          disabled={playMut.isPending || appendFromMut.isPending}
-                          title={appendMode === 'append' ? 'Incluir itens ao final do roteiro atual' : 'Usar este roteiro'}
-                          className="p-1 rounded text-gray-600 hover:text-brand-400 disabled:opacity-30 transition-colors"
-                        >
-                          {appendMode === 'append'
-                            ? <Plus className="h-3 w-3" />
-                            : <Play className="h-3 w-3" />}
-                        </button>
-                        {/* Salvar como — só para o roteiro ativo */}
-                        {isCurrent ? (
-                          <button
-                            onClick={() => { setSaveAsName(''); setSaveAsOpen(true) }}
-                            title="Salvar como (clonar com novo nome)"
-                            className="p-1 rounded text-gray-600 hover:text-sky-400 transition-colors"
-                          >
-                            <Copy className="h-3 w-3" />
-                          </button>
-                        ) : (
-                          <span className="w-5 flex-shrink-0" />
-                        )}
-                        {/* Excluir */}
-                        <button
-                          onClick={() => {
-                            if (!confirm(`Excluir "${pl.name}"?`)) return
-                            deletePlaylistMut.mutate(pl.id)
-                          }}
-                          disabled={isLocked || deletePlaylistMut.isPending}
-                          title={isLocked ? 'Roteiro em uso — não pode excluir' : 'Excluir roteiro'}
-                          className="p-1 rounded text-gray-600 hover:text-red-400 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </button>
-                      </div>
-                    </div>
-                  )
-                })}
-                {/* Linha fixa: criar novo roteiro */}
-                <div className="flex items-center gap-2 px-3 py-1.5 border-t border-gray-800/30 hover:bg-white/[0.03]">
-                  <span className="h-1.5 w-1.5 flex-shrink-0" />
-                  <p className="flex-1 min-w-0 text-[11px] text-gray-600 truncate">Criar novo roteiro</p>
-                  <div className="flex items-center gap-0.5 flex-shrink-0">
-                    <button
-                      onClick={() => newPlaylistMut.mutate()}
-                      disabled={newPlaylistMut.isPending}
-                      title="Criar novo roteiro"
-                      className="p-1 rounded text-gray-600 hover:text-brand-400 disabled:opacity-40 transition-colors"
-                    >
-                      <Plus className="h-3 w-3" />
-                    </button>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* ── Playlist de itens ─────────────────────────────────────────────── */}
       {state?.playlistId ? (
         <div className="border-t border-gray-800">
@@ -1485,15 +1304,6 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
               )}
             >
               <Repeat className="h-3.5 w-3.5" />
-            </button>
-
-            {/* Toggle painel de roteiros */}
-            <button
-              onClick={() => setRoteiroOpen((v) => !v)}
-              title={roteiroOpen ? 'Ocultar roteiros' : 'Selecionar roteiro'}
-              className={clsx('flex-shrink-0 transition-colors', roteiroOpen ? 'text-brand-400 hover:text-brand-300' : 'text-gray-600 hover:text-brand-400')}
-            >
-              <FolderOpen className="h-3.5 w-3.5" />
             </button>
 
             {/* Limpar grid — apenas em stop/idle com playlist ativa */}
@@ -1602,16 +1412,8 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
           )}
         </div>
       ) : (
-        /* Sem playlist — controle simplificado */
-        <div className="px-4 py-3 border-t border-gray-800 flex items-center gap-2">
-          <Button
-            size="sm"
-            icon={<Play className="h-4 w-4" />}
-            loading={playMut.isPending}
-            onClick={handlePlay}
-          >
-            {selectedPlaylistId ? 'Play' : 'Selecionar roteiro...'}
-          </Button>
+        <div className="px-4 py-3 border-t border-gray-800">
+          <p className="text-[11px] text-gray-600 italic">Selecione um roteiro na Biblioteca.</p>
         </div>
       )}
 

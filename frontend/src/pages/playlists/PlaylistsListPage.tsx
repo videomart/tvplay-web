@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Pencil, Trash2, ListVideo, CalendarDays, Clock, Upload, Repeat } from 'lucide-react'
+import { Plus, Pencil, Trash2, ListVideo, CalendarDays, Clock, Upload, Repeat, Tv2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { playlistsApi, type Playlist } from '../../api/playlists.api'
 import { channelsApi } from '../../api/channels.api'
@@ -11,6 +11,7 @@ import { Input, Select } from '../../components/ui/Input'
 import { Modal } from '../../components/ui/Modal'
 import { Table, Thead, Th, Tbody, Tr, Td } from '../../components/ui/Table'
 import PlaylistImportModal from './PlaylistImportModal'
+import { clsx } from 'clsx'
 
 const today = new Date().toISOString().slice(0, 10)
 const empty = { name: '', date: today, channelId: '', notes: '', autoStart: false, loop: false, startTime: '', graphicId: '' }
@@ -48,7 +49,7 @@ export default function PlaylistsListPage() {
         : playlistsApi.create(payload)
     },
     onSuccess: () => {
-      toast.success(editing ? 'Playlist atualizada' : 'Playlist criada')
+      toast.success(editing ? 'Roteiro atualizado' : 'Roteiro criado')
       qc.invalidateQueries({ queryKey: ['playlists'] })
       setOpen(false)
     },
@@ -57,7 +58,7 @@ export default function PlaylistsListPage() {
 
   const remove = useMutation({
     mutationFn: playlistsApi.delete,
-    onSuccess: () => { toast.success('Playlist removida'); qc.invalidateQueries({ queryKey: ['playlists'] }) },
+    onSuccess: () => { toast.success('Roteiro removido'); qc.invalidateQueries({ queryKey: ['playlists'] }) },
   })
 
   function f(k: keyof typeof empty) {
@@ -80,50 +81,96 @@ export default function PlaylistsListPage() {
     setOpen(true)
   }
 
+  const selectedChannel = channels.find((ch) => ch.id === filterChannel)
+
   return (
     <div className="p-6 space-y-6">
+
+      {/* Cabeçalho */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Playlists</h1>
-          <p className="text-gray-500 text-sm mt-1">{data.length} playlist(s)</p>
+          <h1 className="text-2xl font-bold text-white">Roteiros</h1>
+          <p className="text-gray-500 text-sm mt-1">
+            {filterChannel
+              ? `${data.length} roteiro(s) — ${selectedChannel?.name ?? ''}`
+              : `${data.length} roteiro(s) em todos os canais`}
+          </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="secondary" onClick={() => setImportOpen(true)} icon={<Upload className="h-4 w-4" />}>Importar Roteiro</Button>
-          <Button onClick={openNew} icon={<Plus className="h-4 w-4" />}>Nova Playlist</Button>
+          <Button variant="secondary" onClick={() => setImportOpen(true)} icon={<Upload className="h-4 w-4" />}>
+            Importar
+          </Button>
+          <Button onClick={openNew} icon={<Plus className="h-4 w-4" />}>Novo Roteiro</Button>
         </div>
       </div>
 
-      <div className="flex gap-3">
-        <select
-          value={filterChannel}
-          onChange={(e) => setFilterChannel(e.target.value)}
-          className="rounded-lg bg-gray-800 border border-gray-700 text-gray-100 text-sm px-3 py-2 focus:outline-none focus:border-brand-500"
-        >
-          <option value="">Todos os canais</option>
-          {channels.map((ch) => <option key={ch.id} value={ch.id}>{ch.number} — {ch.name}</option>)}
-        </select>
+      {/* Seletor de canal — destaque visual */}
+      <div className="card p-4 space-y-2">
+        <div className="flex items-center gap-2 mb-3">
+          <Tv2 className="h-4 w-4 text-gray-500" />
+          <span className="text-sm font-semibold text-gray-300">Selecione o canal</span>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => setFilterChannel('')}
+            className={clsx(
+              'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+              filterChannel === ''
+                ? 'bg-brand-600/30 text-brand-300 ring-1 ring-brand-500/40'
+                : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200'
+            )}
+          >
+            Todos os canais
+          </button>
+          {channels.map((ch) => (
+            <button
+              key={ch.id}
+              onClick={() => setFilterChannel(ch.id)}
+              className={clsx(
+                'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+                filterChannel === ch.id
+                  ? 'bg-brand-600/30 text-brand-300 ring-1 ring-brand-500/40'
+                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200'
+              )}
+            >
+              <span className="h-5 w-5 rounded bg-gray-700 flex items-center justify-center text-[10px] font-bold text-gray-300 flex-shrink-0">
+                {ch.number}
+              </span>
+              {ch.name}
+            </button>
+          ))}
+        </div>
       </div>
 
+      {/* Tabela de roteiros */}
       <div className="card">
         <Table>
           <Thead>
-            <Th>Playlist</Th>
+            <Th>Roteiro</Th>
             <Th>Canal</Th>
             <Th>Data</Th>
-            <Th>Clipes</Th>
+            <Th>Itens</Th>
             <Th>Gráfico</Th>
             <Th className="w-24 text-right">Ações</Th>
           </Thead>
           <Tbody>
             {isLoading ? (
               <Tr><Td colSpan={6} className="text-center text-gray-500 py-8">Carregando...</Td></Tr>
+            ) : data.length === 0 ? (
+              <Tr>
+                <Td colSpan={6} className="text-center text-gray-600 py-10">
+                  {filterChannel
+                    ? 'Nenhum roteiro para este canal. Crie um novo roteiro.'
+                    : 'Nenhum roteiro cadastrado.'}
+                </Td>
+              </Tr>
             ) : data.map((pl) => (
-              <Tr key={pl.id} onClick={() => navigate(`/playlists/${pl.id}`)}>
+              <Tr key={pl.id} onClick={() => navigate(`/roteiros/${pl.id}`)}>
                 <Td>
                   <div className="flex items-center gap-2">
                     <ListVideo className="h-4 w-4 text-gray-600 shrink-0" />
                     <span className="font-medium text-white font-mono">{pl.name}</span>
-                    {pl.locked && <span className="text-[10px] bg-gray-700 text-gray-400 px-1.5 py-0.5 rounded">Bloqueada</span>}
+                    {pl.locked && <span className="text-[10px] bg-gray-700 text-gray-400 px-1.5 py-0.5 rounded">Bloqueado</span>}
                     {(pl as any).loop && (
                       <span className="flex items-center gap-1 text-[10px] bg-emerald-900/40 text-emerald-400 px-1.5 py-0.5 rounded">
                         <Repeat className="h-2.5 w-2.5" />Loop
@@ -149,7 +196,7 @@ export default function PlaylistsListPage() {
                 </Td>
                 <Td>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-400">{pl._count?.items ?? 0} clipes</span>
+                    <span className="text-sm text-gray-400">{pl._count?.items ?? 0} itens</span>
                     {(pl._noMediaCount ?? 0) > 0 && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-900/50 text-orange-400 border border-orange-700/40 font-medium">
                         {pl._noMediaCount} sem arquivo
@@ -174,11 +221,12 @@ export default function PlaylistsListPage() {
         </Table>
       </div>
 
-      <Modal open={open} onClose={() => setOpen(false)} title={editing ? 'Editar Playlist' : 'Nova Playlist'}>
+      {/* Modal: criar / editar roteiro */}
+      <Modal open={open} onClose={() => setOpen(false)} title={editing ? 'Editar Roteiro' : 'Novo Roteiro'}>
         <div className="space-y-4">
           <div className="space-y-1">
             <Input
-              label="Playlist (ID)"
+              label="Identificador"
               value={form.name}
               onChange={f('name')}
               placeholder="Deixe em branco para gerar automaticamente (ex: 040526-1)"
@@ -214,7 +262,7 @@ export default function PlaylistsListPage() {
               </div>
               <span className="flex items-center gap-1.5 text-sm text-gray-300">
                 <Repeat className="h-3.5 w-3.5 text-emerald-500" />
-                Repetir playlist em loop
+                Repetir roteiro em loop
               </span>
             </label>
             <label className="flex items-center gap-3 cursor-pointer select-none">
