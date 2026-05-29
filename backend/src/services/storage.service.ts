@@ -46,6 +46,21 @@ class StorageService {
     await this.client.removeObject(config.minio.bucket, objectName)
   }
 
+  // Apaga todos os objetos com determinado prefixo (ex: pasta HLS de uma mídia)
+  async deleteFolder(prefix: string): Promise<number> {
+    const objects: string[] = []
+    await new Promise<void>((resolve, reject) => {
+      const stream = this.client.listObjects(config.minio.bucket, prefix, true)
+      stream.on('data', (obj) => { if (obj.name) objects.push(obj.name) })
+      stream.on('end', resolve)
+      stream.on('error', reject)
+    })
+    if (objects.length > 0) {
+      await this.client.removeObjects(config.minio.bucket, objects)
+    }
+    return objects.length
+  }
+
   async fileExists(objectName: string): Promise<boolean> {
     try {
       await this.client.statObject(config.minio.bucket, objectName)

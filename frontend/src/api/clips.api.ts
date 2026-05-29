@@ -10,6 +10,22 @@ export interface OrphanMedia {
   createdAt: string
 }
 
+export interface MediaFile {
+  id: string
+  originalName: string
+  ingestStatus: string
+  duration?: number | null
+  sizeBytes?: string | null
+  width?: number | null
+  height?: number | null
+  hlsPath?: string | null
+  thumbnail?: string | null
+  errorMsg?: string | null
+  createdAt: string
+  _count: { clips: number }
+  clips: { id: string; title: string; code: string }[]
+}
+
 export type ClipModality = 'BK' | 'AR' | 'PT' | 'VH' | 'CP' | 'CA' | 'LV' | 'ID' | 'MT'
 export type ClipSourceType = 'FILE' | 'URL'
 
@@ -63,6 +79,10 @@ export const clipsApi = {
   },
   listOrphanMedia: () =>
     api.get<OrphanMedia[]>('/ingest/media?orphan=true&status=READY').then((r) => r.data),
+  listMedia: (params?: { orphan?: boolean; status?: string }) =>
+    api.get<MediaFile[]>('/ingest/media', { params }).then((r) => r.data),
+  deleteMedia: (id: string) =>
+    api.delete<{ ok: boolean; deletedObjects: number }>(`/ingest/media/${id}`).then((r) => r.data),
   uploadMedia: (file: File, clipId: string, onProgress?: (pct: number) => void) => {
     const form = new FormData()
     form.append('file', file)

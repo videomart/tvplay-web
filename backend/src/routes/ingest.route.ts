@@ -5,6 +5,7 @@ import { prisma } from '../lib/prisma'
 import { storageService } from '../services/storage.service'
 import { transcodeQueue } from '../jobs/transcode.worker'
 import { config } from '../config'
+import * as playout from '../services/playout.service'
 
 export default async function ingestRoutes(app: FastifyInstance) {
   const auth = { preHandler: [app.authenticate] }
@@ -78,17 +79,73 @@ export default async function ingestRoutes(app: FastifyInstance) {
     return media
   })
 
-  // Lista arquivos de mídia (suporta ?orphan=true para mostrar só os sem clipe)
+  // Lista arquivos de mídia com contagem de clipes e tamanho
   app.get('/media', auth, async (request: any) => {
     const { status, orphan } = request.query
     const where: any = {}
     if (status) where.ingestStatus = status
     if (orphan === 'true') where.clips = { none: {} }
-    return prisma.mediaFile.findMany({
+    const files = await prisma.mediaFile.findMany({
       where: Object.keys(where).length > 0 ? where : undefined,
       orderBy: { createdAt: 'desc' },
-      take: 100,
-      select: { id: true, originalName: true, ingestStatus: true, duration: true, createdAt: true },
+      take: 200,
+      select: {
+        id: true,
+        originalName: true,
+        ingestStatus: true,
+        duration: true,
+        sizeBytes: true,
+        width: true,
+        height: true,
+        hlsPath: true,
+        thumbnail: true,
+        errorMsg: true,
+        createdAt: true,
+        _count: { select: { clips: true } },
+        clips: { select: { id: true, title: true, code: true }, take: 3 },
+      },
     })
+    // BigInt não serializa em JSON — converter para string
+    return files.map((f) => ({ ...f, sizeBytes: f.sizeBytes?.toString() ?? null }))
+  })
+
+  // Exclui arquivo de mídia do MinIO e do banco
+  app.delete('/media/:id', auth, async (request: any, reply) => {
+    const { id } = request.params
+
+    const media = await prisma.mediaFile.findUnique({
+      where: { id },
+      select: { id: true, hlsPath: true, thumbnail: true, storagePath: true },
+    })
+    if (!media) return reply.status(404).send({ error: 'Arquivo não encontrado' })
+
+    // Bloqueia se algum canal estiver reproduzindo este arquivo agora
+    const activeStates = playout.getAllStates()
+    const inUse = activeStates.some(
+      (s) => s.status === 'PLAYING' && s.currentItem?.mediaId === id
+    )
+    if (inUse) return reply.status(409).send({ error: 'Arquivo em uso no playout — pare a transmissão antes de excluir' })
+
+    // Apaga objetos do MinIO
+    let deletedObjects = 0
+    if (media.hlsPath) {
+      // hlsPath = "hls/{mediaId}/index.m3u8" → prefixo é "hls/{mediaId}/"
+      const folder = media.hlsPath.split('/').slice(0, 2).join('/') + '/'
+      deletedObjects += await storageService.deleteFolder(folder).catch(() => 0)
+    }
+    if (media.thumbnail) {
+      await storageService.deleteFile(media.thumbnail).catch(() => {})
+      deletedObjects++
+    }
+    // Apaga arquivo temporário original se ainda existir
+    if (media.storagePath && fs.existsSync(media.storagePath)) {
+      fs.unlink(media.storagePath, () => {})
+    }
+
+    // Desvincula clipes (set mediaId = null) e apaga o registro
+    await prisma.clip.updateMany({ where: { mediaId: id }, data: { mediaId: null } })
+    await prisma.mediaFile.delete({ where: { id } })
+
+    return { ok: true, deletedObjects }
   })
 }
