@@ -22,38 +22,46 @@ function isUrlClip(sourceType: string | null | undefined, sourceUrl: string | nu
   return false
 }
 
+// Clientes a tentar em ordem — ios é o mais confiável em 2025 (bypassa bot-check do YouTube)
+const YT_CLIENTS = ['ios', 'tv_embedded', 'android', 'mweb', ''] as const
+
+function ytClientArgs(client: string): string[] {
+  return client ? ['--extractor-args', `youtube:player_client=${client}`] : []
+}
+
 // Verifica se URL YouTube/Twitch é stream ao vivo (true) ou VOD (false)
 // Retorna null se yt-dlp falhar
 export async function checkIsLive(url: string): Promise<{ isLive: boolean | null; title?: string; duration?: number }> {
-  try {
-    const { stdout } = await execFileAsync('yt-dlp', [
-      '--no-playlist', '--no-warnings', '--socket-timeout', '15',
-      '--print', '%(is_live)s|%(title)s|%(duration)s',
-      url,
-    ], { timeout: 20000 })
-    const [isLiveStr, title, durStr] = stdout.trim().split('|')
-    const isLive = isLiveStr === 'True' ? true : isLiveStr === 'False' ? false : null
-    const duration = durStr && durStr !== 'NA' ? parseFloat(durStr) : undefined
-    return { isLive, title: title === 'NA' ? undefined : title, duration }
-  } catch {
-    return { isLive: null }
+  const base = ['--no-playlist', '--no-warnings', '--socket-timeout', '15', '--print', '%(is_live)s|%(title)s|%(duration)s']
+  for (const client of YT_CLIENTS) {
+    try {
+      const { stdout } = await execFileAsync('yt-dlp', [...base, ...ytClientArgs(client), url], { timeout: 20000 })
+      const [isLiveStr, title, durStr] = stdout.trim().split('|')
+      const isLive = isLiveStr === 'True' ? true : isLiveStr === 'False' ? false : null
+      const duration = durStr && durStr !== 'NA' ? parseFloat(durStr) : undefined
+      console.log(`[yt-dlp] checkIsLive OK (client=${client || 'default'}): live=${isLive}`)
+      return { isLive, title: title === 'NA' ? undefined : title, duration }
+    } catch (err: any) {
+      console.error(`[yt-dlp] checkIsLive falha (client=${client || 'default'}): ${String(err?.message ?? err).slice(0, 200)}`)
+    }
   }
+  return { isLive: null }
 }
 
-// Resolve via yt-dlp
+// Resolve via yt-dlp — tenta múltiplos player_client para contornar bot-check do YouTube
 async function resolveViaYtDlp(rawUrl: string): Promise<string | null> {
   const base = ['--no-playlist', '-g', '--no-warnings', '--socket-timeout', '15']
   const fmt  = 'best[protocol=m3u8_native]/best[vcodec!=none][acodec!=none][height<=720]/best[vcodec!=none][acodec!=none]/best'
-  for (const extra of [['--extractor-args', 'youtube:player_client=android'], []]) {
+  for (const client of YT_CLIENTS) {
     try {
-      const { stdout } = await execFileAsync('yt-dlp', [...base, '-f', fmt, ...extra, rawUrl], { timeout: 35000 })
+      const { stdout } = await execFileAsync('yt-dlp', [...base, '-f', fmt, ...ytClientArgs(client), rawUrl], { timeout: 35000 })
       const url = stdout.trim().split('\n')[0]
       if (url) {
-        console.log(`[yt-dlp] URL resolvida OK: ${url.slice(0, 100)}`)
+        console.log(`[yt-dlp] URL resolvida OK (client=${client || 'default'}): ${url.slice(0, 80)}`)
         return url
       }
     } catch (err: any) {
-      console.error(`[yt-dlp] Falha ao resolver ${rawUrl} — ${err?.message ?? err}`)
+      console.error(`[yt-dlp] Falha (client=${client || 'default'}): ${String(err?.message ?? err).slice(0, 200)}`)
     }
   }
   console.error(`[yt-dlp] TODAS as tentativas falharam para: ${rawUrl}`)
