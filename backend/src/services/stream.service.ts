@@ -334,10 +334,12 @@ function buildArgs(
   ]
 
   const aBitrate = output.audioBitrate ?? 128
-  const videoBitrateArgs = (!isLive && output.videoBitrate)
-    ? ['-b:v', `${output.videoBitrate}k`,
-       '-maxrate', `${Math.round(output.videoBitrate * 1.5)}k`,
-       '-bufsize', `${output.videoBitrate * 2}k`]
+  // Bitrate padrão 4000k quando não configurado — evita encoder sem limite enviando burst ao YouTube
+  const vBitrate = output.videoBitrate || 4000
+  const videoBitrateArgs = !isLive
+    ? ['-b:v', `${vBitrate}k`,
+       '-maxrate', `${Math.round(vBitrate * 1.2)}k`,
+       '-bufsize', `${vBitrate}k`]   // bufsize = 1× bitrate → buffer de ~1s
     : []
 
   let videoCodec: string[]
@@ -351,6 +353,8 @@ function buildArgs(
       ...filterArgs,
       '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
       ...videoBitrateArgs,
+      // GOP fixo de 2s para YouTube (keyframe a cada 60 frames em 30fps)
+      '-g', '60', '-keyint_min', '60', '-sc_threshold', '0',
       '-c:a', 'aac', '-ar', '44100', '-b:a', `${aBitrate}k`,
       ...mapArgs,
     ]
