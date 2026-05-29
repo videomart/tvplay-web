@@ -1062,7 +1062,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
         <div className="px-3 pt-3 pb-2 border-b border-gray-800">
           <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-black">
             {/* Câmera tem prioridade — substitui qualquer outro conteúdo no monitor */}
-            {cameraIsLive && camera.active && camera.previewStream ? (
+            {cameraIsLive && camera.active && camera.previewStream && status !== 'PLAYING' && status !== 'PAUSED' ? (
               <CameraMonitorPreview stream={camera.previewStream} graphic={state?.activeGraphic} />
             ) : (status === 'PLAYING' || status === 'PAUSED') && !item?.isBreak ? (
               monitorSrc
