@@ -58,9 +58,9 @@ export function CameraModal({ open, onClose, channelName, camera }: CameraModalP
     setStarting(true)
     try {
       await start(selectedVideo, selectedAudio)
-      // Grava a última configuração para uso futuro
       localStorage.setItem('camera-video-device', selectedVideo)
       localStorage.setItem('camera-audio-device', selectedAudio)
+      onClose() // fecha o modal automaticamente ao iniciar — câmera fica ativa em background
     } catch {}
     setStarting(false)
   }
