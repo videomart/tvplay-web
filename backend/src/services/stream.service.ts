@@ -66,9 +66,10 @@ function isRelayCapable(type: string): boolean {
 
 function buildRelayArgs(output: OutputConfig, port: number): string[] | null {
   if (!isRelayCapable(output.type)) return null
-  // -f mpegts before -i skips format probing; relay starts as soon as first TS packet arrives
-  const udpUrl    = `udp://0.0.0.0:${port}?fifo_size=5000000&overrun_nonfatal=1`
-  const inputArgs = ['-hide_banner', '-loglevel', 'warning', '-stats', '-f', 'mpegts', '-i', udpUrl]
+  // -re: lê o buffer UDP na taxa nativa do stream (evita burst ao vivo para YouTube/RTMP)
+  // fifo_size reduzido: menos acúmulo de buffer entre troca de clipes
+  const udpUrl    = `udp://0.0.0.0:${port}?fifo_size=1000000&overrun_nonfatal=1`
+  const inputArgs = ['-hide_banner', '-loglevel', 'warning', '-stats', '-re', '-f', 'mpegts', '-i', udpUrl]
   const codec     = ['-c', 'copy']
   switch (output.type) {
     case 'RTMP': {
