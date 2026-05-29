@@ -1342,7 +1342,26 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
               </span>
             )}
 
-            <div className="flex-1" />
+            {/* Label roteiro/autosave — centro da barra */}
+            <div className="flex-1 flex items-center justify-center gap-1.5 min-w-0 px-1">
+              {state?.playlistIsAutoSave ? (
+                <>
+                  <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 uppercase tracking-wide flex-shrink-0">
+                    AUTOSAVE
+                  </span>
+                  <span className="text-[10px] text-gray-600 truncate hidden sm:block">sem roteiro</span>
+                </>
+              ) : state?.name ? (
+                <>
+                  <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-brand-500/20 text-brand-400 border border-brand-500/30 uppercase tracking-wide flex-shrink-0">
+                    ROT
+                  </span>
+                  <span className="text-[10px] text-gray-300 font-medium truncate">{state.name}</span>
+                </>
+              ) : (
+                <span className="text-[10px] text-gray-700 italic truncate">sem roteiro</span>
+              )}
+            </div>
 
             {/* Loop da playlist */}
             <button
@@ -1389,27 +1408,6 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                 ? <ChevronUp className="h-3.5 w-3.5" />
                 : <ChevronDown className="h-3.5 w-3.5" />}
             </button>
-          </div>
-
-          {/* Label da playlist ativa */}
-          <div className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-800/40 bg-gray-950/40">
-            {state?.playlistIsAutoSave ? (
-              <>
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 uppercase tracking-wide flex-shrink-0">
-                  AUTOSAVE
-                </span>
-                <span className="text-[11px] text-gray-500 truncate">Composição livre — sem roteiro</span>
-              </>
-            ) : state?.name ? (
-              <>
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-brand-500/20 text-brand-400 border border-brand-500/30 uppercase tracking-wide flex-shrink-0">
-                  ROTEIRO
-                </span>
-                <span className="text-[11px] text-gray-200 font-medium truncate">{state.name}</span>
-              </>
-            ) : (
-              <span className="text-[11px] text-gray-600 italic">Nenhum roteiro carregado</span>
-            )}
           </div>
 
           {/* Barras de progresso compactas */}
