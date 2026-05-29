@@ -5,6 +5,13 @@ import { tmpdir } from 'os'
 import { prisma } from '../lib/prisma'
 import { config } from '../config'
 
+// Hook registrado pelo camera.service para parar câmera quando qualquer
+// operação de streaming iniciar — evita dois FFmpeg escrevendo na mesma saída.
+let _stopCameraHook: ((channelId: string) => void) | null = null
+export function registerStopCameraHook(fn: (channelId: string) => void) {
+  _stopCameraHook = fn
+}
+
 export type GraphicConfig = {
   logoUrl?: string | null
   logoPosition?: string | null
@@ -529,7 +536,9 @@ export function stopStreaming(channelId: string) {
 }
 
 // Stops both content processes and relay processes (use for full stop / cut-to-input / fallback).
+// Also stops active camera so two FFmpeg processes never write to the same output.
 export function stopAllStreaming(channelId: string) {
+  _stopCameraHook?.(channelId)
   stopStreaming(channelId)
   stopRelays(channelId)
 }
