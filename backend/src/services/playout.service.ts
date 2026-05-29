@@ -218,6 +218,19 @@ export function setPlaylistIfIdle(channelId: string, playlistId: string): void {
   // Não broadcast aqui — insertClip/insertBreak farão broadcast após gravar no DB
 }
 
+// Remove referência a uma playlist deletada de todos os estados em memória
+export function detachPlaylist(playlistId: string): void {
+  for (const [channelId, state] of states.entries()) {
+    if (state.playlistId !== playlistId) continue
+    if (state.status === 'PLAYING' || state.status === 'PAUSED') continue
+    state.playlistId = null
+    state.currentIndex = 0
+    state.currentItem = null
+    state.updatedAt = Date.now()
+    broadcast(channelId, state)
+  }
+}
+
 export function subscribeWS(channelId: string, ws: WSClient) {
   if (!wsClients.has(channelId)) wsClients.set(channelId, new Set())
   wsClients.get(channelId)!.add(ws)

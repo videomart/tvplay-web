@@ -19,6 +19,24 @@ async function getOrCreateAutoSave(channelId: string): Promise<string> {
   return created.id
 }
 
+// Garante que o canal tem uma playlist ativa válida — cria autosave se necessário
+async function ensureActivePlaylist(channelId: string): Promise<void> {
+  const state = playout.getState(channelId)
+  const playlistId = state.playlistId
+
+  // Verifica se a playlist referenciada ainda existe no banco
+  const exists = playlistId
+    ? await prisma.playlist.findUnique({ where: { id: playlistId }, select: { id: true } })
+    : null
+
+  if (!exists) {
+    // Limpa referência stale antes de criar/reativar autosave
+    if (playlistId) playout.detachPlaylist(playlistId)
+    const autoSaveId = await getOrCreateAutoSave(channelId)
+    playout.setPlaylistIfIdle(channelId, autoSaveId)
+  }
+}
+
 export default async function playoutRoutes(app: FastifyInstance) {
   const auth = { preHandler: [app.authenticate] }
 
@@ -239,10 +257,7 @@ export default async function playoutRoutes(app: FastifyInstance) {
     const { clipId, afterItemId } = request.body as { clipId: string; afterItemId?: string | null }
     if (!clipId) return reply.status(400).send({ error: 'clipId é obrigatório' })
     const { channelId } = request.params
-    if (!playout.getState(channelId).playlistId) {
-      const autoSaveId = await getOrCreateAutoSave(channelId)
-      playout.setPlaylistIfIdle(channelId, autoSaveId)
-    }
+    await ensureActivePlaylist(channelId)
     return playout.insertClip(channelId, clipId, afterItemId).catch((e) =>
       reply.status(400).send({ error: e.message })
     )
@@ -252,10 +267,7 @@ export default async function playoutRoutes(app: FastifyInstance) {
   app.post('/:channelId/insert-break', auth, async (request: any, reply) => {
     const { afterItemId } = (request.body ?? {}) as { afterItemId?: string | null }
     const { channelId } = request.params
-    if (!playout.getState(channelId).playlistId) {
-      const autoSaveId = await getOrCreateAutoSave(channelId)
-      playout.setPlaylistIfIdle(channelId, autoSaveId)
-    }
+    await ensureActivePlaylist(channelId)
     return playout.insertBreak(channelId, afterItemId).catch((e) =>
       reply.status(400).send({ error: e.message })
     )

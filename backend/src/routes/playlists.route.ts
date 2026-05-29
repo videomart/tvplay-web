@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
+import * as playout from '../services/playout.service'
 
 const playlistSchema = z.object({
   date:      z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -136,7 +137,9 @@ export default async function playlistRoutes(app: FastifyInstance) {
   })
 
   app.delete('/:id', auth, async (request: any, reply) => {
-    await prisma.playlist.delete({ where: { id: request.params.id } }).catch(() => null)
+    const { id } = request.params
+    await prisma.playlist.delete({ where: { id } }).catch(() => null)
+    playout.detachPlaylist(id)
     return reply.status(204).send()
   })
 
