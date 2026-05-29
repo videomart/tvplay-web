@@ -6,8 +6,7 @@ import authPlugin from './plugins/auth.plugin'
 import corsPlugin from './plugins/cors.plugin'
 import { registerRoutes } from './routes'
 import { initFromDb, handleStreamFailure } from './services/playout.service'
-import { setStreamFailureCallback, setClockOffsetHours, registerStopCameraHook } from './services/stream.service'
-import { stopCamera } from './services/camera.service'
+import { setStreamFailureCallback, setClockOffsetHours } from './services/stream.service'
 import { startScheduler } from './services/scheduler.service'
 import { prisma } from './lib/prisma'
 
@@ -36,7 +35,7 @@ async function bootstrap() {
   app.log.info(`TVPlay API rodando na porta ${config.port}`)
 
   setStreamFailureCallback(handleStreamFailure)
-  registerStopCameraHook(stopCamera)
+  // Câmera é fonte persistente — NÃO para ao trocar clipes ou comutar saídas
 
   // Carrega offset do relógio das configurações do sistema
   const sysSettings = await prisma.systemSettings.findUnique({ where: { id: 'singleton' } })
