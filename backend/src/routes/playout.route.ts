@@ -3,11 +3,12 @@ import * as playout from '../services/playout.service'
 import * as streamService from '../services/stream.service'
 import { prisma } from '../lib/prisma'
 
-async function getOrCreateAutoSave(channelId: string): Promise<string> {
+async function getOrCreateAutoSave(channelId: string): Promise<{ id: string; name: string }> {
   const existing = await prisma.playlist.findFirst({
     where: { channelId, isAutoSave: true },
+    select: { id: true, name: true },
   })
-  if (existing) return existing.id
+  if (existing) return existing
   const created = await prisma.playlist.create({
     data: {
       channelId,
@@ -15,8 +16,9 @@ async function getOrCreateAutoSave(channelId: string): Promise<string> {
       date: new Date('2099-01-01'),
       name: `__autosave__${channelId}`,
     },
+    select: { id: true, name: true },
   })
-  return created.id
+  return created
 }
 
 // Garante que o canal tem uma playlist ativa válida — cria autosave se necessário
@@ -32,8 +34,8 @@ async function ensureActivePlaylist(channelId: string): Promise<void> {
   if (!exists) {
     // Limpa referência stale antes de criar/reativar autosave
     if (playlistId) playout.detachPlaylist(playlistId)
-    const autoSaveId = await getOrCreateAutoSave(channelId)
-    playout.setPlaylistIfIdle(channelId, autoSaveId)
+    const autoSave = await getOrCreateAutoSave(channelId)
+    playout.setPlaylistIfIdle(channelId, autoSave.id, autoSave.name, true)
   }
 }
 

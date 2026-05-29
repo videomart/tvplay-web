@@ -38,6 +38,7 @@ export interface PlayoutState {
   status: 'IDLE' | 'PLAYING' | 'PAUSED' | 'STOPPED'
   playlistId: string | null
   name: string | null
+  playlistIsAutoSave: boolean
   loop: boolean
   currentIndex: number
   currentItem: CurrentItem | null

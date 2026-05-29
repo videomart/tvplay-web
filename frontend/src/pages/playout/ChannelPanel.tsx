@@ -1391,6 +1391,27 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
             </button>
           </div>
 
+          {/* Label da playlist ativa */}
+          <div className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-800/40 bg-gray-950/40">
+            {state?.playlistIsAutoSave ? (
+              <>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 uppercase tracking-wide flex-shrink-0">
+                  AUTOSAVE
+                </span>
+                <span className="text-[11px] text-gray-500 truncate">Composição livre — sem roteiro</span>
+              </>
+            ) : state?.name ? (
+              <>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-brand-500/20 text-brand-400 border border-brand-500/30 uppercase tracking-wide flex-shrink-0">
+                  ROTEIRO
+                </span>
+                <span className="text-[11px] text-gray-200 font-medium truncate">{state.name}</span>
+              </>
+            ) : (
+              <span className="text-[11px] text-gray-600 italic">Nenhum roteiro carregado</span>
+            )}
+          </div>
+
           {/* Barras de progresso compactas */}
           {item && (
             <div className="px-3 pt-1.5 pb-1 space-y-1 border-b border-gray-800/40">

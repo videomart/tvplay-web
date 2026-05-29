@@ -102,6 +102,7 @@ export interface PlayoutState {
   status: PlayoutStatus
   playlistId: string | null
   name: string | null
+  playlistIsAutoSave: boolean
   loop: boolean
   currentIndex: number
   currentItem: CurrentItem | null
@@ -176,6 +177,7 @@ function defaultState(channelId: string): PlayoutState {
     status: 'IDLE',
     playlistId: null,
     name: null,
+    playlistIsAutoSave: false,
     loop: false,
     currentIndex: 0,
     currentItem: null,
@@ -205,11 +207,13 @@ export function getAllStates(): PlayoutState[] {
 }
 
 // Ativa uma playlist sem iniciar playback — usado pelo autosave ao inserir o primeiro clipe
-export function setPlaylistIfIdle(channelId: string, playlistId: string): void {
+export function setPlaylistIfIdle(channelId: string, playlistId: string, name?: string | null, isAutoSave?: boolean): void {
   if (!states.has(channelId)) states.set(channelId, defaultState(channelId))
   const state = states.get(channelId)!
   if (state.playlistId) return
   state.playlistId = playlistId
+  state.name = name ?? null
+  state.playlistIsAutoSave = isAutoSave ?? false
   state.status = 'STOPPED'
   state.currentIndex = 0
   state.currentItem = null
@@ -224,6 +228,8 @@ export function detachPlaylist(playlistId: string): void {
     if (state.playlistId !== playlistId) continue
     if (state.status === 'PLAYING' || state.status === 'PAUSED') continue
     state.playlistId = null
+    state.name = null
+    state.playlistIsAutoSave = false
     state.currentIndex = 0
     state.currentItem = null
     state.updatedAt = Date.now()
@@ -680,6 +686,7 @@ export async function play(channelId: string, playlistId: string): Promise<Playo
     status: 'PLAYING',
     playlistId,
     name: playlist.name,
+    playlistIsAutoSave: (playlist as any).isAutoSave ?? false,
     loop: playlist.loop,
     currentIndex: startIndex,
     currentItem: firstItem,
@@ -1145,6 +1152,7 @@ export async function initFromDb(): Promise<void> {
       status: ch.status as PlayoutStatus,
       playlistId: ch.activePlaylistId,
       name: playlist.name,
+      playlistIsAutoSave: (playlist as any).isAutoSave ?? false,
       loop: playlist.loop,
       currentIndex: ch.playlistIndex,
       currentItem: item,
