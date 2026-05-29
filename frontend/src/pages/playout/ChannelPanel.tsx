@@ -283,7 +283,7 @@ function getMediaType(item: PlaylistItemRow): string {
     if (/^udp:/i.test(url)) return 'UDP'
     return 'URL'
   }
-  return item.mediaReady ? 'ARQ' : '!ARQ'
+  return item.mediaReady ? 'FILE' : 'ERR'
 }
 
 const MEDIA_STYLE: Record<string, string> = {
@@ -294,8 +294,8 @@ const MEDIA_STYLE: Record<string, string> = {
   RTSP: 'bg-sky-900/50 text-sky-400 border-sky-700/40',
   UDP:  'bg-gray-800 text-gray-500 border-gray-600/40',
   URL:  'bg-sky-900/50 text-sky-400 border-sky-700/40',
-  ARQ:  'bg-gray-800 text-gray-400 border-gray-700/50',
-  '!ARQ': 'bg-orange-900/50 text-orange-400 border-orange-700/40',
+  FILE: 'bg-gray-800 text-gray-400 border-gray-700/50',
+  ERR:  'bg-orange-900/50 text-orange-400 border-orange-700/40',
 }
 
 // ─── Linha de item do playlist (com drag-and-drop) ───────────────────────────
@@ -1409,8 +1409,8 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
               <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-200 w-8 flex-shrink-0">Tipo</span>
               <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-500 w-14 flex-shrink-0 pl-2">Cód.</span>
               <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-200 flex-1 min-w-0 pl-1">Título</span>
-              <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-500 w-8 text-center flex-shrink-0">GFX</span>
               <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-200 w-10 text-center flex-shrink-0">Mídia</span>
+              <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-500 w-8 text-center flex-shrink-0">GFX</span>
               <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-200 w-10 text-right flex-shrink-0">Dur.</span>
               <span className="w-8 flex-shrink-0" />
               <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-200 flex-shrink-0 px-0.5">Loop</span>

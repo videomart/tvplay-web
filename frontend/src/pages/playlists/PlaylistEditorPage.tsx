@@ -25,23 +25,23 @@ function getItemMediaType(clip: any): string {
     if (/^udp:/i.test(url)) return 'UDP'
     return 'URL'
   }
-  if (!clip.media) return '!ARQ'
-  if (clip.media.ingestStatus === 'READY') return 'ARQ'
-  if (clip.media.ingestStatus === 'ERROR') return '!ARQ'
-  return '⏳'
+  if (!clip.media) return 'ERR'
+  if (clip.media.ingestStatus === 'READY') return 'FILE'
+  if (clip.media.ingestStatus === 'ERROR') return 'ERR'
+  return 'PROC'
 }
 
 const ITEM_MEDIA_STYLE: Record<string, string> = {
-  YT:    'bg-red-900/50 text-red-400 border-red-700/40',
-  LIVE:  'bg-purple-900/50 text-purple-400 border-purple-700/40',
-  SRT:   'bg-blue-900/50 text-blue-300 border-blue-700/40',
-  RTMP:  'bg-orange-900/50 text-orange-400 border-orange-700/40',
-  RTSP:  'bg-sky-900/50 text-sky-400 border-sky-700/40',
-  UDP:   'bg-gray-800 text-gray-500 border-gray-600/40',
-  URL:   'bg-sky-900/50 text-sky-400 border-sky-700/40',
-  ARQ:   'bg-gray-800 text-gray-400 border-gray-700/50',
-  '!ARQ':'bg-orange-900/50 text-orange-400 border-orange-700/40',
-  '⏳':  'bg-amber-500/10 text-amber-400 border-amber-700/30',
+  YT:   'bg-red-900/50 text-red-400 border-red-700/40',
+  LIVE: 'bg-purple-900/50 text-purple-400 border-purple-700/40',
+  SRT:  'bg-blue-900/50 text-blue-300 border-blue-700/40',
+  RTMP: 'bg-orange-900/50 text-orange-400 border-orange-700/40',
+  RTSP: 'bg-sky-900/50 text-sky-400 border-sky-700/40',
+  UDP:  'bg-gray-800 text-gray-500 border-gray-600/40',
+  URL:  'bg-sky-900/50 text-sky-400 border-sky-700/40',
+  FILE: 'bg-gray-800 text-gray-400 border-gray-700/50',
+  ERR:  'bg-orange-900/50 text-orange-400 border-orange-700/40',
+  PROC: 'bg-amber-500/10 text-amber-400 border-amber-700/30',
 }
 
 function formatDur(sec?: number) {
