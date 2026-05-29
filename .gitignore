@@ -10,3 +10,6 @@ coverage/
 .nyc_output/
 CLAUDE.local.md
 .claude/settings.local.json
+# Cookies YouTube — NUNCA commitar (credenciais de conta Google)
+youtube-cookies.txt
+*.cookies.txt

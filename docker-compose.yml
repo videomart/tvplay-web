@@ -89,6 +89,9 @@ services:
       NODE_ENV: production
       JWT_SECRET: tvplay-dev-secret-change-in-production
       JWT_EXPIRES_IN: 8h
+      # Cookies do YouTube — necessário em IPs de datacenter/VPS
+      # Exporte via extensão "Get cookies.txt LOCALLY" (Chrome) ou "cookies.txt" (Firefox)
+      YTDLP_COOKIES_FILE: /app/youtube-cookies.txt
     ports:
       - '3001:3001'
       - '4000-4020:4000-4020/udp'  # SRT / UDP listener (21 portas — suficiente para múltiplos streams)
@@ -101,6 +104,8 @@ services:
         condition: service_healthy
     volumes:
       - media_storage:/app/storage
+      # Cookies do YouTube (crie o arquivo se não existir para evitar erro no compose)
+      - ./youtube-cookies.txt:/app/youtube-cookies.txt:ro
     privileged: true
     healthcheck:
       test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3001/health || exit 1']
