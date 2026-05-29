@@ -127,4 +127,6 @@ export const playoutApi = {
     api.post(`/playout/${channelId}/set-fallback`, { fallbackType, fallbackSourceId }).then((r) => r.data),
   togglePlaylistLoop: (channelId: string) =>
     api.post<{ playlistId: string; loop: boolean }>(`/playout/${channelId}/toggle-playlist-loop`).then((r) => r.data),
+  stopCamera: (channelId: string) =>
+    api.delete(`/camera/${channelId}`).then((r) => r.data),
 }

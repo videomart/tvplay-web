@@ -1046,6 +1046,21 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
         </div>
       </div>
 
+      {/* Barra de câmera ao vivo — visível e com botão de parar sem precisar abrir modal */}
+      {camera.active && (
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-red-950/40 border-b border-red-800/40">
+          <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
+          <span className="text-xs font-bold text-red-400 flex-1">CÂMERA AO VIVO</span>
+          <button
+            onClick={() => { camera.stop(); setCameraOpen(false) }}
+            className="flex items-center gap-1 px-2.5 py-1 rounded bg-red-700/60 hover:bg-red-600/80 text-white text-xs font-semibold transition-colors flex-shrink-0"
+          >
+            <X className="h-3 w-3" />
+            Parar câmera
+          </button>
+        </div>
+      )}
+
       {/* ── Monitor de vídeo ──────────────────────────────────────────────── */}
       {monitorOpen && (
         <div className="px-3 pt-3 pb-2 border-b border-gray-800">

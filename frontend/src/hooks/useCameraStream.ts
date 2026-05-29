@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuthStore } from '../stores/auth.store'
 import { cameraManager } from '../lib/camera-manager'
+import { playoutApi } from '../api/playout.api'
 
 export interface MediaDeviceOption {
   deviceId: string
@@ -155,6 +156,8 @@ export function useCameraStream(channelId: string) {
 
   function stop(): void {
     cameraManager.clearSession()
+    // Garante que o backend para o FFmpeg mesmo se o WS não propagar o fechamento
+    playoutApi.stopCamera(channelId).catch(() => {})
   }
 
   return { active, error, previewStream, videoDevices, audioDevices, start, stop, enumerateDevices }
