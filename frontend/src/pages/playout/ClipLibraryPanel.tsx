@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Library, Loader2, Plus, Search, Trash2, Copy, Play } from 'lucide-react'
+import { Library, Loader2, Plus, Search, Trash2, Copy, Play, ListPlus } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
 import { clipsApi } from '../../api/clips.api'
@@ -8,6 +8,7 @@ import { clipTypesApi } from '../../api/clip-types.api'
 import { playoutApi } from '../../api/playout.api'
 import { playlistsApi } from '../../api/playlists.api'
 import { Badge } from '../../components/ui/Badge'
+import { Modal } from '../../components/ui/Modal'
 import type { Channel } from '../../api/channels.api'
 import { usePlayoutSelection } from '../../stores/playoutSelection.store'
 
@@ -32,6 +33,8 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [typeId, setTypeId] = useState('')
   const [targetChannelId, setTargetChannelId] = useState(channels[0]?.id ?? '')
+  const [selectedRoteiroId, setSelectedRoteiroId] = useState<string | null>(null)
+  const [insertModal, setInsertModal] = useState<{ sourceId: string; name: string } | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   function handleSearchChange(v: string) {
@@ -140,9 +143,34 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
       toast.success('Roteiro iniciado')
       qc.invalidateQueries({ queryKey: ['playout-state', targetChannelId] })
       qc.invalidateQueries({ queryKey: ['playout-items', targetChannelId] })
+      qc.invalidateQueries({ queryKey: ['playlists-panel'] })
+      setInsertModal(null)
     },
     onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao iniciar roteiro'),
   })
+
+  const appendFromMut = useMutation({
+    mutationFn: ({ targetId, sourceId }: { targetId: string; sourceId: string }) =>
+      playlistsApi.appendFrom(targetId, sourceId),
+    onSuccess: (data) => {
+      toast.success(`${data.appended} item(s) inserido(s) no final`)
+      qc.invalidateQueries({ queryKey: ['playout-items', targetChannelId] })
+      setInsertModal(null)
+    },
+    onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao inserir itens'),
+  })
+
+  function handleInsertRoteiro(sourceId: string, name: string) {
+    if (!hasActivePlaylist) {
+      playRotMut.mutate(sourceId)
+      return
+    }
+    if (playoutStatus === 'PLAYING' || playoutStatus === 'PAUSED') {
+      appendFromMut.mutate({ targetId: activePlaylistId!, sourceId })
+    } else {
+      setInsertModal({ sourceId, name })
+    }
+  }
 
   const cloneRotMut = useMutation({
     mutationFn: (id: string) => playlistsApi.clone(id),
@@ -230,9 +258,12 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
                 return (
                   <div
                     key={pl.id}
+                    onClick={() => setSelectedRoteiroId(pl.id === selectedRoteiroId ? null : pl.id)}
+                    onDoubleClick={() => handleInsertRoteiro(pl.id, pl.name)}
                     className={clsx(
-                      'flex items-center gap-2 px-3 py-1.5',
-                      isCurrent ? 'bg-emerald-900/15' : 'hover:bg-gray-800/30'
+                      'flex items-center gap-2 px-3 py-1.5 cursor-pointer select-none',
+                      isCurrent ? 'bg-emerald-900/15' : 'hover:bg-gray-800/30',
+                      selectedRoteiroId === pl.id && !isCurrent ? 'ring-1 ring-inset ring-cyan-500/40 bg-cyan-900/10' : ''
                     )}
                   >
                     <span className={clsx(
@@ -250,15 +281,28 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
                     </div>
                     <div className="flex items-center gap-0.5 flex-shrink-0">
                       <button
-                        onClick={() => playRotMut.mutate(pl.id)}
+                        onClick={(e) => { e.stopPropagation(); playRotMut.mutate(pl.id) }}
                         disabled={playRotMut.isPending}
-                        title="Usar este roteiro"
+                        title="Usar este roteiro (substitui o atual)"
                         className="p-1 rounded text-gray-600 hover:text-brand-400 disabled:opacity-30 transition-colors"
                       >
                         <Play className="h-3 w-3" />
                       </button>
                       <button
-                        onClick={() => cloneRotMut.mutate(pl.id)}
+                        onClick={(e) => { e.stopPropagation(); handleInsertRoteiro(pl.id, pl.name) }}
+                        disabled={appendFromMut.isPending || playRotMut.isPending}
+                        title={
+                          !hasActivePlaylist ? 'Usar este roteiro' :
+                          (playoutStatus === 'PLAYING' || playoutStatus === 'PAUSED')
+                            ? 'Inserir itens no final (canal em andamento)'
+                            : 'Inserir no roteiro ativo (substituir ou no final)'
+                        }
+                        className="p-1 rounded text-gray-600 hover:text-emerald-400 disabled:opacity-30 transition-colors"
+                      >
+                        <ListPlus className="h-3 w-3" />
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); cloneRotMut.mutate(pl.id) }}
                         disabled={cloneRotMut.isPending}
                         title="Salvar cópia"
                         className="p-1 rounded text-gray-600 hover:text-sky-400 disabled:opacity-30 transition-colors"
@@ -266,7 +310,7 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
                         <Copy className="h-3 w-3" />
                       </button>
                       <button
-                        onClick={() => { if (!confirm(`Excluir "${pl.name}"?`)) return; deleteRotMut.mutate(pl.id) }}
+                        onClick={(e) => { e.stopPropagation(); if (!confirm(`Excluir "${pl.name}"?`)) return; deleteRotMut.mutate(pl.id) }}
                         disabled={isLocked || deleteRotMut.isPending}
                         title={isLocked ? 'Roteiro em uso — não pode excluir' : 'Excluir roteiro'}
                         className="p-1 rounded text-gray-600 hover:text-red-400 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
@@ -431,6 +475,41 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
           {clips.length} de {data.total} — refine a busca
         </p>
       )}
+
+      {/* Modal: inserir roteiro no roteiro ativo */}
+      <Modal open={!!insertModal} onClose={() => setInsertModal(null)} title="Inserir Roteiro">
+        {insertModal && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-400">
+              Como deseja inserir o roteiro <strong className="text-white">"{insertModal.name}"</strong>?
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => playRotMut.mutate(insertModal.sourceId)}
+                disabled={playRotMut.isPending}
+                className="w-full px-4 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-500 text-white font-semibold text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {playRotMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                Substituir roteiro atual e iniciar
+              </button>
+              <button
+                onClick={() => activePlaylistId && appendFromMut.mutate({ targetId: activePlaylistId, sourceId: insertModal.sourceId })}
+                disabled={appendFromMut.isPending || !activePlaylistId}
+                className="w-full px-4 py-2.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-white font-semibold text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {appendFromMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ListPlus className="h-4 w-4" />}
+                Inserir no final do roteiro ativo
+              </button>
+            </div>
+            <button
+              onClick={() => setInsertModal(null)}
+              className="w-full text-center text-xs text-gray-600 hover:text-gray-400 transition-colors pt-1"
+            >
+              Cancelar
+            </button>
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }

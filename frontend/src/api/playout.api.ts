@@ -66,6 +66,7 @@ export interface PlaylistItemRow {
   breakNum: number
   mediaReady: boolean
   sourceType: string
+  sourceUrl: string | null
   graphicName: string | null
   isBreak: boolean
 }

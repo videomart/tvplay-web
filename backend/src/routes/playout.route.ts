@@ -212,6 +212,7 @@ export default async function playoutRoutes(app: FastifyInstance) {
         clientName: clip.client?.name ?? null, breakNum: item.breakNum,
         mediaReady: isUrlClip ? !!(clip as any).sourceUrl : clip.media?.ingestStatus === 'READY',
         sourceType: (clip as any).sourceType ?? 'FILE',
+        sourceUrl: (clip as any).sourceUrl ?? null,
         graphicName: clip.graphic?.name ?? null, isBreak: false,
       }
     })
