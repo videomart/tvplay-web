@@ -627,7 +627,6 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
   const camera = useCameraStream(channel.id)
   const [cameraOpen, setCameraOpen] = useState(false)
   // true apenas quando o operador fez CUT para a câmera — controla o monitor
-  const [cameraIsLive, setCameraIsLive] = useState(false)
   const [saveAsOpen, setSaveAsOpen] = useState(false)
   const [saveAsName, setSaveAsName] = useState('')
   const [monitorOpen, setMonitorOpen] = useState(true)
@@ -688,15 +687,6 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
     const t = setTimeout(() => { programmaticScrollRef.current = false }, 600)
     return () => clearTimeout(t)
   }, [currentIndex, playlistOpen])
-
-  // Quando o playout entra em PLAYING, a câmera não é mais a fonte do monitor
-  const prevStatusRef = useRef(status)
-  useEffect(() => {
-    if (prevStatusRef.current !== 'PLAYING' && status === 'PLAYING') {
-      setCameraIsLive(false)
-    }
-    prevStatusRef.current = status
-  }, [status])
 
   // Refetch items ao trocar de playlist (ex: "usar este roteiro" enquanto outro está ativo)
   const prevPlaylistIdRef = useRef<string | null | undefined>(undefined)
@@ -809,32 +799,27 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
   const fallbackMut = useMutation({
     mutationFn: (data: { fallbackType: FallbackType; fallbackSourceId?: string | null }) =>
       playoutApi.setFallback(channel.id, data.fallbackType, data.fallbackSourceId),
-    onSuccess: (_data, vars) => {
+    onSuccess: () => {
       toast.success('Sinal de fallback atualizado')
       setFallbackOpen(true)
       setSignalSelectorOpen(false)
       qc.invalidateQueries({ queryKey: ['channels'] })
-      // Se fallback mudou para algo que não é câmera, sai do monitor de câmera
-      if (vars.fallbackType !== 'INPUT_SOURCE') setCameraIsLive(false)
     },
     onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao definir fallback'),
   })
 
   const cutToInputMut = useMutation({
     mutationFn: (sourceId: string) => playoutApi.cutToInput(channel.id, sourceId),
-    onSuccess: (_data, sourceId) => {
+    onSuccess: () => {
       toast.success('Cortando para entrada...')
       qc.invalidateQueries({ queryKey: ['channels'] })
-      // câmera sai do monitor ao cortar para outra entrada
-      const src = inputSources.find((s) => s.id === sourceId)
-      setCameraIsLive(src?.type === 'WEBCAM')
     },
     onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao comutar entrada'),
   })
 
   const cutToCameraMut = useMutation({
     mutationFn: () => playoutApi.cutToCamera(channel.id),
-    onSuccess: () => { toast.success('Cortando para câmera...'); setCameraIsLive(true) },
+    onSuccess: () => toast.success('Cortando para câmera...'),
     onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao comutar para câmera'),
   })
 
@@ -931,7 +916,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
 
   const playMut = useMutation({
     mutationFn: (playlistId: string) => playoutApi.play(channel.id, playlistId),
-    onSuccess: () => { toast.success('Reprodução iniciada'); setCameraIsLive(false) },
+    onSuccess: () => toast.success('Reprodução iniciada'),
     onError: onErr,
   })
   const pauseMut = useMutation({
@@ -1061,10 +1046,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
       {monitorOpen && (
         <div className="px-3 pt-3 pb-2 border-b border-gray-800">
           <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-black">
-            {/* Câmera tem prioridade — substitui qualquer outro conteúdo no monitor */}
-            {cameraIsLive && camera.active && camera.previewStream && status !== 'PLAYING' && status !== 'PAUSED' ? (
-              <CameraMonitorPreview stream={camera.previewStream} graphic={state?.activeGraphic} />
-            ) : (status === 'PLAYING' || status === 'PAUSED') && !item?.isBreak ? (
+            {(status === 'PLAYING' || status === 'PAUSED') && !item?.isBreak ? (
               monitorSrc
                 ? <>
                     <VideoPlayer src={monitorSrc} startAt={monitorStartAt} autoPlay muted className="w-full h-full" />
