@@ -29,13 +29,20 @@ function ytClientArgs(client: string): string[] {
   return client ? ['--extractor-args', `youtube:player_client=${client}`] : []
 }
 
+// Retorna ['--cookies', '/path/to/file'] se YTDLP_COOKIES_FILE estiver configurado
+function ytCookiesArgs(): string[] {
+  const f = config.ytdlp?.cookiesFile
+  return f ? ['--cookies', f] : []
+}
+
 // Verifica se URL YouTube/Twitch é stream ao vivo (true) ou VOD (false)
 // Retorna null se yt-dlp falhar
 export async function checkIsLive(url: string): Promise<{ isLive: boolean | null; title?: string; duration?: number }> {
   const base = ['--no-playlist', '--no-warnings', '--socket-timeout', '15', '--print', '%(is_live)s|%(title)s|%(duration)s']
+  const cookies = ytCookiesArgs()
   for (const client of YT_CLIENTS) {
     try {
-      const { stdout } = await execFileAsync('yt-dlp', [...base, ...ytClientArgs(client), url], { timeout: 20000 })
+      const { stdout } = await execFileAsync('yt-dlp', [...base, ...cookies, ...ytClientArgs(client), url], { timeout: 20000 })
       const [isLiveStr, title, durStr] = stdout.trim().split('|')
       const isLive = isLiveStr === 'True' ? true : isLiveStr === 'False' ? false : null
       const duration = durStr && durStr !== 'NA' ? parseFloat(durStr) : undefined
@@ -52,9 +59,10 @@ export async function checkIsLive(url: string): Promise<{ isLive: boolean | null
 async function resolveViaYtDlp(rawUrl: string): Promise<string | null> {
   const base = ['--no-playlist', '-g', '--no-warnings', '--socket-timeout', '15']
   const fmt  = 'best[protocol=m3u8_native]/best[vcodec!=none][acodec!=none][height<=720]/best[vcodec!=none][acodec!=none]/best'
+  const cookies = ytCookiesArgs()
   for (const client of YT_CLIENTS) {
     try {
-      const { stdout } = await execFileAsync('yt-dlp', [...base, '-f', fmt, ...ytClientArgs(client), rawUrl], { timeout: 35000 })
+      const { stdout } = await execFileAsync('yt-dlp', [...base, '-f', fmt, ...cookies, ...ytClientArgs(client), rawUrl], { timeout: 35000 })
       const url = stdout.trim().split('\n')[0]
       if (url) {
         console.log(`[yt-dlp] URL resolvida OK (client=${client || 'default'}): ${url.slice(0, 80)}`)

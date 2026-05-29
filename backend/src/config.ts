@@ -23,6 +23,12 @@ export const config = {
     probePath: process.env.FFPROBE_PATH ?? 'ffprobe',
   },
 
+  ytdlp: {
+    // Caminho para arquivo de cookies do YouTube (formato Netscape/cookies.txt)
+    // Necessário em servidores cloud/VPS onde o YouTube bloqueia IPs de datacenter
+    cookiesFile: process.env.YTDLP_COOKIES_FILE ?? '',
+  },
+
   storage: {
     hlsOutputPath: process.env.HLS_OUTPUT_PATH ?? './storage/hls',
     transcodeOutputPath: process.env.TRANSCODE_OUTPUT_PATH ?? './storage/transcoded',
