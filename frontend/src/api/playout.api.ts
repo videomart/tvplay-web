@@ -53,6 +53,7 @@ export interface PlaylistItemRow {
   id: string
   index: number
   order: number
+  clipId?: string | null
   code: string
   title: string
   typeCode: string | null

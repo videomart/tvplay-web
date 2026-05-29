@@ -58,6 +58,17 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
     staleTime: 10_000,
   })
 
+  const { data: activeItems = [] } = useQuery({
+    queryKey: ['playout-items', targetChannelId],
+    queryFn: () => playoutApi.getItems(targetChannelId),
+    enabled: !!targetChannelId && hasActivePlaylist,
+    staleTime: 5_000,
+  })
+
+  const activeClipIds = new Set(
+    activeItems.filter((i) => !i.isBreak && i.clipId).map((i) => i.clipId as string)
+  )
+
   const { data: types = [] } = useQuery({
     queryKey: ['clip-types'],
     queryFn: clipTypesApi.list,
@@ -168,7 +179,7 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
   const activeTypes = types.filter((t) => t.active)
 
   return (
-    <div className="card flex flex-col gap-0 overflow-hidden">
+    <div className="card flex flex-col gap-0 overflow-hidden h-full">
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-800">
         <Library className="h-4 w-4 text-brand-400 flex-shrink-0" />
@@ -341,7 +352,7 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
       </div>
 
       {/* Lista de clipes */}
-      <div className="overflow-y-auto max-h-96 divide-y divide-gray-800/50 mt-1">
+      <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-gray-800/50 mt-1">
         {clips.length === 0 ? (
           <p className="text-[11px] text-gray-600 text-center py-5">
             {isFetching ? 'Buscando...' : 'Nenhum clipe encontrado'}
@@ -381,6 +392,15 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
                     className="text-[9px] bg-violet-900/50 text-violet-400 px-1 py-0.5 rounded font-mono flex-shrink-0 border border-violet-700/40"
                   >
                     GFX
+                  </span>
+                )}
+
+                {activeClipIds.has(clip.id) && (
+                  <span
+                    title="Já está no roteiro ativo"
+                    className="text-[9px] bg-emerald-900/40 text-emerald-400 px-1 py-0.5 rounded font-mono flex-shrink-0 border border-emerald-700/40"
+                  >
+                    ✓
                   </span>
                 )}
 

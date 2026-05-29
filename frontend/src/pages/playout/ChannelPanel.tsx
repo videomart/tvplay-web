@@ -278,6 +278,7 @@ function PlaylistItemRow({
   loopPending, clipPlayPending, clipStopPending, deletePending,
   timerEditId, timerEditVal, setTimerEditId, setTimerEditVal, commitTimer,
   onDragStart, onDragOver, onDragEnd, onDrop,
+  liveElapsed,
 }: {
   item: PlaylistItemRow
   isCurrent: boolean
@@ -308,6 +309,7 @@ function PlaylistItemRow({
   onDragOver: (e: React.DragEvent) => void
   onDragEnd: () => void
   onDrop: () => void
+  liveElapsed?: number | null
 }) {
   // Drag só começa a partir do grip handle — evita interceptar clicks em botões
   const fromHandle = useRef(false)
@@ -487,10 +489,20 @@ function PlaylistItemRow({
         </span>
       )}
 
-      {/* Duração */}
-      <span className={clsx('text-[10px] font-mono flex-shrink-0 w-10 text-right', lightRow ? 'text-gray-700' : 'text-gray-600')}>
-        {formatTime(item.duration)}
-      </span>
+      {/* Duração / elapsed para itens URL ao vivo */}
+      {isCurrent && item.sourceType === 'URL' && liveElapsed != null ? (
+        <span className="text-[10px] font-mono flex-shrink-0 w-10 text-right text-sky-400 animate-pulse">
+          {formatTime(liveElapsed)}
+        </span>
+      ) : (
+        <span className={clsx('text-[10px] font-mono flex-shrink-0 w-10 text-right', lightRow ? 'text-gray-700' : 'text-gray-600')}>
+          {item.sourceType === 'URL' && item.maxDuration
+            ? formatTime(item.maxDuration)
+            : item.sourceType === 'URL'
+            ? '∞'
+            : formatTime(item.duration)}
+        </span>
+      )}
 
       {/* Controles por clipe */}
       <div className="flex items-center gap-0.5 flex-shrink-0">
@@ -652,13 +664,13 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
   const currentIndex = state?.currentIndex ?? 0
   const itemCount = state?.itemCount ?? 0
 
-  // Auto-scroll para manter o clipe atual próximo ao centro do grid
+  // Auto-scroll: mantém o clipe atual no topo da área visível do grid
   useEffect(() => {
     const container = playlistScrollRef.current
     const item = currentItemRef.current
     if (!container || !item || !playlistOpen) return
-    const top = item.offsetTop - container.clientHeight / 2 + item.offsetHeight / 2
-    container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+    const itemTop = item.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop
+    container.scrollTo({ top: Math.max(0, itemTop), behavior: 'smooth' })
   }, [currentIndex, playlistOpen])
 
   // Atualiza o monitor quando o clipe muda
@@ -1404,6 +1416,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                       onDragOver={(e) => handleDragOver(e, idx)}
                       onDragEnd={handleDragEnd}
                       onDrop={() => handleDrop(idx)}
+                      liveElapsed={idx === currentIndex && pi.sourceType === 'URL' ? position : null}
                     />
                   </div>
                 ))

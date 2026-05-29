@@ -203,6 +203,7 @@ export default async function playoutRoutes(app: FastifyInstance) {
         : cueOut ? cueOut - cueIn : (clip.media?.duration ?? clip.duration ?? (isUrlClip ? 3600 : 30))
       return {
         id: item.id, index: idx, order: item.order,
+        clipId: clip.id,
         code: clip.code, title: clip.title,
         typeCode: clip.type?.code ?? null,
         typeBg: clip.type?.fontBackColor ?? null,
