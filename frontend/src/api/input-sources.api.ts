@@ -1,6 +1,6 @@
 import { api } from './client'
 
-export type InputSourceType = 'IP' | 'YOUTUBE' | 'SRT' | 'SDI' | 'USB' | 'LOCAL_DEVICE' | 'CLIP'
+export type InputSourceType = 'IP' | 'YOUTUBE' | 'SRT' | 'SDI' | 'USB' | 'LOCAL_DEVICE' | 'CLIP' | 'WEBCAM'
 
 export interface InputSource {
   id: string
@@ -22,12 +22,13 @@ export interface InputSource {
 
 export const SOURCE_TYPE_LABELS: Record<InputSourceType, string> = {
   IP:           'URL (RTMP / RTSP / HTTP / HLS / YouTube / Twitch)',
-  YOUTUBE:      'URL (yt-dlp)',   // legado — exibido em fontes existentes
+  YOUTUBE:      'URL (yt-dlp)',   // legado
   SRT:          'SRT',
   SDI:          'SDI',
-  USB:          'USB / Captura Local',
-  LOCAL_DEVICE: 'Dispositivo no Host (Agente)',
+  USB:          'USB',            // legado
+  LOCAL_DEVICE: 'Agente Host',    // legado
   CLIP:         'Clipe cadastrado',
+  WEBCAM:       'Webcam (browser)',
 }
 
 // URL que claramente requer yt-dlp

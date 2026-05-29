@@ -625,7 +625,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
   })
 
   const camera = useCameraStream(channel.id)
-  const [cameraOpen, setCameraOpen] = useState(false)
+  const [cameraOpen, setCameraOpen] = useState(false)  // modal de configuração da webcam
   const [saveAsOpen, setSaveAsOpen] = useState(false)
   const [saveAsName, setSaveAsName] = useState('')
   const [monitorOpen, setMonitorOpen] = useState(true)
@@ -1037,42 +1037,9 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
               ? <MonitorOff className="h-4 w-4" />
               : <MonitorPlay className="h-4 w-4" />}
           </button>
-          <button
-            onClick={() => setCameraOpen(true)}
-            className={clsx(
-              'p-1 rounded transition-colors',
-              camera.active
-                ? 'text-red-400 animate-pulse'
-                : 'text-gray-500 hover:text-sky-400'
-            )}
-            title={camera.active ? 'Câmera ao vivo — clique para gerenciar' : 'Câmera — transmitir da webcam'}
-          >
-            <Camera className="h-4 w-4" />
-          </button>
         </div>
       </div>
 
-      {/* Indicador de câmera disponível — não substitui o sinal, operador usa CUT */}
-      {camera.active && (
-        <div className="flex items-center gap-2 px-3 py-1 bg-sky-950/30 border-b border-sky-800/30">
-          <span className="h-1.5 w-1.5 rounded-full bg-sky-400 animate-pulse flex-shrink-0" />
-          <span className="text-[10px] text-sky-400 flex-1">Câmera disponível como entrada</span>
-          <button
-            onClick={() => cutToCameraMut.mutate()}
-            disabled={cutToCameraMut.isPending}
-            className="flex items-center gap-1 px-2 py-0.5 rounded bg-red-600/40 hover:bg-red-600/70 text-white text-[10px] font-bold transition-colors disabled:opacity-40 flex-shrink-0"
-          >
-            CUT
-          </button>
-          <button
-            onClick={() => { camera.stop(); setCameraOpen(false) }}
-            className="p-0.5 rounded text-sky-700 hover:text-red-400 transition-colors flex-shrink-0"
-            title="Parar câmera"
-          >
-            <X className="h-3 w-3" />
-          </button>
-        </div>
-      )}
 
       {/* ── Monitor de vídeo ──────────────────────────────────────────────── */}
       {monitorOpen && (
@@ -1208,31 +1175,45 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                 {availableSources.map((s) => {
                   const isActive = channel.fallbackType === 'INPUT_SOURCE' && channel.fallbackSourceId === s.id
                   const isPlaying = status === 'PLAYING' || status === 'PAUSED'
+                  const isWebcam = s.type === 'WEBCAM'
+                  const webcamReady = isWebcam && camera.active
                   return (
                     <div key={s.id} className="flex items-center gap-0.5">
                       <button
-                        onClick={() => fallbackMut.mutate({ fallbackType: 'INPUT_SOURCE', fallbackSourceId: s.id })}
+                        onClick={() => {
+                          if (isWebcam && !camera.active) { setCameraOpen(true); return }
+                          fallbackMut.mutate({ fallbackType: 'INPUT_SOURCE', fallbackSourceId: s.id })
+                        }}
                         className={clsx(
                           'text-[10px] px-2 py-0.5 rounded-l transition-colors flex items-center gap-1',
                           isActive
                             ? 'bg-brand-600/30 text-brand-300 ring-1 ring-brand-500/30'
                             : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
                         )}
+                        title={isWebcam && !camera.active ? 'Clique para ativar a webcam' : undefined}
                       >
-                        <Antenna className="h-2.5 w-2.5" />{s.name}
+                        {isWebcam
+                          ? <><Camera className="h-2.5 w-2.5" />{s.name}{webcamReady && <span className="h-1.5 w-1.5 rounded-full bg-sky-400 animate-pulse" />}</>
+                          : <><Antenna className="h-2.5 w-2.5" />{s.name}</>
+                        }
                       </button>
                       <button
-                        onClick={() => cutToInputMut.mutate(s.id)}
-                        disabled={cutToInputMut.isPending}
-                        title="Cortar para esta entrada agora"
+                        onClick={() => {
+                          if (isWebcam && !camera.active) { setCameraOpen(true); return }
+                          cutToInputMut.mutate(s.id)
+                        }}
+                        disabled={cutToInputMut.isPending || (isWebcam && !webcamReady && camera.active === false && false)}
+                        title={isWebcam && !camera.active ? 'Ative a webcam primeiro' : 'Cortar para esta entrada agora'}
                         className={clsx(
                           'text-[10px] px-1.5 py-0.5 rounded-r font-bold transition-colors disabled:opacity-40',
-                          isPlaying
-                            ? 'bg-red-600/30 text-red-300 hover:bg-red-600/50 ring-1 ring-red-500/30'
-                            : 'bg-gray-700 text-gray-500 hover:bg-gray-600 hover:text-gray-300'
+                          isWebcam && !webcamReady
+                            ? 'bg-gray-700 text-gray-600'
+                            : isPlaying
+                              ? 'bg-red-600/30 text-red-300 hover:bg-red-600/50 ring-1 ring-red-500/30'
+                              : 'bg-gray-700 text-gray-500 hover:bg-gray-600 hover:text-gray-300'
                         )}
                       >
-                        CUT
+                        {isWebcam && !webcamReady ? '▶' : 'CUT'}
                       </button>
                     </div>
                   )

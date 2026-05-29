@@ -78,7 +78,17 @@ async function resolveViaYtDlp(rawUrl: string): Promise<string | null> {
 
 // Resolve a URL real de uma fonte de entrada (YouTube/Twitch via yt-dlp; outros direto)
 // Suporta tipo CLIP: resolve a partir do clipe cadastrado
-async function resolveInputUrl(src: { type: string; url: string | null; device: string | null; clipId?: string | null }): Promise<string | null> {
+async function resolveInputUrl(
+  src: { type: string; url: string | null; device: string | null; clipId?: string | null },
+  channelId?: string,
+): Promise<string | null> {
+  // Tipo WEBCAM: usa o SRT local da câmera browser
+  if (src.type === 'WEBCAM') {
+    if (!channelId) return null
+    const { getCameraInputUrl } = await import('./camera.service')
+    return getCameraInputUrl(channelId)
+  }
+
   // Tipo CLIP: resolve via clipe cadastrado
   if (src.type === 'CLIP' && src.clipId) {
     const clip = await prisma.clip.findUnique({
@@ -918,7 +928,7 @@ export async function cutToInput(channelId: string, sourceId: string): Promise<P
   }).catch(() => {})
 
   // Inicia streaming da entrada com gráfico ativo do canal (cascata de saídas)
-  resolveInputUrl(source).then(async (url) => {
+  resolveInputUrl(source, channelId).then(async (url) => {
     if (!url) return
     const cutGraphic = await resolveGraphic(null, null, channelId).catch(() => null)
     streamService.startStreamingFromUrl(channelId, url, cutGraphic).catch(() => {})
