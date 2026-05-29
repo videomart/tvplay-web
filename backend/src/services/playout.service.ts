@@ -928,6 +928,31 @@ export async function cutToInput(channelId: string, sourceId: string): Promise<P
   return state
 }
 
+// CUT para câmera (browser webcam via SRT local)
+export async function cutToCamera(channelId: string): Promise<PlayoutState> {
+  const { getCameraInputUrl, isCameraActive } = await import('./camera.service')
+  if (!isCameraActive(channelId)) throw new Error('Câmera não está ativa neste canal')
+
+  stopTimer(channelId)
+  const url = getCameraInputUrl(channelId)
+  if (!url) throw new Error('URL da câmera não disponível')
+
+  const state = states.get(channelId) ?? defaultState(channelId)
+  state.status = 'STOPPED'
+  state.currentItem = null
+  state.position = 0
+  state.updatedAt = Date.now()
+  states.set(channelId, state)
+
+  persistState(channelId, null, 0)
+
+  const cutGraphic = await resolveGraphic(null, null, channelId).catch(() => null)
+  streamService.startStreamingFromUrl(channelId, url, cutGraphic).catch(() => {})
+
+  broadcast(channelId, state)
+  return state
+}
+
 // Chamado pelo camera.service quando a câmera INICIA — para o timer para não interferir.
 export function pauseForCamera(channelId: string): void {
   stopTimer(channelId)

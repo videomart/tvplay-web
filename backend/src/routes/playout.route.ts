@@ -112,6 +112,13 @@ export default async function playoutRoutes(app: FastifyInstance) {
     )
   })
 
+  // CUT para câmera browser (SRT local)
+  app.post('/:channelId/cut-to-camera', auth, async (request: any, reply) => {
+    return playout.cutToCamera(request.params.channelId).catch((e) =>
+      reply.status(400).send({ error: e.message })
+    )
+  })
+
   // Define fallback do canal e aplica imediatamente se idle/stopped
   app.post('/:channelId/set-fallback', auth, async (request: any, reply) => {
     const { fallbackType, fallbackSourceId } = request.body as {

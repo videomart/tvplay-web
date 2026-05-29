@@ -14,7 +14,8 @@ import { StatusBadge } from '../../components/ui/Badge'
 import { VideoPlayer } from '../../components/ui/VideoPlayer'
 
 // IP e YOUTUBE são unificados na UI como "URL" — YOUTUBE fica como legado no banco
-const SELECTABLE_TYPES: InputSourceType[] = ['IP', 'SRT', 'SDI', 'USB', 'LOCAL_DEVICE', 'CLIP']
+// LOCAL_DEVICE removido — webcam via browser está disponível no painel de Playout (botão câmera)
+const SELECTABLE_TYPES: InputSourceType[] = ['IP', 'SRT', 'SDI', 'CLIP']
 
 const empty = { name: '', type: 'IP' as InputSourceType, url: '', device: '', channelId: '', clipId: '' }
 type SrtConfig = { host: string; port: string; mode: 'caller' | 'listener' }

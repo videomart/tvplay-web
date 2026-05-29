@@ -129,4 +129,6 @@ export const playoutApi = {
     api.post<{ playlistId: string; loop: boolean }>(`/playout/${channelId}/toggle-playlist-loop`).then((r) => r.data),
   stopCamera: (channelId: string) =>
     api.delete(`/camera/${channelId}`).then((r) => r.data),
+  cutToCamera: (channelId: string) =>
+    api.post<PlayoutState>(`/playout/${channelId}/cut-to-camera`).then((r) => r.data),
 }
