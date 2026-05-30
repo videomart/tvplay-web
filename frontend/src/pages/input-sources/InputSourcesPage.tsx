@@ -6,6 +6,7 @@ import { clsx } from 'clsx'
 import { inputSourcesApi, type InputSource, type InputSourceType, SOURCE_TYPE_LABELS, resolveSourceType, urlNeedsYtDlp } from '../../api/input-sources.api'
 import { clipsApi, type Clip, MODALITY_LABELS } from '../../api/clips.api'
 import { channelsApi } from '../../api/channels.api'
+import { graphicsApi } from '../../api/graphics.api'
 import { Button } from '../../components/ui/Button'
 import { Input, Select } from '../../components/ui/Input'
 import { Modal } from '../../components/ui/Modal'
@@ -16,7 +17,7 @@ import { VideoPlayer } from '../../components/ui/VideoPlayer'
 // IP e YOUTUBE são unificados na UI como "URL" — YOUTUBE fica como legado no banco
 const SELECTABLE_TYPES: InputSourceType[] = ['IP', 'SRT', 'SDI', 'CLIP', 'WEBCAM']
 
-const empty = { name: '', type: 'IP' as InputSourceType, url: '', device: '', channelId: '', clipId: '' }
+const empty = { name: '', type: 'IP' as InputSourceType, url: '', device: '', channelId: '', clipId: '', graphicId: '' }
 type SrtConfig = { host: string; port: string; mode: 'caller' | 'listener' }
 type UdpConfig = { address: string; port: string }
 type LocalDeviceConfig = {
@@ -235,6 +236,7 @@ export default function InputSourcesPage() {
 
   const { data = [], isLoading } = useQuery({ queryKey: ['input-sources'], queryFn: inputSourcesApi.list })
   const { data: channels = [] } = useQuery({ queryKey: ['channels'], queryFn: channelsApi.list })
+  const { data: graphics = [] } = useQuery({ queryKey: ['graphics'], queryFn: graphicsApi.list, staleTime: 30_000 })
   const { data: clipsData } = useQuery({
     queryKey: ['clips-search-src', clipSearch],
     queryFn: () => clipsApi.list({ search: clipSearch || undefined, limit: 30 } as any),
@@ -274,6 +276,7 @@ export default function InputSourcesPage() {
         serverIp:     isLocal ? localDeviceCfg.serverIp || undefined : undefined,
         clipId:       isClip ? (selectedClip?.id || form.clipId || undefined) : null,
         channelId:    form.channelId || undefined,
+        graphicId:    form.graphicId || null,
       }
       return editing ? inputSourcesApi.update(editing.id, payload) : inputSourcesApi.create(payload)
     },
@@ -303,7 +306,7 @@ export default function InputSourcesPage() {
     setEditing(s)
     // YOUTUBE legado → exibe como IP na UI (URL unificada)
     const uiType: InputSourceType = s.type === 'YOUTUBE' ? 'IP' : s.type
-    setForm({ name: s.name, type: uiType, url: s.url ?? '', device: s.device ?? '', channelId: s.channelId ?? '', clipId: s.clipId ?? '' })
+    setForm({ name: s.name, type: uiType, url: s.url ?? '', device: s.device ?? '', channelId: s.channelId ?? '', clipId: s.clipId ?? '', graphicId: (s as any).graphicId ?? '' })
     if (s.type === 'SRT' && s.url) setSrtCfg(parseSrtUrl(s.url))
     else setSrtCfg(emptySrt)
     setUdpCfg(emptyUdp)
@@ -504,6 +507,12 @@ export default function InputSourcesPage() {
               <option value="">Todos os canais</option>
               {channels.filter((c) => c.active).map((c) => (
                 <option key={c.id} value={c.id}>Canal {c.number} — {c.name}</option>
+              ))}
+            </Select>
+            <Select label="Gráfico (ao comutar para esta entrada)" value={form.graphicId} onChange={f('graphicId')}>
+              <option value="">Nenhum</option>
+              {graphics.filter((g) => g.active).map((g) => (
+                <option key={g.id} value={g.id}>{g.name}{g.template ? ` (${g.template.name})` : ''}</option>
               ))}
             </Select>
           </div>

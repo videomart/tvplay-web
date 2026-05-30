@@ -460,10 +460,9 @@ async function resolveGraphic(
     return { templateElements: channel.graphicTemplate.elements as any }
   }
 
-  // Função auxiliar: converte Graphic (com ou sem template) em GraphicConfig
+  // Converte Graphic (com ou sem template) em GraphicConfig
   async function graphicToConfig(graphic: any): Promise<GraphicConfig | null> {
     if (!graphic?.active) return null
-    // Gráfico baseado em template → mescla elementos do template com valores da instância
     if (graphic.templateId && graphic.elementValues) {
       const tmpl = await prisma.graphicTemplate.findUnique({
         where: { id: graphic.templateId },
@@ -471,44 +470,57 @@ async function resolveGraphic(
       })
       if (!tmpl?.active || !tmpl.elements.length) return null
       const values = graphic.elementValues as Record<string, any>
-      const merged = tmpl.elements.map((el: any) => {
-        const v = values[el.id] ?? {}
-        return { ...el, ...v }
-      }).filter((el: any) => el.active !== false)
+      const merged = tmpl.elements.map((el: any) => ({ ...el, ...(values[el.id] ?? {}) }))
+        .filter((el: any) => el.active !== false)
       return { templateElements: merged }
     }
-    // Gráfico legado → campos diretos
-    return graphic
+    return graphic  // legado
   }
 
-  // 2. Gráfico do clipe
+  // Hierarquia (maior → menor prioridade):
+  // 1. Clipe  2. Saída de streaming  3. Entrada (quando em CUT)  4. Roteiro  5. Canal
+
+  // 1. Clipe
   if (clipId) {
-    const clip = await prisma.clip.findUnique({
-      where: { id: clipId },
-      select: { graphic: true },
-    })
+    const clip = await prisma.clip.findUnique({ where: { id: clipId }, select: { graphic: true } })
     const cfg = await graphicToConfig(clip?.graphic)
-    if (cfg) { console.log(`[playout] resolveGraphic → CLIP`); return cfg }
+    if (cfg) { console.log(`[playout] resolveGraphic → CLIPE`); return cfg }
   }
 
-  // 3. Gráfico da playlist
-  if (playlistId) {
-    const pl = await prisma.playlist.findUnique({
-      where: { id: playlistId },
-      select: { graphic: true },
-    })
-    const cfg = await graphicToConfig(pl?.graphic)
-    if (cfg) { console.log(`[playout] resolveGraphic → PLAYLIST`); return cfg }
-  }
-
-  // 4. Gráfico da saída de streaming
+  // 2. Saída de streaming com gráfico
   const output = await prisma.streamOutput.findFirst({
     where: { channelId, active: true, graphicId: { not: null } },
     select: { graphic: true },
   })
-  const cfg = await graphicToConfig(output?.graphic)
-  console.log(`[playout] resolveGraphic → ${cfg ? 'SAIDA' : 'NENHUM'}`)
-  return cfg
+  const outCfg = await graphicToConfig(output?.graphic)
+  if (outCfg) { console.log(`[playout] resolveGraphic → SAIDA`); return outCfg }
+
+  // 3. Entrada ativa com gráfico (quando canal está em INPUT_SOURCE)
+  const ch = await prisma.channel.findUnique({
+    where: { id: channelId },
+    select: { fallbackType: true, fallbackSourceId: true, fallbackSource: { select: { graphic: true } } },
+  }).catch(() => null)
+  if (ch?.fallbackType === 'INPUT_SOURCE' && ch.fallbackSource?.graphic) {
+    const inCfg = await graphicToConfig(ch.fallbackSource.graphic)
+    if (inCfg) { console.log(`[playout] resolveGraphic → ENTRADA`); return inCfg }
+  }
+
+  // 4. Roteiro
+  if (playlistId) {
+    const pl = await prisma.playlist.findUnique({ where: { id: playlistId }, select: { graphic: true } })
+    const cfg = await graphicToConfig(pl?.graphic)
+    if (cfg) { console.log(`[playout] resolveGraphic → ROTEIRO`); return cfg }
+  }
+
+  // 5. Canal (template global)
+  if (channel?.graphicTemplate?.active && channel.graphicTemplate.elements.length > 0) {
+    const merged = channel.graphicTemplate.elements.filter((el: any) => el.active !== false)
+    console.log(`[playout] resolveGraphic → CANAL (template)`)
+    return { templateElements: merged as any }
+  }
+
+  console.log(`[playout] resolveGraphic → NENHUM`)
+  return null
 }
 
 // Retorna itens FILE consecutivos a partir de fromIndex para uso no concat demuxer.

@@ -316,6 +316,7 @@ model Graphic {
   streamOutputs StreamOutput[]
   clips         Clip[]
   playlists     Playlist[]
+  inputSources  InputSource[]
 
   @@map("graphics")
 }
@@ -421,6 +422,9 @@ model InputSource {
 
   clipId String?
   clip   Clip? @relation(fields: [clipId], references: [id])
+
+  graphicId String?
+  graphic   Graphic? @relation(fields: [graphicId], references: [id])
 
   fallbackForChannels Channel[] @relation("ChannelFallback")
 
