@@ -12,11 +12,31 @@ export function registerStopCameraHook(fn: (channelId: string) => void) {
   _stopCameraHook = fn
 }
 
+// Elemento individual de um template gráfico
+export type GraphicElementConfig = {
+  type:      'LOGO' | 'CLOCK' | 'TEXT' | 'TICKER' | 'LOWER_THIRD'
+  position:  'TL' | 'TC' | 'TR' | 'ML' | 'MC' | 'MR' | 'BL' | 'BC' | 'BR' | 'BAR_TOP' | 'BAR_BOTTOM'
+  imageUrl?: string | null
+  text?:     string | null
+  subtitle?: string | null
+  fontColor: string
+  bgColor?:  string | null
+  fontSize:  number
+  opacity:   number
+  bold:      boolean
+  width?:    number | null
+  height?:   number | null
+  padding:   number
+}
+
 export type GraphicConfig = {
+  // Sistema legado (Graphic simples)
   logoUrl?: string | null
   logoPosition?: string | null
   showClock?: boolean
   lowerText?: string | null
+  // Sistema novo: template com múltiplos elementos (sobrescreve legado quando presente)
+  templateElements?: GraphicElementConfig[]
 }
 
 interface StreamProcess {
@@ -308,6 +328,143 @@ function buildVideoFilter(
   }
 }
 
+// ─── Template filter builder ──────────────────────────────────────────────────
+// Calcula a expressão FFmpeg de posição para drawtext (texto)
+function drawtextXY(pos: string, pad: number, _w?: number | null, _h?: number | null): string {
+  switch (pos) {
+    case 'TL': return `x=${pad}:y=${pad}`
+    case 'TC': return `x=(W-tw)/2:y=${pad}`
+    case 'TR': return `x=W-tw-${pad}:y=${pad}`
+    case 'ML': return `x=${pad}:y=(H-th)/2`
+    case 'MC': return `x=(W-tw)/2:y=(H-th)/2`
+    case 'MR': return `x=W-tw-${pad}:y=(H-th)/2`
+    case 'BL': return `x=${pad}:y=H-th-${pad}`
+    case 'BC': return `x=(W-tw)/2:y=H-th-${pad}`
+    case 'BR': return `x=W-tw-${pad}:y=H-th-${pad}`
+    case 'BAR_TOP': return `x=${pad}:y=${pad}`
+    case 'BAR_BOTTOM': return `x=${pad}:y=H-th-${pad}`
+    default: return `x=${pad}:y=${pad}`
+  }
+}
+
+// Calcula a expressão FFmpeg de posição para overlay de imagem
+function overlayXY(pos: string, pad: number, w?: number | null, h?: number | null): string {
+  const ow = w ? String(w) : 'overlay_w'
+  const oh = h ? String(h) : 'overlay_h'
+  switch (pos) {
+    case 'TL': return `${pad}:${pad}`
+    case 'TC': return `(W-${ow})/2:${pad}`
+    case 'TR': return `W-${ow}-${pad}:${pad}`
+    case 'ML': return `${pad}:(H-${oh})/2`
+    case 'MC': return `(W-${ow})/2:(H-${oh})/2`
+    case 'MR': return `W-${ow}-${pad}:(H-${oh})/2`
+    case 'BL': return `${pad}:H-${oh}-${pad}`
+    case 'BC': return `(W-${ow})/2:H-${oh}-${pad}`
+    case 'BR': return `W-${ow}-${pad}:H-${oh}-${pad}`
+    case 'BAR_TOP': return `0:0`
+    case 'BAR_BOTTOM': return `0:H-${oh}`
+    default: return `${pad}:${pad}`
+  }
+}
+
+// Constrói filter_complex a partir dos elementos de um GraphicTemplate
+// Retorna { extraInputs, filterArgs, mapArgs }
+export function buildTemplateFilter(
+  elements: GraphicElementConfig[],
+  videoResolution: string | null | undefined,
+): { extraInputs: string[]; filterArgs: string[]; mapArgs: string[] } {
+  const escTxt = (t: string) => t.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/:/g, '\\:')
+  const active = elements.filter(el => el !== null && el !== undefined)
+  if (active.length === 0 && !videoResolution) return { extraInputs: [], filterArgs: [], mapArgs: [] }
+
+  const logos = active.filter(el => el.type === 'LOGO' && el.imageUrl)
+  const texts  = active.filter(el => el.type !== 'LOGO')
+
+  const segs: string[] = []
+  const extraInputs: string[] = []
+  let cur = '[0:v]'
+  let n   = 0
+  const nxt = () => `[vt${n++}]`
+
+  // Scale
+  if (videoResolution) { const o = nxt(); segs.push(`${cur}scale=${videoResolution}${o}`); cur = o }
+
+  // Logos (overlay, um por input extra)
+  for (const logo of logos) {
+    const inputIdx = 1 + extraInputs.length
+    extraInputs.push(logo.imageUrl!)
+    const wFilter = logo.width  ? `:w=${logo.width}`  : ''
+    const hFilter = logo.height ? `:h=${logo.height}` : ''
+    const scaleTag = logo.width || logo.height ? `[logo${inputIdx}scaled]` : `[${inputIdx}:v]`
+    let logoSrc = `[${inputIdx}:v]`
+    if (logo.width || logo.height) {
+      const sOut = `[logo${inputIdx}s]`
+      segs.push(`[${inputIdx}:v]scale${wFilter}${hFilter}${sOut}`)
+      logoSrc = sOut
+    }
+    const xy  = overlayXY(logo.position, logo.padding ?? 10, logo.width, logo.height)
+    const o   = nxt()
+    segs.push(`${cur}${logoSrc}overlay=${xy}${o}`)
+    cur = o
+  }
+
+  // Elementos de texto
+  for (const el of texts) {
+    const fc   = el.fontColor ?? '#FFFFFF'
+    const bg   = el.bgColor ? `box=1:boxcolor=${el.bgColor}@${el.opacity ?? 1}:boxborderw=${el.padding ?? 10}:` : ''
+    const bold = el.bold ? ':style=Bold' : ''
+    const fs   = el.fontSize ?? 32
+    const pad  = el.padding ?? 10
+    const font = `${DRAWTEXT_FONT}`
+    const xy   = drawtextXY(el.position, pad, el.width, el.height)
+
+    const makeDrawtext = (txt: string, yOff = 0) => {
+      const xyAdj = yOff !== 0 ? xy.replace(/y=([^:]+)/, `y=$1+${yOff}`) : xy
+      return `drawtext=${font}text='${escTxt(txt)}':fontsize=${fs}:fontcolor=${fc}:${bg}${xyAdj}${bold}`
+    }
+
+    const o = nxt()
+    switch (el.type) {
+      case 'CLOCK':
+        segs.push(`${cur}drawtext=${font}text='%{localtime\\:%H\\:%M\\:%S}':fontsize=${fs}:fontcolor=${fc}:${bg}${xy}${bold}${o}`)
+        break
+      case 'TEXT':
+        if (el.text) segs.push(`${cur}${makeDrawtext(el.text)}${o}`)
+        else continue
+        break
+      case 'TICKER':
+        if (el.text) {
+          // Scroll horizontal da direita para a esquerda
+          const tickerY = el.position.startsWith('B') ? `H-th-${pad}` : `${pad}`
+          segs.push(`${cur}drawtext=${font}text='${escTxt(el.text)}':fontsize=${fs}:fontcolor=${fc}:${bg}x=w-mod(n*2\\,w+tw):y=${tickerY}${bold}${o}`)
+        } else continue
+        break
+      case 'LOWER_THIRD': {
+        // Título + subtítulo empilhados
+        const title = el.text ?? ''
+        const sub   = el.subtitle ?? ''
+        const titleDt = makeDrawtext(title, 0)
+        const out2 = sub ? nxt() : o
+        segs.push(`${cur}${titleDt}${out2}`)
+        if (sub) {
+          cur = out2
+          segs.push(`${cur}${makeDrawtext(sub, fs + 8)}${o}`)
+        } else cur = out2
+        break
+      }
+    }
+    cur = o
+  }
+
+  if (segs.length === 0) return { extraInputs: [], filterArgs: [], mapArgs: [] }
+
+  return {
+    extraInputs,
+    filterArgs: ['-filter_complex', segs.join(';')],
+    mapArgs:    ['-map', cur, '-map', '0:a?'],
+  }
+}
+
 function buildArgs(
   inputUrl: string,
   cueIn: number,
@@ -324,43 +481,54 @@ function buildArgs(
   const isRtspInput = lowerInputUrl.startsWith('rtsp://')
   const isHttpInput = lowerInputUrl.startsWith('http://') || lowerInputUrl.startsWith('https://')
 
+  // Decide qual sistema gráfico usar: template (novo) ou legado (Graphic simples)
+  const useTemplate = !isLive && !!effectiveGraphic?.templateElements?.length
+  const templateResult = useTemplate
+    ? buildTemplateFilter(effectiveGraphic!.templateElements!, output.videoResolution)
+    : null
+
+  // Inputs extras: logos do template OU logo legado
+  const extraLogoInputs: string[] = templateResult
+    ? templateResult.extraInputs.flatMap(url => ['-stream_loop', '-1', '-i', resolveLogoUrl(url)])
+    : (logoUrl ? ['-stream_loop', '-1', '-i', logoUrl] : [])
+
   const input: string[] = [
     '-hide_banner', '-loglevel', 'warning', '-stats',
-    // RTMP input: reconnect automático se a fonte cair
     ...(isLive && isRtmpInput ? ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5'] : []),
-    // RTSP input: força TCP (mais estável) e define timeout de 10s
     ...(isLive && isRtspInput ? ['-rtsp_transport', 'tcp', '-stimeout', '10000000'] : []),
-    // HTTP/HLS input ao vivo: reconnect + timeout longo — só para streams live (isLive=true)
-    // VOD HLS local não precisa: o demuxer lê EXT-X-ENDLIST e encerra normalmente
     ...(isLive && isHttpInput ? ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '10', '-timeout', '30000000'] : []),
     ...(isLive ? [] : ['-re']),
     ...(cueIn > 0 && !isLive ? ['-ss', String(Math.floor(cueIn))] : []),
     '-i', inputUrl,
-    // Logo como segundo input com loop infinito (imagem estática)
-    ...(logoUrl ? ['-stream_loop', '-1', '-i', logoUrl] : []),
+    ...extraLogoInputs,
   ]
 
   const aBitrate = output.audioBitrate ?? 128
-  // Bitrate padrão 4000k quando não configurado — evita encoder sem limite enviando burst ao YouTube
   const vBitrate = output.videoBitrate || 4000
   const videoBitrateArgs = !isLive
-    ? ['-b:v', `${vBitrate}k`,
-       '-maxrate', `${Math.round(vBitrate * 1.2)}k`,
-       '-bufsize', `${vBitrate}k`]   // bufsize = 1× bitrate → buffer de ~1s
+    ? ['-b:v', `${vBitrate}k`, '-maxrate', `${Math.round(vBitrate * 1.2)}k`, '-bufsize', `${vBitrate}k`]
     : []
 
   let videoCodec: string[]
   if (isLive) {
-    // -map 0:v:0 -map 0:a:0 garante seleção de uma única faixa de vídeo e áudio
-    // necessário para HLS do YouTube que pode ter múltiplas faixas
     videoCodec = ['-c', 'copy', '-map', '0:v:0', '-map', '0:a:0']
+  } else if (useTemplate && templateResult) {
+    // Sistema novo: template com múltiplos elementos
+    videoCodec = [
+      ...templateResult.filterArgs,
+      '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
+      ...videoBitrateArgs,
+      '-g', '60', '-keyint_min', '60', '-sc_threshold', '0',
+      '-c:a', 'aac', '-ar', '44100', '-b:a', `${aBitrate}k`,
+      ...templateResult.mapArgs,
+    ]
   } else {
+    // Sistema legado: Graphic simples
     const { filterArgs, mapArgs } = buildVideoFilter(output.videoResolution, effectiveGraphic, !!logoUrl)
     videoCodec = [
       ...filterArgs,
       '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
       ...videoBitrateArgs,
-      // GOP fixo de 2s para YouTube (keyframe a cada 60 frames em 30fps)
       '-g', '60', '-keyint_min', '60', '-sc_threshold', '0',
       '-c:a', 'aac', '-ar', '44100', '-b:a', `${aBitrate}k`,
       ...mapArgs,

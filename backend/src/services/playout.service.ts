@@ -433,6 +433,34 @@ async function resolveGraphic(
   playlistId: string | null,
   channelId: string,
 ): Promise<GraphicConfig | null> {
+  // 1. Template gráfico do canal (novo sistema — tem prioridade se configurado)
+  const channel = await prisma.channel.findUnique({
+    where: { id: channelId },
+    select: {
+      graphicTemplate: {
+        select: {
+          active: true,
+          elements: {
+            where: { active: true },
+            orderBy: { order: 'asc' },
+            select: {
+              type: true, position: true,
+              imageUrl: true, text: true, subtitle: true,
+              fontColor: true, bgColor: true, fontSize: true,
+              opacity: true, bold: true, width: true, height: true, padding: true,
+            },
+          },
+        },
+      },
+    },
+  }).catch(() => null)
+
+  if (channel?.graphicTemplate?.active && channel.graphicTemplate.elements.length > 0) {
+    console.log(`[playout] resolveGraphic ch=${channelId} → TEMPLATE (${channel.graphicTemplate.elements.length} elementos)`)
+    return { templateElements: channel.graphicTemplate.elements as any }
+  }
+
+  // 2. Gráfico simples do clipe (legado)
   if (clipId) {
     const clip = await prisma.clip.findUnique({
       where: { id: clipId },
@@ -443,6 +471,8 @@ async function resolveGraphic(
       return clip.graphic
     }
   }
+
+  // 3. Gráfico simples da playlist (legado)
   if (playlistId) {
     const pl = await prisma.playlist.findUnique({
       where: { id: playlistId },
@@ -453,6 +483,8 @@ async function resolveGraphic(
       return pl.graphic
     }
   }
+
+  // 4. Gráfico simples da saída de streaming (legado)
   const output = await prisma.streamOutput.findFirst({
     where: { channelId, active: true, graphicId: { not: null } },
     select: { graphic: { select: { logoUrl: true, logoPosition: true, showClock: true, lowerText: true, active: true } } },

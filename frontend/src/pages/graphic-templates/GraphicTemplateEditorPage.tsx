@@ -113,22 +113,24 @@ export default function GraphicTemplateEditorPage() {
         </span>
       </div>
 
-      {/* Grid de posições */}
-      <div className="card p-4 space-y-3">
-        <p className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Posições do overlay</p>
-
-        {/* Barra Superior */}
-        <PositionCell pos="BAR_TOP" elements={byPosition('BAR_TOP')} onAdd={openAdd} onEdit={openEdit} onToggle={toggleActive} onDelete={(el) => removeElement.mutate(el.id)} />
-
-        {/* Grid 3×3 */}
-        <div className="grid grid-cols-3 gap-2">
-          {POSITION_GRID.map(row => row.map(pos => (
-            <PositionCell key={pos} pos={pos} elements={byPosition(pos)} onAdd={openAdd} onEdit={openEdit} onToggle={toggleActive} onDelete={(el) => removeElement.mutate(el.id)} />
-          )))}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        {/* Grid de posições */}
+        <div className="card p-4 space-y-3">
+          <p className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Posições do overlay</p>
+          <PositionCell pos="BAR_TOP" elements={byPosition('BAR_TOP')} onAdd={openAdd} onEdit={openEdit} onToggle={toggleActive} onDelete={(el) => removeElement.mutate(el.id)} />
+          <div className="grid grid-cols-3 gap-2">
+            {POSITION_GRID.map(row => row.map(pos => (
+              <PositionCell key={pos} pos={pos} elements={byPosition(pos)} onAdd={openAdd} onEdit={openEdit} onToggle={toggleActive} onDelete={(el) => removeElement.mutate(el.id)} />
+            )))}
+          </div>
+          <PositionCell pos="BAR_BOTTOM" elements={byPosition('BAR_BOTTOM')} onAdd={openAdd} onEdit={openEdit} onToggle={toggleActive} onDelete={(el) => removeElement.mutate(el.id)} />
         </div>
 
-        {/* Barra Inferior */}
-        <PositionCell pos="BAR_BOTTOM" elements={byPosition('BAR_BOTTOM')} onAdd={openAdd} onEdit={openEdit} onToggle={toggleActive} onDelete={(el) => removeElement.mutate(el.id)} />
+        {/* Preview visual 16:9 */}
+        <div className="card p-4 space-y-3">
+          <p className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Preview visual</p>
+          <TemplatePreview elements={template.elements} />
+        </div>
       </div>
 
       {/* Lista de todos os elementos */}
@@ -287,7 +289,7 @@ function PositionCell({ pos, elements, onAdd, onEdit, onToggle, onDelete }: {
   onToggle: (el: GraphicElement) => void
   onDelete: (el: GraphicElement) => void
 }) {
-  const isBar = pos === 'BAR_TOP' || pos === 'BAR_BOTTOM'
+  const isBar = pos.startsWith('BAR')
   return (
     <div className={clsx(
       'rounded-lg border border-dashed border-gray-700 p-2 min-h-[64px] transition-colors',
@@ -320,6 +322,77 @@ function PositionCell({ pos, elements, onAdd, onEdit, onToggle, onDelete }: {
           <p className="text-[9px] text-gray-700 text-center py-1">vazio</p>
         )}
       </div>
+    </div>
+  )
+}
+
+// ─── Preview visual do template (simulação CSS 16:9) ─────────────────────────
+const POS_STYLE: Record<GraphicPosition, React.CSSProperties> = {
+  TL: { top: 8, left: 8 },
+  TC: { top: 8, left: '50%', transform: 'translateX(-50%)' },
+  TR: { top: 8, right: 8 },
+  ML: { top: '50%', left: 8, transform: 'translateY(-50%)' },
+  MC: { top: '50%', left: '50%', transform: 'translate(-50%,-50%)' },
+  MR: { top: '50%', right: 8, transform: 'translateY(-50%)' },
+  BL: { bottom: 8, left: 8 },
+  BC: { bottom: 8, left: '50%', transform: 'translateX(-50%)' },
+  BR: { bottom: 8, right: 8 },
+  BAR_TOP:    { top: 0, left: 0, right: 0 },
+  BAR_BOTTOM: { bottom: 0, left: 0, right: 0 },
+}
+
+function TemplatePreview({ elements }: { elements: GraphicElement[] }) {
+  const active = elements.filter(el => el.active)
+  return (
+    <div className="relative w-full bg-black rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
+      <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center">
+        <span className="text-gray-700 text-xs uppercase tracking-widest">Vídeo</span>
+      </div>
+      {active.map((el) => {
+        const posStyle = POS_STYLE[el.position] ?? { top: 8, left: 8 }
+        const isBar = el.position.startsWith('BAR')
+        const fs = Math.max(7, Math.round((el.fontSize ?? 32) * 0.35))
+        const baseStyle: React.CSSProperties = {
+          position: 'absolute',
+          ...posStyle,
+          backgroundColor: el.bgColor ?? 'transparent',
+          color: el.fontColor ?? '#fff',
+          fontSize: fs,
+          fontWeight: el.bold ? 'bold' : 'normal',
+          padding: isBar ? '3px 6px' : '2px 5px',
+          borderRadius: isBar ? 0 : 3,
+          overflow: 'hidden',
+          maxWidth: isBar ? '100%' : '45%',
+          opacity: el.opacity ?? 1,
+          whiteSpace: 'nowrap',
+          zIndex: 10,
+        }
+        switch (el.type) {
+          case 'LOGO':
+            return el.imageUrl
+              ? <img key={el.id} src={el.imageUrl} style={{ ...baseStyle, backgroundColor: 'transparent', width: el.width ? el.width * 0.35 : 60, height: 'auto' }} alt="logo" />
+              : <div key={el.id} style={baseStyle} className="text-[7px] bg-gray-700/80 text-gray-300">🖼️ LOGO</div>
+          case 'CLOCK':
+            return <div key={el.id} style={baseStyle}>{new Date().toLocaleTimeString('pt-BR')}</div>
+          case 'TEXT':
+            return <div key={el.id} style={baseStyle}>{el.text ?? 'Texto'}</div>
+          case 'TICKER':
+            return <div key={el.id} style={baseStyle}>📜 {el.text ?? 'Ticker...'}</div>
+          case 'LOWER_THIRD':
+            return (
+              <div key={el.id} style={{ ...baseStyle, whiteSpace: 'normal' }}>
+                <div style={{ fontWeight: 'bold' }}>{el.text ?? 'Título'}</div>
+                {el.subtitle && <div style={{ fontSize: fs * 0.8, opacity: 0.85 }}>{el.subtitle}</div>}
+              </div>
+            )
+          default: return null
+        }
+      })}
+      {active.length === 0 && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <p className="text-gray-600 text-xs">Nenhum elemento ativo</p>
+        </div>
+      )}
     </div>
   )
 }

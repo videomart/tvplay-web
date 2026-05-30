@@ -11,10 +11,12 @@ const channelSchema = z.object({
   active: z.boolean().optional(),
   fallbackType: z.nativeEnum(FallbackType).optional(),
   fallbackSourceId: z.string().optional().nullable(),
+  graphicTemplateId: z.string().optional().nullable(),
 })
 
 const include = {
-  fallbackSource: { select: { id: true, name: true, type: true, url: true } },
+  fallbackSource:   { select: { id: true, name: true, type: true, url: true } },
+  graphicTemplate:  { select: { id: true, name: true, active: true } },
 }
 
 export default async function channelRoutes(app: FastifyInstance) {
