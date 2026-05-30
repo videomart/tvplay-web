@@ -671,23 +671,24 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
   const currentIndex = state?.currentIndex ?? 0
   const itemCount = state?.itemCount ?? 0
 
-  // Auto-scroll: quando item entra no ar, posiciona no topo do grid.
-  // Após o scroll, o operador pode rolar livremente.
-  // Na próxima troca de item, volta ao topo independentemente.
+  // Auto-scroll: posiciona o item atual no topo do grid.
+  // Dispara ao trocar de item, ao abrir o painel, e ao carregar/recarregar
+  // os itens (ex: retorno após horas — items refetchados mas currentIndex igual).
   useEffect(() => {
-    const container = playlistScrollRef.current
-    const item = currentItemRef.current
-    if (!container || !item || !playlistOpen) return
-
-    // Novo item entrou no ar — reseta flag de scroll manual e força posicionamento no topo
-    userScrolledRef.current = false
-
-    const itemTop = item.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop
-    programmaticScrollRef.current = true
-    container.scrollTo({ top: Math.max(0, itemTop), behavior: 'smooth' })
-    const t = setTimeout(() => { programmaticScrollRef.current = false }, 600)
+    if (!playlistOpen || playlistItems.length === 0) return
+    // Pequeno delay para garantir que o ref foi atribuído após o render
+    const t = setTimeout(() => {
+      const container = playlistScrollRef.current
+      const item = currentItemRef.current
+      if (!container || !item) return
+      userScrolledRef.current = false
+      const itemTop = item.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop
+      programmaticScrollRef.current = true
+      container.scrollTo({ top: Math.max(0, itemTop), behavior: 'smooth' })
+      setTimeout(() => { programmaticScrollRef.current = false }, 600)
+    }, 80)
     return () => clearTimeout(t)
-  }, [currentIndex, playlistOpen])
+  }, [currentIndex, playlistOpen, playlistItems.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Refetch items ao trocar de playlist (ex: "usar este roteiro" enquanto outro está ativo)
   const prevPlaylistIdRef = useRef<string | null | undefined>(undefined)
@@ -781,6 +782,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
     queryFn: () => playoutApi.getItems(channel.id),
     enabled: !!state?.playlistId,
     refetchInterval: state?.playlistId ? 15_000 : false,
+    refetchOnWindowFocus: true,
   })
 
   // ─── Mutations ──────────────────────────────────────────────────────────────
