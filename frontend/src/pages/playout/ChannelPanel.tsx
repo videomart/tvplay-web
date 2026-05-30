@@ -416,7 +416,7 @@ function PlaylistItemRow({
         isCurrent  ? 'py-2 bg-emerald-400 ring-2 ring-emerald-300 shadow-[inset_3px_0_0_0_rgb(52_211_153)]' : 'py-1.5',
         isPlayed   ? 'opacity-35' : '',
         !isCurrent ? (lightRow ? 'bg-gray-200' : 'bg-gray-800') : '',
-        !isCurrent && !isPlayed && !isSelected ? 'hover:bg-sky-800/40' : '',
+        !isCurrent && !isPlayed && !isSelected ? 'group hover:bg-violet-700' : '',
         isSelected && !isCurrent ? 'bg-sky-200 shadow-[inset_3px_0_0_0_rgb(14_165_233)]' : '',
         isDragging ? 'opacity-30' : '',
         isDragOver ? 'border-t-2 border-brand-400' : '',
@@ -428,7 +428,7 @@ function PlaylistItemRow({
         onMouseUp={() => { fromHandle.current = false }}
         className={clsx(
           'h-3.5 w-3.5 flex-shrink-0 cursor-grab active:cursor-grabbing',
-          isCurrent ? 'text-emerald-900' : lightRow ? 'text-gray-500' : 'text-gray-700'
+          isCurrent ? 'text-emerald-900' : lightRow ? 'text-gray-500 group-hover:!text-white' : 'text-gray-700 group-hover:!text-white'
         )}
       />
 
@@ -456,7 +456,7 @@ function PlaylistItemRow({
       {/* Código */}
       <span className={clsx(
         'text-[10px] font-mono flex-shrink-0 w-14 truncate pl-2',
-        isCurrent ? 'text-emerald-900 font-semibold' : isSelected ? 'text-gray-700' : lightRow ? 'text-gray-700' : 'text-gray-600'
+        isCurrent ? 'text-emerald-900 font-semibold' : isSelected ? 'text-gray-700' : lightRow ? 'text-gray-700 group-hover:!text-white' : 'text-gray-600 group-hover:!text-white'
       )} title={item.code}>
         {item.code}
       </span>
@@ -468,7 +468,7 @@ function PlaylistItemRow({
         title={isSelected ? 'Clique para desselecionar · Duplo clique para ir para este clipe' : 'Clique para selecionar posição · Duplo clique para ir para este clipe'}
         className={clsx(
           'flex-1 text-left text-xs truncate transition-colors min-w-0 pl-1',
-          isCurrent ? 'text-emerald-950 font-bold cursor-default' : isPlayed ? 'text-gray-500 cursor-pointer' : isSelected ? 'text-gray-900 hover:text-black cursor-pointer' : lightRow ? 'text-gray-900 hover:text-black cursor-pointer' : 'text-gray-300 hover:text-white cursor-pointer'
+          isCurrent ? 'text-emerald-950 font-bold cursor-default' : isPlayed ? 'text-gray-500 cursor-pointer' : isSelected ? 'text-gray-900 cursor-pointer' : 'text-gray-300 group-hover:!text-white cursor-pointer'
         )}
       >
         {item.title}
