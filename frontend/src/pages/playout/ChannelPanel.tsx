@@ -413,11 +413,11 @@ function PlaylistItemRow({
       onDrop={(e) => { e.preventDefault(); onDrop() }}
       className={clsx(
         'flex items-center gap-1.5 px-2 rounded transition-all',
-        isCurrent  ? 'py-2 bg-emerald-600/40 ring-2 ring-emerald-400/80 shadow-[inset_3px_0_0_0_rgb(52_211_153)]' : 'py-1.5',
+        isCurrent  ? 'py-2 bg-emerald-400 ring-2 ring-emerald-300 shadow-[inset_3px_0_0_0_rgb(52_211_153)]' : 'py-1.5',
         isPlayed   ? 'opacity-35' : '',
         !isCurrent ? (lightRow ? 'bg-gray-200' : 'bg-gray-800') : '',
         !isCurrent && !isPlayed ? (lightRow ? 'hover:bg-gray-100' : 'hover:bg-gray-600') : '',
-        isSelected ? 'ring-2 ring-cyan-400 ring-inset bg-cyan-950/40 shadow-[inset_3px_0_0_0_rgb(34_211_238/0.8)]' : '',
+        isSelected && !isCurrent ? 'ring-2 ring-cyan-400 ring-inset bg-sky-400/20 shadow-[inset_3px_0_0_0_rgb(56_189_248/0.9)]' : '',
         isDragging ? 'opacity-30' : '',
         isDragOver ? 'border-t-2 border-brand-400' : '',
       )}
@@ -428,7 +428,7 @@ function PlaylistItemRow({
         onMouseUp={() => { fromHandle.current = false }}
         className={clsx(
           'h-3.5 w-3.5 flex-shrink-0 cursor-grab active:cursor-grabbing',
-          isCurrent ? 'text-emerald-600' : lightRow ? 'text-gray-500' : 'text-gray-700'
+          isCurrent ? 'text-emerald-900' : lightRow ? 'text-gray-500' : 'text-gray-700'
         )}
       />
 
@@ -436,8 +436,8 @@ function PlaylistItemRow({
       <span className="w-5 flex-shrink-0 flex items-center justify-end gap-0.5">
         {isCurrent ? (
           <>
-            <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
-            <span className="text-[10px] font-bold text-emerald-300">▶</span>
+            <span className="h-2 w-2 rounded-full bg-emerald-900 animate-pulse flex-shrink-0" />
+            <span className="text-[10px] font-bold text-emerald-900">▶</span>
           </>
         ) : (
           <span className={clsx('text-[10px] font-mono', lightRow ? 'text-gray-500' : 'text-gray-600')}>{item.index + 1}</span>
@@ -456,7 +456,7 @@ function PlaylistItemRow({
       {/* Código */}
       <span className={clsx(
         'text-[10px] font-mono flex-shrink-0 w-14 truncate pl-2',
-        isCurrent ? 'text-emerald-300/80' : lightRow ? 'text-gray-700' : 'text-gray-600'
+        isCurrent ? 'text-emerald-900 font-semibold' : lightRow ? 'text-gray-700' : 'text-gray-600'
       )} title={item.code}>
         {item.code}
       </span>
@@ -468,7 +468,7 @@ function PlaylistItemRow({
         title={isSelected ? 'Clique para desselecionar · Duplo clique para ir para este clipe' : 'Clique para selecionar posição · Duplo clique para ir para este clipe'}
         className={clsx(
           'flex-1 text-left text-xs truncate transition-colors min-w-0 pl-1',
-          isCurrent ? 'text-emerald-50 font-bold cursor-default' : isPlayed ? 'text-gray-500 cursor-pointer' : lightRow ? 'text-gray-900 hover:text-black cursor-pointer' : 'text-gray-300 hover:text-white cursor-pointer'
+          isCurrent ? 'text-emerald-950 font-bold cursor-default' : isPlayed ? 'text-gray-500 cursor-pointer' : lightRow ? 'text-gray-900 hover:text-black cursor-pointer' : 'text-gray-300 hover:text-white cursor-pointer'
         )}
       >
         {item.title}
@@ -476,7 +476,7 @@ function PlaylistItemRow({
 
       {/* Badge AO AR */}
       {isCurrent && (
-        <span className="flex-shrink-0 text-[9px] font-bold px-1 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 tracking-wide animate-pulse">
+        <span className="flex-shrink-0 text-[9px] font-bold px-1 py-0.5 rounded bg-emerald-800 text-emerald-100 border border-emerald-900 tracking-wide animate-pulse">
           AO AR
         </span>
       )}
@@ -494,7 +494,7 @@ function PlaylistItemRow({
 
       {/* Duração / elapsed para itens URL ao vivo */}
       {isCurrent && item.sourceType === 'URL' && liveElapsed != null ? (
-        <span className="text-[10px] font-mono flex-shrink-0 w-10 text-right text-sky-400 animate-pulse">
+        <span className="text-[10px] font-mono flex-shrink-0 w-10 text-right text-sky-800 font-bold animate-pulse">
           {formatTime(liveElapsed)}
         </span>
       ) : (
