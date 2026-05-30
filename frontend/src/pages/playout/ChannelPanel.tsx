@@ -672,23 +672,23 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
   const itemCount = state?.itemCount ?? 0
 
   // Auto-scroll: posiciona o item atual no topo do grid.
-  // Dispara ao trocar de item, ao abrir o painel, e ao carregar/recarregar
-  // os itens (ex: retorno após horas — items refetchados mas currentIndex igual).
+  // Dispara ao trocar de item ou ao abrir o painel.
+  // scrollToCurrentItem() também é chamado quando os items chegam do fetch.
+  function scrollToCurrentItem() {
+    const container = playlistScrollRef.current
+    const item = currentItemRef.current
+    if (!container || !item || !playlistOpen) return
+    userScrolledRef.current = false
+    const itemTop = item.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop
+    programmaticScrollRef.current = true
+    container.scrollTo({ top: Math.max(0, itemTop), behavior: 'smooth' })
+    setTimeout(() => { programmaticScrollRef.current = false }, 600)
+  }
+
   useEffect(() => {
-    if (!playlistOpen || playlistItems.length === 0) return
-    // Pequeno delay para garantir que o ref foi atribuído após o render
-    const t = setTimeout(() => {
-      const container = playlistScrollRef.current
-      const item = currentItemRef.current
-      if (!container || !item) return
-      userScrolledRef.current = false
-      const itemTop = item.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop
-      programmaticScrollRef.current = true
-      container.scrollTo({ top: Math.max(0, itemTop), behavior: 'smooth' })
-      setTimeout(() => { programmaticScrollRef.current = false }, 600)
-    }, 80)
+    const t = setTimeout(scrollToCurrentItem, 80)
     return () => clearTimeout(t)
-  }, [currentIndex, playlistOpen, playlistItems.length]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentIndex, playlistOpen]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Refetch items ao trocar de playlist (ex: "usar este roteiro" enquanto outro está ativo)
   const prevPlaylistIdRef = useRef<string | null | undefined>(undefined)
@@ -784,6 +784,13 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
     refetchInterval: state?.playlistId ? 15_000 : false,
     refetchOnWindowFocus: true,
   })
+
+  // Quando items chegam/recarregam (ex: retorno após inatividade), rola para o item atual
+  useEffect(() => {
+    if (playlistItems.length === 0) return
+    const t = setTimeout(scrollToCurrentItem, 120)
+    return () => clearTimeout(t)
+  }, [playlistItems.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Mutations ──────────────────────────────────────────────────────────────
 
