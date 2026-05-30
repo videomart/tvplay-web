@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Tv2, Users, Tag, Film, LogOut, Radio, ListVideo, Cast, Antenna, ClipboardList, UserCog, Settings, Layers, HardDrive } from 'lucide-react'
+import { LayoutDashboard, Tv2, Users, Tag, Film, LogOut, Radio, ListVideo, Cast, Antenna, ClipboardList, UserCog, Settings, Layers, HardDrive, X } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '../../stores/auth.store'
 import { settingsApi } from '../../api/settings.api'
@@ -28,7 +28,12 @@ const adminNav = [
   { to: '/settings', icon: Settings, label: 'Configurações' },
 ]
 
-export default function Sidebar() {
+interface SidebarProps {
+  isOpen?: boolean
+  onClose?: () => void
+}
+
+export default function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   const { user, logout } = useAuthStore()
   const isAdmin = user?.level === 'ADMIN'
 
@@ -42,10 +47,25 @@ export default function Sidebar() {
   const logoUrl = settings?.logoUrl
 
   return (
-    <aside className="w-56 bg-gray-900 border-r border-gray-800 flex flex-col h-full">
+    <aside className={clsx(
+      'w-56 bg-gray-900 border-r border-gray-800 flex flex-col h-full flex-shrink-0',
+      // Mobile: drawer overlay que desliza da esquerda
+      'fixed inset-y-0 left-0 z-30 transition-transform duration-300 ease-in-out',
+      'md:relative md:translate-x-0 md:z-auto',
+      isOpen ? 'translate-x-0' : '-translate-x-full',
+    )}>
+      {/* Botão fechar — só mobile */}
+      <button
+        onClick={onClose}
+        className="md:hidden absolute top-3 right-3 p-1 rounded text-gray-500 hover:text-white hover:bg-gray-800 transition-colors"
+        aria-label="Fechar menu"
+      >
+        <X className="h-4 w-4" />
+      </button>
+
       {/* Logo */}
       <div className="px-4 py-5 border-b border-gray-800">
-        <NavLink to="/playout" className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
+        <NavLink to="/playout" onClick={onClose} className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
           {logoUrl ? (
             <img src={logoUrl} alt={companyName} className="h-7 w-7 rounded-lg object-contain bg-white/5 p-0.5" />
           ) : (
@@ -68,6 +88,7 @@ export default function Sidebar() {
             <NavLink
               key={to}
               to={to}
+              onClick={onClose}
               className={({ isActive }) => clsx('sidebar-item', isActive && 'active')}
             >
               <Icon className="h-4 w-4 flex-shrink-0" />
@@ -85,6 +106,7 @@ export default function Sidebar() {
             <NavLink
               key={to}
               to={to}
+              onClick={onClose}
               className={({ isActive }) => clsx('sidebar-item', isActive && 'active')}
             >
               <Icon className="h-4 w-4 flex-shrink-0" />
@@ -104,6 +126,7 @@ export default function Sidebar() {
                 <NavLink
                   key={to}
                   to={to}
+                  onClick={onClose}
                   className={({ isActive }) => clsx('sidebar-item', isActive && 'active')}
                 >
                   <Icon className="h-4 w-4 flex-shrink-0" />
