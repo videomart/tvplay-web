@@ -417,7 +417,7 @@ function PlaylistItemRow({
         isPlayed   ? 'opacity-35' : '',
         !isCurrent ? (lightRow ? 'bg-gray-200' : 'bg-gray-800') : '',
         !isCurrent && !isPlayed ? (lightRow ? 'hover:bg-gray-100' : 'hover:bg-gray-600') : '',
-        isSelected && !isCurrent ? 'ring-2 ring-cyan-400 ring-inset bg-sky-400/20 shadow-[inset_3px_0_0_0_rgb(56_189_248/0.9)]' : '',
+        isSelected && !isCurrent ? 'bg-sky-200 shadow-[inset_3px_0_0_0_rgb(14_165_233)]' : '',
         isDragging ? 'opacity-30' : '',
         isDragOver ? 'border-t-2 border-brand-400' : '',
       )}
@@ -456,7 +456,7 @@ function PlaylistItemRow({
       {/* Código */}
       <span className={clsx(
         'text-[10px] font-mono flex-shrink-0 w-14 truncate pl-2',
-        isCurrent ? 'text-emerald-900 font-semibold' : lightRow ? 'text-gray-700' : 'text-gray-600'
+        isCurrent ? 'text-emerald-900 font-semibold' : isSelected ? 'text-gray-700' : lightRow ? 'text-gray-700' : 'text-gray-600'
       )} title={item.code}>
         {item.code}
       </span>
@@ -468,7 +468,7 @@ function PlaylistItemRow({
         title={isSelected ? 'Clique para desselecionar · Duplo clique para ir para este clipe' : 'Clique para selecionar posição · Duplo clique para ir para este clipe'}
         className={clsx(
           'flex-1 text-left text-xs truncate transition-colors min-w-0 pl-1',
-          isCurrent ? 'text-emerald-950 font-bold cursor-default' : isPlayed ? 'text-gray-500 cursor-pointer' : lightRow ? 'text-gray-900 hover:text-black cursor-pointer' : 'text-gray-300 hover:text-white cursor-pointer'
+          isCurrent ? 'text-emerald-950 font-bold cursor-default' : isPlayed ? 'text-gray-500 cursor-pointer' : isSelected ? 'text-gray-900 hover:text-black cursor-pointer' : lightRow ? 'text-gray-900 hover:text-black cursor-pointer' : 'text-gray-300 hover:text-white cursor-pointer'
         )}
       >
         {item.title}
@@ -1541,15 +1541,6 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                           liveElapsed={idx === currentIndex && pi.sourceType === 'URL' ? position : null}
                         />
 
-                        {/* Indicador de posição de inserção — aparece ABAIXO do item selecionado */}
-                        {isItemSelected && (
-                          <div className="flex items-center gap-1.5 mx-2 my-0.5 px-2 py-0.5 rounded border border-dashed border-cyan-500/50 bg-cyan-950/30">
-                            <ChevronRight className="h-3 w-3 text-cyan-400 flex-shrink-0" />
-                            <span className="text-[9px] text-cyan-400 font-semibold uppercase tracking-wide">
-                              Inserir aqui · #{idx + 2}
-                            </span>
-                          </div>
-                        )}
                       </div>
                     )
                   })
