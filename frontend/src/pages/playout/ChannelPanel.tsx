@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Play, Pause, Square, SkipForward, SkipBack,
   Radio, Wifi, WifiOff, MonitorPlay, MonitorOff, Antenna,
-  ChevronDown, ChevronUp, RefreshCw, RotateCcw, GripVertical, Trash2, Repeat,
+  ChevronDown, ChevronUp, ChevronRight, RefreshCw, RotateCcw, GripVertical, Trash2, Repeat,
   Camera, Timer, Copy, X,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -417,7 +417,7 @@ function PlaylistItemRow({
         isPlayed   ? 'opacity-35' : '',
         !isCurrent ? (lightRow ? 'bg-gray-200' : 'bg-gray-800') : '',
         !isCurrent && !isPlayed ? (lightRow ? 'hover:bg-gray-100' : 'hover:bg-gray-600') : '',
-        isSelected ? 'ring-2 ring-cyan-500/70 ring-inset' : '',
+        isSelected ? 'ring-2 ring-cyan-400 ring-inset bg-cyan-950/40 shadow-[inset_3px_0_0_0_rgb(34_211_238/0.8)]' : '',
         isDragging ? 'opacity-30' : '',
         isDragOver ? 'border-t-2 border-brand-400' : '',
       )}
@@ -652,6 +652,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
   }, [sysSettings, defaultsApplied])
   const [dragIdx, setDragIdx] = useState<number | null>(null)
   const [overIdx, setOverIdx] = useState<number | null>(null)
+  const [libraryDragOver, setLibraryDragOver] = useState<number | null>(null) // idx após o qual o clip será inserido via drag da Biblioteca
   const { selectedByChannel, setSelected, clearSelected } = usePlayoutSelection()
   const selectedItemId = selectedByChannel[channel.id] ?? null
   const setSelectedItemId = (id: string | null) => id === null ? clearSelected(channel.id) : setSelected(channel.id, id)
@@ -898,8 +899,40 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
     onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao limpar grid'),
   })
 
+  const insertFromLibraryMut = useMutation({
+    mutationFn: ({ clipId, afterItemId }: { clipId: string; afterItemId: string | null }) =>
+      playoutApi.insertClip(channel.id, clipId, afterItemId),
+    onSuccess: () => {
+      toast.success('Clipe inserido')
+      qc.invalidateQueries({ queryKey: ['playout-items', channel.id] })
+      qc.invalidateQueries({ queryKey: ['playout-state', channel.id] })
+      qc.invalidateQueries({ queryKey: ['playlists-panel', channel.id] })
+    },
+    onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao inserir'),
+  })
+
+  function handleLibraryDragOver(e: React.DragEvent, afterIdx: number) {
+    if (e.dataTransfer.types.includes('application/x-clip-id')) {
+      e.preventDefault()
+      e.stopPropagation()
+      setLibraryDragOver(afterIdx)
+    }
+  }
+
+  function handleLibraryDrop(e: React.DragEvent, afterItemId: string | null) {
+    const clipId = e.dataTransfer.getData('application/x-clip-id')
+    if (!clipId) return
+    e.preventDefault()
+    e.stopPropagation()
+    setLibraryDragOver(null)
+    insertFromLibraryMut.mutate({ clipId, afterItemId })
+  }
+
   function handleDragStart(idx: number) { setDragIdx(idx) }
-  function handleDragOver(e: React.DragEvent, idx: number) { e.preventDefault(); setOverIdx(idx) }
+  function handleDragOver(e: React.DragEvent, idx: number) {
+    if (e.dataTransfer.types.includes('application/x-clip-id')) return // não interfere com drag da biblioteca
+    e.preventDefault(); setOverIdx(idx)
+  }
   function handleDragEnd() { setDragIdx(null); setOverIdx(null) }
   function handleDrop(targetIdx: number) {
     if (dragIdx == null || dragIdx === targetIdx) { setDragIdx(null); setOverIdx(null); return }
@@ -1446,46 +1479,80 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                 onScroll={() => {
                   if (!programmaticScrollRef.current) userScrolledRef.current = true
                 }}
+                onDragOver={(e) => {
+                  if (e.dataTransfer.types.includes('application/x-clip-id')) {
+                    e.preventDefault()
+                    setLibraryDragOver(playlistItems.length) // indica "no final"
+                  }
+                }}
+                onDragLeave={(e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget as Node)) setLibraryDragOver(null)
+                }}
+                onDrop={(e) => handleLibraryDrop(e, null)}
               >
                 {playlistItems.length === 0 ? (
                   <p className="text-[11px] text-gray-600 text-center py-3">Carregando...</p>
                 ) : (
-                  playlistItems.map((pi, idx) => (
-                    <div key={pi.id} ref={idx === currentIndex ? currentItemRef : undefined}>
-                      <PlaylistItemRow
-                        item={pi}
-                        isCurrent={idx === currentIndex}
-                        isPlayed={idx < currentIndex}
-                        isDragging={dragIdx === idx}
-                        isDragOver={overIdx === idx && dragIdx !== idx}
-                        playoutStatus={status}
-                        rowIdx={idx}
-                        isSelected={pi.id === selectedItemId}
-                        onSelect={() => setSelectedItemId(pi.id === selectedItemId ? null : pi.id)}
-                        onJump={() => jumpMut.mutate(idx)}
-                        onClipPlay={() => handleClipPlay(idx)}
-                        onClipStop={() => stopMut.mutate()}
-                        onToggleLoop={() => toggleLoopMut.mutate(pi.id)}
-                        onDelete={() => deleteItemMut.mutate(pi.id)}
-                        onSetTimer={() => openTimerEdit(pi)}
-                        loopPending={toggleLoopMut.isPending && toggleLoopMut.variables === pi.id}
-                        deletePending={deleteItemMut.isPending && deleteItemMut.variables === pi.id}
-                        graphicName={pi.graphicName}
-                        timerEditId={timerEditId}
-                        timerEditVal={timerEditVal}
-                        setTimerEditId={setTimerEditId}
-                        setTimerEditVal={setTimerEditVal}
-                        commitTimer={commitTimer}
-                        clipPlayPending={(jumpMut.isPending || pauseMut.isPending || resumeMut.isPending) && idx === currentIndex}
-                        clipStopPending={stopMut.isPending}
-                        onDragStart={() => handleDragStart(idx)}
-                        onDragOver={(e) => handleDragOver(e, idx)}
-                        onDragEnd={handleDragEnd}
-                        onDrop={() => handleDrop(idx)}
-                        liveElapsed={idx === currentIndex && pi.sourceType === 'URL' ? position : null}
-                      />
-                    </div>
-                  ))
+                  playlistItems.map((pi, idx) => {
+                    const isItemSelected = pi.id === selectedItemId
+                    return (
+                      <div
+                        key={pi.id}
+                        ref={idx === currentIndex ? currentItemRef : undefined}
+                        onDragOver={(e) => handleLibraryDragOver(e, idx)}
+                        onDragLeave={() => setLibraryDragOver(null)}
+                        onDrop={(e) => handleLibraryDrop(e, pi.id)}
+                      >
+                        {/* Linha de drop da Biblioteca — aparece ACIMA do item quando arrastando */}
+                        {libraryDragOver === idx && (
+                          <div className="mx-2 h-0.5 rounded-full bg-brand-400 shadow-[0_0_6px_2px_rgb(99_102_241/0.6)] animate-pulse" />
+                        )}
+
+                        <PlaylistItemRow
+                          item={pi}
+                          isCurrent={idx === currentIndex}
+                          isPlayed={idx < currentIndex}
+                          isDragging={dragIdx === idx}
+                          isDragOver={overIdx === idx && dragIdx !== idx}
+                          playoutStatus={status}
+                          rowIdx={idx}
+                          isSelected={isItemSelected}
+                          onSelect={() => setSelectedItemId(pi.id === selectedItemId ? null : pi.id)}
+                          onJump={() => jumpMut.mutate(idx)}
+                          onClipPlay={() => handleClipPlay(idx)}
+                          onClipStop={() => stopMut.mutate()}
+                          onToggleLoop={() => toggleLoopMut.mutate(pi.id)}
+                          onDelete={() => deleteItemMut.mutate(pi.id)}
+                          onSetTimer={() => openTimerEdit(pi)}
+                          loopPending={toggleLoopMut.isPending && toggleLoopMut.variables === pi.id}
+                          deletePending={deleteItemMut.isPending && deleteItemMut.variables === pi.id}
+                          graphicName={pi.graphicName}
+                          timerEditId={timerEditId}
+                          timerEditVal={timerEditVal}
+                          setTimerEditId={setTimerEditId}
+                          setTimerEditVal={setTimerEditVal}
+                          commitTimer={commitTimer}
+                          clipPlayPending={(jumpMut.isPending || pauseMut.isPending || resumeMut.isPending) && idx === currentIndex}
+                          clipStopPending={stopMut.isPending}
+                          onDragStart={() => handleDragStart(idx)}
+                          onDragOver={(e) => handleDragOver(e, idx)}
+                          onDragEnd={handleDragEnd}
+                          onDrop={() => handleDrop(idx)}
+                          liveElapsed={idx === currentIndex && pi.sourceType === 'URL' ? position : null}
+                        />
+
+                        {/* Indicador de posição de inserção — aparece ABAIXO do item selecionado */}
+                        {isItemSelected && (
+                          <div className="flex items-center gap-1.5 mx-2 my-0.5 px-2 py-0.5 rounded border border-dashed border-cyan-500/50 bg-cyan-950/30">
+                            <ChevronRight className="h-3 w-3 text-cyan-400 flex-shrink-0" />
+                            <span className="text-[9px] text-cyan-400 font-semibold uppercase tracking-wide">
+                              Inserir aqui · #{idx + 2}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })
                 )}
               </div>
             ) : (

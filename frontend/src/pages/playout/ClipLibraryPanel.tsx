@@ -485,8 +485,13 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
             return (
               <div
                 key={clip.id}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData('application/x-clip-id', clip.id)
+                  e.dataTransfer.effectAllowed = 'copy'
+                }}
                 className={clsx(
-                  'flex items-center gap-1.5 px-3 py-2 transition-colors',
+                  'flex items-center gap-1.5 px-3 py-2 transition-colors cursor-grab active:cursor-grabbing',
                   inPlaylistCount > 0
                     ? 'bg-emerald-950/20 hover:bg-emerald-950/30 border-l-2 border-emerald-700/40'
                     : 'hover:bg-gray-800/30 border-l-2 border-transparent'
