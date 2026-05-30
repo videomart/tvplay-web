@@ -416,7 +416,7 @@ function PlaylistItemRow({
         isCurrent  ? 'py-2 bg-emerald-400 ring-2 ring-emerald-300 shadow-[inset_3px_0_0_0_rgb(52_211_153)]' : 'py-1.5',
         isPlayed   ? 'opacity-35' : '',
         !isCurrent ? (lightRow ? 'bg-gray-200' : 'bg-gray-800') : '',
-        !isCurrent && !isPlayed ? (lightRow ? 'hover:bg-gray-100' : 'hover:bg-gray-600') : '',
+        !isCurrent && !isPlayed && !isSelected ? 'hover:bg-sky-800/40' : '',
         isSelected && !isCurrent ? 'bg-sky-200 shadow-[inset_3px_0_0_0_rgb(14_165_233)]' : '',
         isDragging ? 'opacity-30' : '',
         isDragOver ? 'border-t-2 border-brand-400' : '',
