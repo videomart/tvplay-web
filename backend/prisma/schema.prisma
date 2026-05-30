@@ -298,13 +298,20 @@ model PlaylistItem {
 model Graphic {
   id           String   @id @default(cuid())
   name         String
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Sistema novo: template + valores por elemento
+  templateId    String?
+  template      GraphicTemplate? @relation(fields: [templateId], references: [id])
+  elementValues Json?   // { "elemId": { imageUrl?, text?, subtitle?, active?, fontColor?, ... } }
+
+  // Sistema legado (backwards compat — usado quando templateId é null)
   logoUrl      String?
   logoPosition String?
   showClock    Boolean  @default(false)
   lowerText    String?
-  active       Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
 
   streamOutputs StreamOutput[]
   clips         Clip[]
@@ -325,6 +332,7 @@ model GraphicTemplate {
 
   elements    GraphicElement[]
   channels    Channel[]
+  graphics    Graphic[]
 
   @@map("graphic_templates")
 }

@@ -460,38 +460,55 @@ async function resolveGraphic(
     return { templateElements: channel.graphicTemplate.elements as any }
   }
 
-  // 2. Gráfico simples do clipe (legado)
+  // Função auxiliar: converte Graphic (com ou sem template) em GraphicConfig
+  async function graphicToConfig(graphic: any): Promise<GraphicConfig | null> {
+    if (!graphic?.active) return null
+    // Gráfico baseado em template → mescla elementos do template com valores da instância
+    if (graphic.templateId && graphic.elementValues) {
+      const tmpl = await prisma.graphicTemplate.findUnique({
+        where: { id: graphic.templateId },
+        include: { elements: { where: { active: true }, orderBy: { order: 'asc' } } },
+      })
+      if (!tmpl?.active || !tmpl.elements.length) return null
+      const values = graphic.elementValues as Record<string, any>
+      const merged = tmpl.elements.map((el: any) => {
+        const v = values[el.id] ?? {}
+        return { ...el, ...v }
+      }).filter((el: any) => el.active !== false)
+      return { templateElements: merged }
+    }
+    // Gráfico legado → campos diretos
+    return graphic
+  }
+
+  // 2. Gráfico do clipe
   if (clipId) {
     const clip = await prisma.clip.findUnique({
       where: { id: clipId },
-      select: { graphic: { select: { logoUrl: true, logoPosition: true, showClock: true, lowerText: true, active: true } } },
+      select: { graphic: true },
     })
-    if (clip?.graphic?.active) {
-      console.log(`[playout] resolveGraphic ch=${channelId} → CLIP logo=${clip.graphic.logoUrl} clk=${clip.graphic.showClock}`)
-      return clip.graphic
-    }
+    const cfg = await graphicToConfig(clip?.graphic)
+    if (cfg) { console.log(`[playout] resolveGraphic → CLIP`); return cfg }
   }
 
-  // 3. Gráfico simples da playlist (legado)
+  // 3. Gráfico da playlist
   if (playlistId) {
     const pl = await prisma.playlist.findUnique({
       where: { id: playlistId },
-      select: { graphic: { select: { logoUrl: true, logoPosition: true, showClock: true, lowerText: true, active: true } } },
+      select: { graphic: true },
     })
-    if (pl?.graphic?.active) {
-      console.log(`[playout] resolveGraphic ch=${channelId} → PLAYLIST logo=${pl.graphic.logoUrl} clk=${pl.graphic.showClock}`)
-      return pl.graphic
-    }
+    const cfg = await graphicToConfig(pl?.graphic)
+    if (cfg) { console.log(`[playout] resolveGraphic → PLAYLIST`); return cfg }
   }
 
-  // 4. Gráfico simples da saída de streaming (legado)
+  // 4. Gráfico da saída de streaming
   const output = await prisma.streamOutput.findFirst({
     where: { channelId, active: true, graphicId: { not: null } },
-    select: { graphic: { select: { logoUrl: true, logoPosition: true, showClock: true, lowerText: true, active: true } } },
+    select: { graphic: true },
   })
-  const result = (output?.graphic?.active ? output.graphic : null) ?? null
-  console.log(`[playout] resolveGraphic ch=${channelId} → ${result ? `SAIDA logo=${result.logoUrl} clk=${result.showClock}` : 'NENHUM GRAFICO'}`)
-  return result
+  const cfg = await graphicToConfig(output?.graphic)
+  console.log(`[playout] resolveGraphic → ${cfg ? 'SAIDA' : 'NENHUM'}`)
+  return cfg
 }
 
 // Retorna itens FILE consecutivos a partir de fromIndex para uso no concat demuxer.

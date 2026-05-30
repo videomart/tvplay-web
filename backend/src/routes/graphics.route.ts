@@ -5,25 +5,32 @@ import { prisma } from '../lib/prisma'
 import { storageService } from '../services/storage.service'
 
 const schema = z.object({
-  name:        z.string().min(1),
-  logoUrl:     z.string().optional().nullable(),
-  logoPosition: z.string().optional().nullable(),
-  showClock:   z.boolean().optional(),
-  lowerText:   z.string().optional().nullable(),
-  active:      z.boolean().optional(),
+  name:          z.string().min(1),
+  // Sistema novo: template + valores
+  templateId:    z.string().optional().nullable(),
+  elementValues: z.record(z.string(), z.any()).optional().nullable(),
+  // Sistema legado (backwards compat)
+  logoUrl:       z.string().optional().nullable(),
+  logoPosition:  z.string().optional().nullable(),
+  showClock:     z.boolean().optional(),
+  lowerText:     z.string().optional().nullable(),
+  active:        z.boolean().optional(),
 })
 
 export default async function graphicRoutes(app: FastifyInstance) {
   const auth = { preHandler: [app.authenticate] }
 
   app.get('/', auth, async () =>
-    prisma.graphic.findMany({ orderBy: { name: 'asc' } })
+    prisma.graphic.findMany({
+      orderBy: { name: 'asc' },
+      include: { template: { include: { elements: { orderBy: { order: 'asc' } } } } },
+    })
   )
 
   app.post('/', auth, async (request, reply) => {
     const body = schema.safeParse(request.body)
     if (!body.success) return reply.status(400).send({ error: body.error.flatten() })
-    const graphic = await prisma.graphic.create({ data: body.data })
+    const graphic = await prisma.graphic.create({ data: body.data as any })
     return reply.status(201).send(graphic)
   })
 
@@ -32,7 +39,7 @@ export default async function graphicRoutes(app: FastifyInstance) {
     if (!body.success) return reply.status(400).send({ error: body.error.flatten() })
     const graphic = await prisma.graphic.update({
       where: { id: request.params.id },
-      data: body.data,
+      data: body.data as any,
     }).catch(() => null)
     if (!graphic) return reply.status(404).send({ error: 'Gráfico não encontrado' })
     return graphic
