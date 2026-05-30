@@ -14,6 +14,7 @@ import logsRoutes from './logs.route'
 import usersRoutes from './users.route'
 import settingsRoutes from './settings.route'
 import graphicRoutes from './graphics.route'
+import graphicTemplateRoutes from './graphic-templates.route'
 import cameraRoutes from './camera.route'
 
 export async function registerRoutes(app: FastifyInstance) {
@@ -31,6 +32,7 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(logsRoutes,         { prefix: '/api/logs' })
   await app.register(usersRoutes,        { prefix: '/api/users' })
   await app.register(settingsRoutes,     { prefix: '/api/settings' })
-  await app.register(graphicRoutes,      { prefix: '/api/graphics' })
-  await app.register(cameraRoutes,       { prefix: '/api/camera' })
+  await app.register(graphicRoutes,          { prefix: '/api/graphics' })
+  await app.register(graphicTemplateRoutes,  { prefix: '/api/graphic-templates' })
+  await app.register(cameraRoutes,           { prefix: '/api/camera' })
 }

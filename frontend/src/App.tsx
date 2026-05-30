@@ -17,6 +17,8 @@ import UsersPage from './pages/users/UsersPage'
 import SettingsPage from './pages/settings/SettingsPage'
 import GraphicsPage from './pages/graphics/GraphicsPage'
 import MediaFilesPage from './pages/media/MediaFilesPage'
+import GraphicTemplatesPage from './pages/graphic-templates/GraphicTemplatesPage'
+import GraphicTemplateEditorPage from './pages/graphic-templates/GraphicTemplateEditorPage'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token)
@@ -50,8 +52,10 @@ export default function App() {
           <Route path="logs"             element={<LogsPage />} />
           <Route path="users"            element={<UsersPage />} />
           <Route path="settings"         element={<SettingsPage />} />
-          <Route path="graphics"         element={<GraphicsPage />} />
-          <Route path="media"            element={<MediaFilesPage />} />
+          <Route path="graphics"                    element={<GraphicsPage />} />
+          <Route path="graphic-templates"           element={<GraphicTemplatesPage />} />
+          <Route path="graphic-templates/:id"       element={<GraphicTemplateEditorPage />} />
+          <Route path="media"                       element={<MediaFilesPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

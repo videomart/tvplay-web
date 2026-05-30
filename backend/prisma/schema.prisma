@@ -61,6 +61,28 @@ enum StreamOutputType {
   LOCAL_DEVICE
 }
 
+enum GraphicElementType {
+  LOGO         // imagem/logo overlay
+  CLOCK        // relógio local via drawtext
+  TEXT         // texto estático via drawtext
+  TICKER       // texto scrolling horizontal
+  LOWER_THIRD  // caixa com título + subtítulo
+}
+
+enum GraphicPosition {
+  TL          // top-left
+  TC          // top-center
+  TR          // top-right
+  ML          // middle-left
+  MC          // middle-center
+  MR          // middle-right
+  BL          // bottom-left
+  BC          // bottom-center
+  BR          // bottom-right
+  BAR_TOP     // barra horizontal topo (largura total)
+  BAR_BOTTOM  // barra horizontal base (largura total)
+}
+
 enum InputSourceType {
   IP
   YOUTUBE
@@ -108,6 +130,9 @@ model Channel {
 
   activePlaylistId String?
   playlistIndex    Int     @default(0)
+
+  graphicTemplateId String?
+  graphicTemplate   GraphicTemplate? @relation(fields: [graphicTemplateId], references: [id])
 
   playlists     Playlist[]
   streamOutputs StreamOutput[]
@@ -286,6 +311,56 @@ model Graphic {
   playlists     Playlist[]
 
   @@map("graphics")
+}
+
+// ─── Templates Gráficos (evolução do sistema de Graphic) ─────────────────────
+
+model GraphicTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  elements    GraphicElement[]
+  channels    Channel[]
+
+  @@map("graphic_templates")
+}
+
+model GraphicElement {
+  id         String             @id @default(cuid())
+  templateId String
+  template   GraphicTemplate    @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  type       GraphicElementType
+  position   GraphicPosition
+
+  // Conteúdo
+  imageUrl   String?   // LOGO: URL da imagem
+  text       String?   // TEXT / TICKER / LOWER_THIRD (título)
+  subtitle   String?   // LOWER_THIRD: segunda linha
+
+  // Estilo
+  fontColor  String    @default("#FFFFFF")
+  bgColor    String?   // null = sem fundo
+  fontSize   Int       @default(32)
+  opacity    Float     @default(1.0)
+  bold       Boolean   @default(false)
+
+  // Layout
+  width      Int?      // px — LOGO/BOX
+  height     Int?      // px — LOGO/BOX
+  padding    Int       @default(10)
+
+  active     Boolean   @default(true)
+  order      Int       @default(0)
+
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@map("graphic_elements")
 }
 
 // ─── Saídas de Streaming ─────────────────────────────────────────────────────
