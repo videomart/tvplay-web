@@ -433,34 +433,7 @@ async function resolveGraphic(
   playlistId: string | null,
   channelId: string,
 ): Promise<GraphicConfig | null> {
-  // 1. Template gráfico do canal (novo sistema — tem prioridade se configurado)
-  const channel = await prisma.channel.findUnique({
-    where: { id: channelId },
-    select: {
-      graphicTemplate: {
-        select: {
-          active: true,
-          elements: {
-            where: { active: true },
-            orderBy: { order: 'asc' },
-            select: {
-              type: true, position: true,
-              imageUrl: true, text: true, subtitle: true,
-              fontColor: true, bgColor: true, fontSize: true,
-              opacity: true, bold: true, width: true, height: true, padding: true,
-            },
-          },
-        },
-      },
-    },
-  }).catch(() => null)
-
-  if (channel?.graphicTemplate?.active && channel.graphicTemplate.elements.length > 0) {
-    console.log(`[playout] resolveGraphic ch=${channelId} → TEMPLATE (${channel.graphicTemplate.elements.length} elementos)`)
-    return { templateElements: channel.graphicTemplate.elements as any }
-  }
-
-  // Converte Graphic (com ou sem template) em GraphicConfig
+  // Converte Graphic (com ou sem template) em GraphicConfig unificado
   async function graphicToConfig(graphic: any): Promise<GraphicConfig | null> {
     if (!graphic?.active) return null
     if (graphic.templateId && graphic.elementValues) {
@@ -470,15 +443,15 @@ async function resolveGraphic(
       })
       if (!tmpl?.active || !tmpl.elements.length) return null
       const values = graphic.elementValues as Record<string, any>
-      const merged = tmpl.elements.map((el: any) => ({ ...el, ...(values[el.id] ?? {}) }))
+      const merged = tmpl.elements
+        .map((el: any) => ({ ...el, ...(values[el.id] ?? {}) }))
         .filter((el: any) => el.active !== false)
       return { templateElements: merged }
     }
-    return graphic  // legado
+    return graphic  // legado (logoUrl, showClock, lowerText)
   }
 
-  // Hierarquia (maior → menor prioridade):
-  // 1. Clipe  2. Saída de streaming  3. Entrada (quando em CUT)  4. Roteiro  5. Canal
+  // Hierarquia: Clipe → Saída → Entrada → Roteiro → Canal (maior→menor prioridade)
 
   // 1. Clipe
   if (clipId) {
@@ -487,7 +460,7 @@ async function resolveGraphic(
     if (cfg) { console.log(`[playout] resolveGraphic → CLIPE`); return cfg }
   }
 
-  // 2. Saída de streaming com gráfico
+  // 2. Saída de streaming com gráfico associado
   const output = await prisma.streamOutput.findFirst({
     where: { channelId, active: true, graphicId: { not: null } },
     select: { graphic: true },
@@ -495,13 +468,23 @@ async function resolveGraphic(
   const outCfg = await graphicToConfig(output?.graphic)
   if (outCfg) { console.log(`[playout] resolveGraphic → SAIDA`); return outCfg }
 
-  // 3. Entrada ativa com gráfico (quando canal está em INPUT_SOURCE)
-  const ch = await prisma.channel.findUnique({
+  // 3. Entrada ativa com gráfico (ativo ao fazer CUT para a entrada)
+  const chFallback = await prisma.channel.findUnique({
     where: { id: channelId },
-    select: { fallbackType: true, fallbackSourceId: true, fallbackSource: { select: { graphic: true } } },
+    select: {
+      fallbackType: true,
+      fallbackSource: { select: { graphic: true } },
+      graphicTemplate: {
+        select: {
+          active: true,
+          elements: { where: { active: true }, orderBy: { order: 'asc' } },
+        },
+      },
+    },
   }).catch(() => null)
-  if (ch?.fallbackType === 'INPUT_SOURCE' && ch.fallbackSource?.graphic) {
-    const inCfg = await graphicToConfig(ch.fallbackSource.graphic)
+
+  if (chFallback?.fallbackType === 'INPUT_SOURCE' && chFallback.fallbackSource?.graphic) {
+    const inCfg = await graphicToConfig(chFallback.fallbackSource.graphic)
     if (inCfg) { console.log(`[playout] resolveGraphic → ENTRADA`); return inCfg }
   }
 
@@ -512,11 +495,11 @@ async function resolveGraphic(
     if (cfg) { console.log(`[playout] resolveGraphic → ROTEIRO`); return cfg }
   }
 
-  // 5. Canal (template global)
-  if (channel?.graphicTemplate?.active && channel.graphicTemplate.elements.length > 0) {
-    const merged = channel.graphicTemplate.elements.filter((el: any) => el.active !== false)
-    console.log(`[playout] resolveGraphic → CANAL (template)`)
-    return { templateElements: merged as any }
+  // 5. Canal — template global (menor prioridade / fallback)
+  const tmpl = chFallback?.graphicTemplate
+  if (tmpl?.active && tmpl.elements.length > 0) {
+    console.log(`[playout] resolveGraphic → CANAL (template, ${tmpl.elements.length} elem)`)
+    return { templateElements: tmpl.elements as any }
   }
 
   console.log(`[playout] resolveGraphic → NENHUM`)

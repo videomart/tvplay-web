@@ -194,62 +194,57 @@ export default function GraphicsPage() {
         </Table>
       </div>
 
-      {/* Modal de criação/edição — layout duas colunas */}
       <Modal open={open} onClose={() => setOpen(false)} title={editing ? 'Editar Gráfico' : 'Novo Gráfico'} size="2xl">
-        <div className="space-y-4">
+        <div className="space-y-5">
           <Input label="Nome *" value={name} onChange={e => setName(e.target.value)} placeholder="Ex: Branding Principal" />
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Coluna esquerda: seletor de template */}
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-gray-400 uppercase tracking-wide block">Template</label>
-              <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
-                {[...templates].sort((a) => a.id === FACTORY_TEMPLATE_SIMPLES ? -1 : 1).map(t => (
-                  <button
-                    key={t.id}
-                    onClick={() => { setSelectedTemplateId(t.id); setElementValues({}) }}
-                    className={clsx(
-                      'w-full text-left px-3 py-2.5 rounded-lg border text-sm transition-colors',
-                      selectedTemplateId === t.id
-                        ? 'border-brand-500 bg-brand-600/20 text-brand-300'
-                        : 'border-gray-700 bg-gray-800 text-gray-400 hover:border-gray-600'
-                    )}
-                  >
-                    <div className="font-medium">{t.name}</div>
-                    {t.description && <div className="text-[11px] text-gray-500 mt-0.5">{t.description}</div>}
-                    <div className="text-[10px] text-gray-600 mt-1">{t.elements?.length ?? 0} elemento(s)</div>
-                  </button>
+          {/* Templates em linha horizontal */}
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-gray-400 uppercase tracking-wide block">Template</label>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+              {[...templates].sort((a) => a.id === FACTORY_TEMPLATE_SIMPLES ? -1 : 1).map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => { setSelectedTemplateId(t.id); setElementValues({}) }}
+                  className={clsx(
+                    'text-left px-3 py-2.5 rounded-lg border text-sm transition-colors',
+                    selectedTemplateId === t.id
+                      ? 'border-brand-500 bg-brand-600/20 text-brand-300'
+                      : 'border-gray-700 bg-gray-800 text-gray-400 hover:border-gray-600'
+                  )}
+                >
+                  <div className="font-medium truncate">{t.name}</div>
+                  <div className="text-[10px] text-gray-600 mt-0.5">{t.elements?.length ?? 0} elem.</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Elementos em grid de 2-3 colunas baseado no aspecto 16:9 */}
+          {currentTemplate && (
+            <div className="space-y-2 border-t border-gray-800 pt-4">
+              <label className="text-xs font-medium text-gray-400 uppercase tracking-wide block">
+                Elementos — {currentTemplate.name}
+              </label>
+              <div className={clsx(
+                'grid gap-3',
+                currentTemplate.elements.length <= 2 ? 'grid-cols-1 sm:grid-cols-2' :
+                currentTemplate.elements.length <= 4 ? 'grid-cols-2' :
+                'grid-cols-2 lg:grid-cols-3'
+              )}>
+                {currentTemplate.elements.map(el => (
+                  <ElementField
+                    key={el.id}
+                    element={el}
+                    value={elementValues[el.id] ?? {}}
+                    onChange={(field, val) => setElemValue(el.id, field, val)}
+                    onUpload={(elemId) => { uploadTargetElemId.current = elemId; fileRef.current?.click() }}
+                    isUploading={uploadingFor === el.id}
+                  />
                 ))}
               </div>
             </div>
-
-            {/* Coluna direita: campos dos elementos */}
-            <div className="space-y-3">
-              {currentTemplate ? (
-                <>
-                  <label className="text-xs font-medium text-gray-400 uppercase tracking-wide block">
-                    Elementos — {currentTemplate.name}
-                  </label>
-                  <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
-                    {currentTemplate.elements.map(el => (
-                      <ElementField
-                        key={el.id}
-                        element={el}
-                        value={elementValues[el.id] ?? {}}
-                        onChange={(field, val) => setElemValue(el.id, field, val)}
-                        onUpload={(elemId) => { uploadTargetElemId.current = elemId; fileRef.current?.click() }}
-                        isUploading={uploadingFor === el.id}
-                      />
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <div className="flex items-center justify-center h-full text-gray-600 text-sm">
-                  Selecione um template à esquerda
-                </div>
-              )}
-            </div>
-          </div>
+          )}
 
           <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="hidden"
             onChange={e => { if (uploadTargetElemId.current) handleLogoUpload(e, uploadTargetElemId.current) }} />
