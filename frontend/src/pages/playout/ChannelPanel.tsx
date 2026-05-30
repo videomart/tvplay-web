@@ -1089,6 +1089,17 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                 if (channel.fallbackType === 'INPUT_SOURCE') {
                   const src = channel.fallbackSource
                   if (!src) return <div className="w-full h-full bg-black" />
+                  // WEBCAM: mostra preview local da câmera (MediaStream do browser)
+                  if (src.type === 'WEBCAM' && camera.active && camera.previewStream)
+                    return <CameraMonitorPreview stream={camera.previewStream} graphic={state?.activeGraphic} />
+                  if (src.type === 'WEBCAM')
+                    return (
+                      <div className="w-full h-full flex flex-col items-center justify-center gap-2">
+                        <Camera className="h-6 w-6 text-sky-500 animate-pulse" />
+                        <p className="text-xs text-sky-400 font-medium">{src.name}</p>
+                        <p className="text-[10px] text-gray-600">Câmera não iniciada — clique ▶ no painel de sinal</p>
+                      </div>
+                    )
                   if (src.type === 'IP' && src.url?.match(/\.m3u8/i))
                     return <VideoPlayer src={src.url} autoPlay muted className="w-full h-full" />
                   if (serverPreviewLoading) {
