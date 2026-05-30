@@ -13,3 +13,6 @@ CLAUDE.local.md
 # Cookies YouTube — NUNCA commitar (credenciais de conta Google)
 youtube-cookies.txt
 *.cookies.txt
+
+# Credenciais de deploy
+.deploy-config
