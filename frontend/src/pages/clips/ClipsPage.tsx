@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, Search, Upload, CheckCircle2, Clock, XCircle, Play, Scissors, Film, Link, HardDrive } from 'lucide-react'
@@ -208,6 +208,18 @@ export default function ClipsPage() {
     setSelectedOrphanId(null)
     setOpen(true)
   }
+
+  // Abre o modal de edição quando navega com ?edit=clipId (ex: duplo clique no roteiro)
+  const editIdFromUrl = searchParams.get('edit')
+  useEffect(() => {
+    if (!editIdFromUrl) return
+    clipsApi.get(editIdFromUrl)
+      .then(c => {
+        openEdit(c)
+        setSearchParams(p => { p.delete('edit'); return p })
+      })
+      .catch(() => {})
+  }, [editIdFromUrl]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleDirectUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? [])
