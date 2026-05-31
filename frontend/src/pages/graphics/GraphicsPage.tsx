@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, Layers, Layers2, Upload, ToggleLeft, ToggleRight, ArrowLeft, Eye } from 'lucide-react'
@@ -48,7 +48,20 @@ function GraphicPreview({
   }))
   const active = merged.filter(el => el.active !== false)
 
+  const [rssTexts, setRssTexts] = useState<Record<string, string>>({})
+  useEffect(() => {
+    const tickers = active.filter(el => el.type === 'TICKER' && el.rssUrl)
+    if (!tickers.length) return
+    tickers.forEach((el: any) => {
+      api.get(`/ticker/rss?url=${encodeURIComponent(el.rssUrl)}`)
+        .then(r => { if (r.data?.text) setRssTexts(prev => ({ ...prev, [el.id]: r.data.text })) })
+        .catch(() => {})
+    })
+  }, [active.map((e: any) => e.id + (e.rssUrl ?? '')).join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
+    <>
+    <style>{`@keyframes gfx-ticker{0%{transform:translateX(100%)}100%{transform:translateX(-200%)}}`}</style>
     <div className="relative w-full bg-black rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
       <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center">
         <span className="text-gray-700 text-xs uppercase tracking-widest">Vídeo</span>
@@ -80,10 +93,21 @@ function GraphicPreview({
             return <div key={el.id} style={base}>{new Date().toLocaleTimeString('pt-BR')}</div>
           case 'TEXT':
             return <div key={el.id} style={base}>{el.text || 'Texto'}</div>
-          case 'TICKER':
-            return <div key={el.id} style={base}>
-              📜 {el.rssUrl ? `[RSS] ${el.text || '...'}` : (el.text || 'Ticker...')}
-            </div>
+          case 'TICKER': {
+            const speed    = Math.max(1, Math.min(16, (el as any).tickerSpeed ?? 2))
+            const duration = Math.round(28 / speed)
+            const tickerText = el.rssUrl
+              ? (rssTexts[el.id] ?? '⏳ carregando RSS...')
+              : (el.text || 'Ticker...')
+            return (
+              <div key={el.id} style={{ ...base, maxWidth: '90%', overflow: 'hidden' }}>
+                <span style={{ display: 'inline-block', whiteSpace: 'nowrap', animation: `gfx-ticker ${duration}s linear infinite` }}>
+                  {tickerText}
+                  {el.rssUrl && <span style={{ opacity: 0.5, fontSize: '75%', marginLeft: 4 }}>[RSS]</span>}
+                </span>
+              </div>
+            )
+          }
           case 'LOWER_THIRD':
             return (
               <div key={el.id} style={{ ...base, whiteSpace: 'normal' }}>
@@ -100,6 +124,7 @@ function GraphicPreview({
         </div>
       )}
     </div>
+    </>
   )
 }
 

@@ -9,6 +9,7 @@ import {
   type GraphicElement, type GraphicElementType, type GraphicPosition,
   POSITION_LABELS, ELEMENT_TYPE_LABELS,
 } from '../../api/graphic-templates.api'
+import { api } from '../../api/client'
 import { Button } from '../../components/ui/Button'
 import { Modal } from '../../components/ui/Modal'
 
@@ -491,11 +492,8 @@ function TemplatePreview({ elements }: { elements: GraphicElement[] }) {
     const tickers = active.filter(el => el.type === 'TICKER' && el.rssUrl)
     if (!tickers.length) return
     tickers.forEach(el => {
-      fetch(`/api/ticker/rss?url=${encodeURIComponent(el.rssUrl!)}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token') ?? ''}` },
-      })
-        .then(r => r.ok ? r.json() : null)
-        .then(d => { if (d?.text) setRssTexts(prev => ({ ...prev, [el.id]: d.text })) })
+      api.get(`/ticker/rss?url=${encodeURIComponent(el.rssUrl!)}`)
+        .then(r => { if (r.data?.text) setRssTexts(prev => ({ ...prev, [el.id]: r.data.text })) })
         .catch(() => {})
     })
   }, [elements.map(e => e.id + e.rssUrl).join(',')])  // eslint-disable-line react-hooks/exhaustive-deps
