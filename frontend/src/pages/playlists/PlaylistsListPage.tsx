@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Pencil, Trash2, ListVideo, CalendarDays, Clock, Upload, Repeat, Tv2 } from 'lucide-react'
@@ -24,6 +24,15 @@ export default function PlaylistsListPage() {
   const [editing, setEditing] = useState<Playlist | null>(null)
   const [filterChannel, setFilterChannel] = useState('')
   const [form, setForm] = useState(empty)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+
+  // Busca itens do roteiro expandido
+  const { data: expandedPlaylist, isLoading: expandedLoading } = useQuery({
+    queryKey: ['playlist-expand', expandedId],
+    queryFn: () => playlistsApi.get(expandedId!),
+    enabled: !!expandedId,
+    staleTime: 30_000,
+  })
 
   const { data: channels = [] } = useQuery({ queryKey: ['channels'], queryFn: channelsApi.list })
   const { data: graphics = [] } = useQuery({ queryKey: ['graphics'], queryFn: graphicsApi.list })
@@ -165,11 +174,19 @@ export default function PlaylistsListPage() {
                 </Td>
               </Tr>
             ) : data.map((pl) => (
-              <Tr key={pl.id} onClick={() => navigate(`/roteiros/${pl.id}`)}>
+              <React.Fragment key={pl.id}>
+              <Tr onClick={() => navigate(`/roteiros/${pl.id}`)}>
                 <Td>
                   <div className="flex items-center gap-2">
                     <ListVideo className="h-4 w-4 text-gray-600 shrink-0" />
-                    <span className="font-medium text-white font-mono">{pl.name}</span>
+                    {/* Badge azul — duplo clique expande os itens do roteiro */}
+                    <span
+                      onDoubleClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === pl.id ? null : pl.id) }}
+                      style={{ display:'inline-block', fontFamily:'monospace', fontWeight:700, fontSize:13, padding:'2px 8px', borderRadius:4, background: expandedId === pl.id ? '#1e40af' : '#1e3a5f', color:'#93c5fd', border:'1px solid #2563eb', cursor:'pointer', userSelect:'none', whiteSpace:'nowrap' }}
+                      title="Duplo clique para ver os itens do roteiro"
+                    >
+                      {pl.name}
+                    </span>
                     {pl.locked && <span className="text-[10px] bg-gray-700 text-gray-400 px-1.5 py-0.5 rounded">Bloqueado</span>}
                     {(pl as any).loop && (
                       <span className="flex items-center gap-1 text-[10px] bg-emerald-900/40 text-emerald-400 px-1.5 py-0.5 rounded">
@@ -235,6 +252,41 @@ export default function PlaylistsListPage() {
                   </div>
                 </Td>
               </Tr>
+              {/* Linha expandida com os itens do roteiro */}
+              {expandedId === pl.id && (
+                <Tr>
+                  <td colSpan={6} className="p-0 bg-slate-950">
+                    {expandedLoading ? (
+                      <p className="text-[11px] text-gray-500 text-center py-3">Carregando itens...</p>
+                    ) : !expandedPlaylist?.items?.length ? (
+                      <p className="text-[11px] text-gray-600 text-center py-3">Roteiro vazio</p>
+                    ) : (
+                      <div className="divide-y divide-gray-800/40 max-h-64 overflow-y-auto">
+                        {expandedPlaylist.items.map((item: any, idx: number) => {
+                          const clip = item.clip
+                          if (!clip) return null
+                          return (
+                            <div key={item.id} className="flex items-center gap-2 px-6 py-1.5 hover:bg-gray-800/30 transition-colors">
+                              <span className="text-[10px] font-mono text-gray-600 w-5 text-right shrink-0">{idx + 1}</span>
+                              {clip.type && (
+                                <span style={{ fontSize:9, fontFamily:'monospace', fontWeight:700, padding:'1px 4px', borderRadius:3, background:clip.type.fontBackColor, color:clip.type.fontColor, flexShrink:0 }}>
+                                  {clip.type.code}
+                                </span>
+                              )}
+                              <span style={{ display:'inline-block', fontSize:9, fontFamily:'monospace', fontWeight:700, padding:'1px 5px', borderRadius:3, background:'#1e3a5f', color:'#93c5fd', border:'1px solid #2563eb', flexShrink:0, whiteSpace:'nowrap' }}>
+                                {clip.code}
+                              </span>
+                              <span className="text-[11px] text-gray-300 truncate flex-1 min-w-0">{clip.title}</span>
+                              {clip.client?.name && <span className="text-[10px] text-gray-600 shrink-0">{clip.client.name}</span>}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </td>
+                </Tr>
+              )}
+              </React.Fragment>
             ))}
           </Tbody>
         </Table>
