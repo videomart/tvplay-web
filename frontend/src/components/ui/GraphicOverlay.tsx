@@ -118,8 +118,9 @@ function TemplateElement({ el, clock, rssText }: { el: GraphicElementConfig; clo
       )
 
     case 'TICKER': {
-      const speed    = Math.max(1, Math.min(16, el.tickerSpeed ?? 2))
-      const duration = Math.round(28 / speed)
+      const speed    = Math.max(5, el.tickerSpeed ?? 50)
+      // duração ≈ (largura preview ~600px + texto) / speed — aprox 3000px total
+      const duration = Math.max(2, Math.round(3000 / speed))
       const showText = el.rssUrl
         ? (rssText ?? '⏳ carregando RSS...')
         : (el.text || '')

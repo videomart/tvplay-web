@@ -364,7 +364,7 @@ model GraphicElement {
   padding    Int       @default(10)
 
   // Ticker
-  tickerSpeed Int      @default(2)  // pixels/frame (1=lento … 8=rápido)
+  tickerSpeed Float    @default(50) // pixels/segundo (independente do framerate)
   rssUrl      String?              // URL de feed RSS (substitui text quando preenchido)
 
   active     Boolean   @default(true)

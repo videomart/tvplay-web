@@ -94,8 +94,8 @@ function GraphicPreview({
           case 'TEXT':
             return <div key={el.id} style={base}>{el.text || 'Texto'}</div>
           case 'TICKER': {
-            const speed    = Math.max(1, Math.min(16, (el as any).tickerSpeed ?? 2))
-            const duration = Math.round(28 / speed)
+            const speed    = Math.max(5, (el as any).tickerSpeed ?? 50)
+            const duration = Math.max(2, Math.round(3000 / speed))
             const tickerText = el.rssUrl
               ? (rssTexts[el.id] ?? '⏳ carregando RSS...')
               : (el.text || 'Ticker...')

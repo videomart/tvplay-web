@@ -438,9 +438,10 @@ export function buildTemplateFilter(
         if (el.text) { segs.push(`${cur}${makeDrawtext(el.text)}${o}`); pushed = true }
         break
       case 'TICKER': {
-        const speed    = Math.max(1, Math.min(16, el.tickerSpeed ?? 2))
+        // t = tempo em segundos (framerate-independent); speed em px/seg
+        const speed    = Math.max(5, Math.min(400, el.tickerSpeed ?? 50))
         const tickerY  = el.position.startsWith('B') ? `H-th-${pad}` : `${pad}`
-        const scrollX  = `x=w-mod(n*${speed}\\,w+tw):y=${tickerY}`
+        const scrollX  = `x=w-mod(t*${speed}\\,w+tw):y=${tickerY}`
         if (el.rssUrl) {
           // Feed RSS: usa textfile com reload periódico (a cada 300 frames ≈ 12s)
           const file = tickerFilePath(el.id ?? 'default').replace(/'/g, "\\'")

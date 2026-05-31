@@ -29,7 +29,7 @@ const emptyElement: Omit<GraphicElement, 'id' | 'templateId' | 'createdAt' | 'up
   imageUrl: null, text: '', subtitle: null,
   fontColor: '#FFFFFF', bgColor: null, fontSize: 32,
   opacity: 1, bold: false, width: null, height: null, padding: 10,
-  tickerSpeed: 2, rssUrl: null,
+  tickerSpeed: 50, rssUrl: null,
   active: true, order: 0,
 }
 
@@ -227,16 +227,16 @@ export default function GraphicTemplateEditorPage() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Velocidade</label>
-                  <span className="text-sm font-bold text-brand-300">{form.tickerSpeed}×</span>
+                  <span className="text-sm font-bold text-brand-300">{form.tickerSpeed ?? 50} px/s</span>
                 </div>
                 <input
-                  type="range" min={1} max={8} step={1}
-                  value={form.tickerSpeed ?? 2}
+                  type="range" min={5} max={400} step={5}
+                  value={form.tickerSpeed ?? 50}
                   onChange={e => setForm(v => ({ ...v, tickerSpeed: +e.target.value }))}
                   className="w-full accent-brand-500 cursor-pointer"
                 />
                 <div className="flex justify-between text-[10px] text-gray-600">
-                  <span>Lento</span><span>Normal (2)</span><span>Rápido</span>
+                  <span>5 (lento)</span><span>50 (normal)</span><span>400 (rápido)</span>
                 </div>
               </div>
 
@@ -533,8 +533,8 @@ function TemplatePreview({ elements }: { elements: GraphicElement[] }) {
           case 'TEXT':
             return <div key={el.id} style={base}>{el.text ?? 'Texto'}</div>
           case 'TICKER': {
-            const speed    = Math.max(1, Math.min(16, el.tickerSpeed ?? 2))
-            const duration = Math.round(28 / speed)
+            const speed    = Math.max(5, el.tickerSpeed ?? 50)
+            const duration = Math.max(2, Math.round(3000 / speed))
             const tickerText = el.rssUrl
               ? (rssTexts[el.id] ?? '⏳ carregando RSS...')
               : (el.text ?? 'Ticker...')

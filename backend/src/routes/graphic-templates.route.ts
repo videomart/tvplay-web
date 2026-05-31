@@ -16,7 +16,7 @@ const elementSchema = z.object({
   width:     z.number().int().optional().nullable(),
   height:    z.number().int().optional().nullable(),
   padding:   z.number().int().min(0).default(10),
-  tickerSpeed: z.number().int().min(1).max(16).default(2),
+  tickerSpeed: z.number().min(5).max(400).default(50),
   rssUrl:      z.string().url().optional().nullable(),
   active:      z.boolean().default(true),
   order:       z.number().int().default(0),

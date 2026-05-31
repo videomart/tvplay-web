@@ -35,7 +35,7 @@ export interface GraphicElement {
   width?:    number | null
   height?:   number | null
   padding:   number
-  tickerSpeed: number       // 1–8, padrão 2
+  tickerSpeed: number       // px/seg, padrão 50
   rssUrl?:     string | null
   active:      boolean
   order:       number
