@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Settings, Building2, Tv2, LayoutDashboard, Save, Upload } from 'lucide-react'
+import { Settings, Building2, Tv2, LayoutDashboard, Save, Upload, GitCommit } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
 import { settingsApi } from '../../api/settings.api'
@@ -282,7 +282,7 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* ── Aba: Padrões Playout ───────────────────────────────────────────── */}
+      {/* ── Aba: Padrões Playout ──────────────────────────────────────────── */}
       {tab === 'playout' && (
         <div className="card p-5 space-y-4">
           <h2 className="text-sm font-semibold text-white">Visibilidade Padrão dos Blocos no Playout</h2>
@@ -379,6 +379,15 @@ export default function SettingsPage() {
           </div>
         </div>
       )}
+      {/* ── Rodapé: versão do build ─────────────────────────────────────── */}
+      <div className="flex items-center gap-2 px-1 pt-2 border-t border-gray-800">
+        <GitCommit className="h-3.5 w-3.5 text-gray-600 flex-shrink-0" />
+        <span className="text-[11px] text-gray-600 font-mono select-all">
+          build <span className="text-gray-500">{__APP_BUILD__}</span>
+          <span className="mx-1.5 text-gray-700">·</span>
+          {__BUILD_TIME__}
+        </span>
+      </div>
     </div>
   )
 }
