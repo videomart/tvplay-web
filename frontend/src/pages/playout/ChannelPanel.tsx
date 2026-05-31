@@ -469,7 +469,7 @@ function PlaylistItemRow({
         title={isSelected ? 'Clique para desselecionar · Duplo clique para ir para este clipe' : 'Clique para selecionar posição · Duplo clique para ir para este clipe'}
         className={clsx(
           'flex-1 text-left text-xs truncate transition-colors min-w-0 pl-1',
-          isCurrent ? 'text-emerald-950 font-bold cursor-default' : isPlayed ? 'text-gray-500 cursor-pointer' : isSelected ? 'text-black font-bold cursor-pointer' : 'text-gray-300 group-hover:!text-white cursor-pointer'
+          isCurrent ? 'text-emerald-950 font-bold cursor-default' : isPlayed ? 'text-gray-500 cursor-pointer' : isSelected ? 'text-black font-bold cursor-pointer' : lightRow ? 'text-gray-900 font-medium group-hover:!text-white cursor-pointer' : 'text-gray-300 group-hover:!text-white cursor-pointer'
         )}
       >
         {item.title}
@@ -545,7 +545,7 @@ function PlaylistItemRow({
               onClick={onClipPlay}
               disabled={clipPlayPending || playoutStatus === 'STOPPED' || playoutStatus === 'IDLE'}
               title="Ir para este clipe e reproduzir"
-              className="p-0.5 rounded text-gray-600 hover:text-emerald-400 transition-colors disabled:opacity-30"
+              className={clsx('p-0.5 rounded transition-colors disabled:opacity-30', lightRow ? 'text-gray-700 hover:text-emerald-700' : 'text-gray-600 hover:text-emerald-400')}
             >
               <Play className="h-3 w-3" />
             </button>
@@ -572,7 +572,7 @@ function PlaylistItemRow({
             title={item.maxDuration ? `Timer: avança após ${Math.floor(item.maxDuration/60)}:${String(item.maxDuration%60).padStart(2,'0')}` : 'Definir timer de avanço'}
             className={clsx(
               'flex-shrink-0 flex items-center gap-0.5 px-1 py-0.5 rounded text-[9px] font-medium transition-colors',
-              item.maxDuration ? 'text-amber-400 hover:text-amber-300 bg-amber-500/10' : 'text-gray-700 hover:text-gray-400'
+              item.maxDuration ? 'text-amber-400 hover:text-amber-300 bg-amber-500/10' : lightRow ? 'text-gray-700 hover:text-gray-900' : 'text-gray-700 hover:text-gray-400'
             )}
           >
             <Timer className="h-3 w-3" />
