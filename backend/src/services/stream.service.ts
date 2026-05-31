@@ -411,7 +411,7 @@ export function buildTemplateFilter(
   // Elementos de texto
   for (const el of texts) {
     const fc   = el.fontColor ?? '#FFFFFF'
-    const bg   = el.bgColor ? `box=1:boxcolor=${el.bgColor}@${el.opacity ?? 1}:boxborderw=${el.padding ?? 10}:` : ''
+    const bg   = el.bgColor ? `box=1:boxcolor=${el.bgColor}:boxborderw=${el.padding ?? 10}:` : ''
     const bold = el.bold ? ':style=Bold' : ''
     const fs   = el.fontSize ?? 32
     const pad  = el.padding ?? 10
