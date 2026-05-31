@@ -118,9 +118,6 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-      args:
-        # Passe o hash do commit ao fazer deploy: VITE_APP_BUILD=$(git rev-parse --short HEAD) docker compose up -d --build web
-        VITE_APP_BUILD: ${VITE_APP_BUILD:-}
     container_name: tvplay_web
     restart: unless-stopped
     ports:

@@ -383,7 +383,7 @@ export default function SettingsPage() {
       <div className="flex items-center gap-2 px-1 pt-2 border-t border-gray-800">
         <GitCommit className="h-3.5 w-3.5 text-gray-600 flex-shrink-0" />
         <span className="text-[11px] text-gray-600 font-mono select-all">
-          build <span className="text-gray-500">{__APP_BUILD__}</span>
+          TVPlay <span className="text-gray-400">v{__APP_BUILD__}</span>
           <span className="mx-1.5 text-gray-700">·</span>
           {__BUILD_TIME__}
         </span>
