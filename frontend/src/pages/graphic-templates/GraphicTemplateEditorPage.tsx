@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Plus, Trash2, Save, Eye, EyeOff, Pencil, GripVertical } from 'lucide-react'
@@ -484,8 +484,25 @@ const POS_STYLE: Record<GraphicPosition, React.CSSProperties> = {
 
 function TemplatePreview({ elements }: { elements: GraphicElement[] }) {
   const active = elements.filter(el => el.active)
+
+  // Busca títulos RSS para cada ticker com rssUrl
+  const [rssTexts, setRssTexts] = useState<Record<string, string>>({})
+  useEffect(() => {
+    const tickers = active.filter(el => el.type === 'TICKER' && el.rssUrl)
+    if (!tickers.length) return
+    tickers.forEach(el => {
+      fetch(`/api/ticker/rss?url=${encodeURIComponent(el.rssUrl!)}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token') ?? ''}` },
+      })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (d?.text) setRssTexts(prev => ({ ...prev, [el.id]: d.text })) })
+        .catch(() => {})
+    })
+  }, [elements.map(e => e.id + e.rssUrl).join(',')])  // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div className="relative w-full bg-black rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
+      <style>{`@keyframes tmpl-ticker{0%{transform:translateX(100%)}100%{transform:translateX(-200%)}}`}</style>
       <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center">
         <span className="text-gray-700 text-xs uppercase tracking-widest">Vídeo</span>
       </div>
@@ -493,7 +510,7 @@ function TemplatePreview({ elements }: { elements: GraphicElement[] }) {
         const posStyle = POS_STYLE[el.position] ?? { top: 8, left: 8 }
         const isBar = el.position.startsWith('BAR')
         const fs = Math.max(7, Math.round((el.fontSize ?? 32) * 0.35))
-        const baseStyle: React.CSSProperties = {
+        const base: React.CSSProperties = {
           position: 'absolute',
           ...posStyle,
           backgroundColor: el.bgColor ?? 'transparent',
@@ -511,17 +528,31 @@ function TemplatePreview({ elements }: { elements: GraphicElement[] }) {
         switch (el.type) {
           case 'LOGO':
             return el.imageUrl
-              ? <img key={el.id} src={el.imageUrl} style={{ ...baseStyle, backgroundColor: 'transparent', width: el.width ? el.width * 0.35 : 60, height: 'auto' }} alt="logo" />
-              : <div key={el.id} style={baseStyle} className="text-[7px] bg-gray-700/80 text-gray-300">🖼️ LOGO</div>
+              ? <img key={el.id} src={el.imageUrl} style={{ ...base, backgroundColor: 'transparent', width: el.width ? el.width * 0.35 : 60, height: 'auto' }} alt="logo" />
+              : <div key={el.id} style={base} className="text-[7px] bg-gray-700/80 text-gray-300">🖼️ LOGO</div>
           case 'CLOCK':
-            return <div key={el.id} style={baseStyle}>{new Date().toLocaleTimeString('pt-BR')}</div>
+            return <div key={el.id} style={base}>{new Date().toLocaleTimeString('pt-BR')}</div>
           case 'TEXT':
-            return <div key={el.id} style={baseStyle}>{el.text ?? 'Texto'}</div>
-          case 'TICKER':
-            return <div key={el.id} style={baseStyle}>📜 {el.text ?? 'Ticker...'}</div>
+            return <div key={el.id} style={base}>{el.text ?? 'Texto'}</div>
+          case 'TICKER': {
+            const speed    = Math.max(1, Math.min(16, el.tickerSpeed ?? 2))
+            const duration = Math.round(28 / speed)
+            const tickerText = el.rssUrl
+              ? (rssTexts[el.id] ?? '⏳ carregando RSS...')
+              : (el.text ?? 'Ticker...')
+            const isRss = !!el.rssUrl
+            return (
+              <div key={el.id} style={{ ...base, maxWidth: '90%', overflow: 'hidden' }}>
+                <span style={{ display: 'inline-block', animation: `tmpl-ticker ${duration}s linear infinite`, whiteSpace: 'nowrap' }}>
+                  {tickerText}
+                  {isRss && <span style={{ opacity: 0.5, fontSize: '75%', marginLeft: 4 }}>[RSS]</span>}
+                </span>
+              </div>
+            )
+          }
           case 'LOWER_THIRD':
             return (
-              <div key={el.id} style={{ ...baseStyle, whiteSpace: 'normal' }}>
+              <div key={el.id} style={{ ...base, whiteSpace: 'normal' }}>
                 <div style={{ fontWeight: 'bold' }}>{el.text ?? 'Título'}</div>
                 {el.subtitle && <div style={{ fontSize: fs * 0.8, opacity: 0.85 }}>{el.subtitle}</div>}
               </div>

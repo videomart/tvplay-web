@@ -42,6 +42,19 @@ function parseRss(xml: string): string[] {
   return titles.slice(0, MAX_ITEMS)
 }
 
+// Busca RSS e retorna títulos — usado pelo endpoint de preview
+export async function fetchRssHeadlines(rssUrl: string): Promise<string[]> {
+  const ctrl  = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 10_000)
+  try {
+    const resp = await fetch(rssUrl, { signal: ctrl.signal })
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+    return parseRss(await resp.text())
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 // ─── Busca RSS e escreve no arquivo ─────────────────────────────────────────
 
 async function fetchAndWrite(elementId: string, rssUrl: string): Promise<void> {
