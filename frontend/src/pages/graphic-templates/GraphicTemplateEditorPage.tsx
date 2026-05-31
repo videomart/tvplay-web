@@ -220,55 +220,73 @@ export default function GraphicTemplateEditorPage() {
             </div>
           )}
 
-          <div className="grid grid-cols-3 gap-4">
+          {/* Cores + tamanho */}
+          <div className="grid grid-cols-2 gap-4">
+            {/* Cor da letra */}
             <div className="space-y-1">
               <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Cor da letra</label>
-              <div className="flex gap-2 items-center">
-                <input type="color" value={form.fontColor} onChange={e => setForm(v => ({ ...v, fontColor: e.target.value }))}
-                  className="h-8 w-10 rounded bg-gray-800 border border-gray-700 cursor-pointer" />
+              <div className="flex items-center gap-2">
+                <ColorSwatch color={form.fontColor} onChange={c => setForm(v => ({ ...v, fontColor: c }))} />
                 <input value={form.fontColor} onChange={e => setForm(v => ({ ...v, fontColor: e.target.value }))}
-                  className="flex-1 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm px-2 py-1.5 focus:outline-none focus:border-brand-500" />
+                  className="flex-1 min-w-0 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm px-2 py-2 focus:outline-none focus:border-brand-500 font-mono" />
               </div>
             </div>
+
+            {/* Cor de fundo */}
             <div className="space-y-1">
               <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Cor de fundo</label>
-              <div className="flex gap-2 items-center">
-                <input type="color" value={form.bgColor ?? '#000000'} onChange={e => setForm(v => ({ ...v, bgColor: e.target.value }))}
-                  className="h-8 w-10 rounded bg-gray-800 border border-gray-700 cursor-pointer" />
-                <button onClick={() => setForm(v => ({ ...v, bgColor: form.bgColor ? null : '#000000' }))}
-                  className="text-[10px] text-gray-500 hover:text-gray-300 whitespace-nowrap">
-                  {form.bgColor ? '✕ sem fundo' : '+ fundo'}
+              <div className="flex items-center gap-2">
+                <ColorSwatch
+                  color={form.bgColor ?? '#000000'}
+                  onChange={c => setForm(v => ({ ...v, bgColor: c }))}
+                  disabled={!form.bgColor}
+                />
+                {form.bgColor
+                  ? <input value={form.bgColor} onChange={e => setForm(v => ({ ...v, bgColor: e.target.value }))}
+                      className="flex-1 min-w-0 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm px-2 py-2 focus:outline-none focus:border-brand-500 font-mono" />
+                  : <span className="flex-1 text-xs text-gray-600 italic">sem fundo</span>
+                }
+                <button
+                  onClick={() => setForm(v => ({ ...v, bgColor: form.bgColor ? null : '#000000' }))}
+                  className="text-[10px] text-gray-500 hover:text-gray-300 whitespace-nowrap px-1.5 py-1 rounded border border-gray-700 hover:border-gray-500 transition-colors"
+                >
+                  {form.bgColor ? '✕' : '+ fundo'}
                 </button>
               </div>
             </div>
+          </div>
+
+          {/* Tamanho + opacidade */}
+          <div className="grid grid-cols-3 gap-4">
             <div className="space-y-1">
               <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Tamanho fonte</label>
               <input type="number" value={form.fontSize} onChange={e => setForm(v => ({ ...v, fontSize: +e.target.value }))}
                 min={8} max={200}
                 className="w-full rounded-lg bg-gray-800 border border-gray-700 text-white text-sm px-3 py-2 focus:outline-none focus:border-brand-500" />
             </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-4">
             <div className="space-y-1">
               <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Opacidade (0–1)</label>
               <input type="number" value={form.opacity} onChange={e => setForm(v => ({ ...v, opacity: +e.target.value }))}
                 min={0} max={1} step={0.1}
                 className="w-full rounded-lg bg-gray-800 border border-gray-700 text-white text-sm px-3 py-2 focus:outline-none focus:border-brand-500" />
             </div>
-            {form.type === 'LOGO' && <>
+            {form.type === 'LOGO' && (
               <div className="space-y-1">
                 <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Largura (px)</label>
                 <input type="number" value={form.width ?? ''} onChange={e => setForm(v => ({ ...v, width: +e.target.value || null }))}
                   className="w-full rounded-lg bg-gray-800 border border-gray-700 text-white text-sm px-3 py-2 focus:outline-none focus:border-brand-500" />
               </div>
+            )}
+          </div>
+          {form.type === 'LOGO' && (
+            <div className="grid grid-cols-3 gap-4">
               <div className="space-y-1">
                 <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Altura (px)</label>
                 <input type="number" value={form.height ?? ''} onChange={e => setForm(v => ({ ...v, height: +e.target.value || null }))}
                   className="w-full rounded-lg bg-gray-800 border border-gray-700 text-white text-sm px-3 py-2 focus:outline-none focus:border-brand-500" />
               </div>
-            </>}
-          </div>
+            </div>
+          )}
 
           <label className="flex items-center gap-3 cursor-pointer select-none">
             <input type="checkbox" checked={form.active} onChange={e => setForm(v => ({ ...v, active: e.target.checked }))}
@@ -284,6 +302,27 @@ export default function GraphicTemplateEditorPage() {
           </div>
         </div>
       </Modal>
+    </div>
+  )
+}
+
+// Swatch de cor: div colorida + input transparente sobreposto (funciona em todos os browsers)
+function ColorSwatch({ color, onChange, disabled = false }: { color: string; onChange: (c: string) => void; disabled?: boolean }) {
+  return (
+    <div
+      className="relative h-9 w-10 flex-shrink-0 rounded-lg border border-gray-700 overflow-hidden cursor-pointer"
+      style={{ backgroundColor: disabled ? '#374151' : color }}
+      title={disabled ? 'Sem fundo' : color}
+    >
+      {!disabled && (
+        <input
+          type="color"
+          value={color}
+          onChange={e => onChange(e.target.value)}
+          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+          style={{ transform: 'scale(2)' }}
+        />
+      )}
     </div>
   )
 }
