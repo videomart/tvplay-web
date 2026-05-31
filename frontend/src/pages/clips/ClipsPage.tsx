@@ -146,6 +146,7 @@ export default function ClipsPage() {
       toast.success(editing ? 'Clipe atualizado' : 'Clipe criado')
       qc.invalidateQueries({ queryKey: ['clips'] })
       setOpen(false)
+      if (returnTo) navigate(returnTo)
     },
     onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao salvar'),
   })
@@ -682,7 +683,7 @@ export default function ClipsPage() {
               </div>
             )}
             <div className="flex gap-3 justify-end pt-2">
-              <Button variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button>
+              <Button variant="secondary" onClick={() => { setOpen(false); if (returnTo) navigate(returnTo) }}>Cancelar</Button>
               <Button loading={save.isPending} onClick={handleSave}>Salvar</Button>
             </div>
           </div>

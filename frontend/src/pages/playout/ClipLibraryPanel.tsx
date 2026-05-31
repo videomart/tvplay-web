@@ -514,7 +514,10 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
                   <span className="w-6 flex-shrink-0" />
                 )}
 
-                <span className="text-[10px] font-mono text-gray-500 flex-shrink-0 w-16 truncate" title={clip.code}>
+                <span
+                  title="Duplo clique para editar"
+                  style={{ display:'inline-block', fontSize:9, fontFamily:'monospace', fontWeight:700, padding:'1px 5px', borderRadius:3, background:'#1e3a5f', color:'#93c5fd', border:'1px solid #2563eb', userSelect:'none', flexShrink:0, whiteSpace:'nowrap', maxWidth:64, overflow:'hidden', textOverflow:'ellipsis' }}
+                >
                   {clip.code}
                 </span>
 
