@@ -109,7 +109,11 @@ export default function GraphicTemplateEditorPage() {
     <div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="sm" icon={<ArrowLeft className="h-4 w-4" />} onClick={() => navigate('/graphic-templates')}>
+        <Button variant="ghost" size="sm" icon={<ArrowLeft className="h-4 w-4" />} onClick={() => navigate('/graphics')}>
+          Gráficos
+        </Button>
+        <span className="text-gray-700">/</span>
+        <Button variant="ghost" size="sm" onClick={() => navigate('/graphic-templates')}>
           Templates
         </Button>
         <div className="flex-1">
@@ -384,22 +388,29 @@ function PositionCell({ pos, elements, onAdd, onEdit, onToggle, onDelete, onMove
         {elements.map(el => (
           <div
             key={el.id}
-            draggable
-            onDragStart={e => handleDragStart(e, el)}
             className={clsx(
-              'flex items-center gap-1.5 px-1.5 py-1 rounded text-[10px] cursor-grab active:cursor-grabbing select-none',
-              el.active ? 'bg-gray-800 hover:bg-gray-750' : 'bg-gray-900 opacity-50',
+              'flex items-center gap-1.5 px-1.5 py-1 rounded text-[10px]',
+              el.active ? 'bg-gray-800' : 'bg-gray-900 opacity-50',
             )}>
-            <GripVertical className="h-2.5 w-2.5 text-gray-600 flex-shrink-0" />
-            <span>{ELEMENT_TYPE_ICON[el.type]}</span>
-            <span className="flex-1 text-gray-300 truncate">{el.text ?? el.imageUrl ?? el.type}</span>
-            <button onClick={() => onToggle(el)} className="text-gray-600 hover:text-gray-300">
+            {/* Grip: único ponto de drag — isola cliques nos botões */}
+            <div
+              draggable
+              onDragStart={e => handleDragStart(e, el)}
+              className="cursor-grab active:cursor-grabbing flex-shrink-0 select-none"
+            >
+              <GripVertical className="h-2.5 w-2.5 text-gray-600" />
+            </div>
+            <span className="flex-shrink-0">{ELEMENT_TYPE_ICON[el.type]}</span>
+            <span className="flex-1 text-gray-300 truncate">
+              {el.text || el.imageUrl || ELEMENT_TYPE_LABELS[el.type]}
+            </span>
+            <button onClick={() => onToggle(el)} className="text-gray-600 hover:text-gray-300 flex-shrink-0">
               {el.active ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
             </button>
-            <button onClick={() => onEdit(el)} className="text-gray-600 hover:text-brand-400">
+            <button onClick={() => onEdit(el)} className="text-gray-600 hover:text-brand-400 flex-shrink-0">
               <Pencil className="h-3 w-3" />
             </button>
-            <button onClick={() => onDelete(el)} className="text-gray-600 hover:text-red-400">
+            <button onClick={() => onDelete(el)} className="text-gray-600 hover:text-red-400 flex-shrink-0">
               <Trash2 className="h-3 w-3" />
             </button>
           </div>

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Pencil, Trash2, Layers2, ToggleLeft, ToggleRight } from 'lucide-react'
+import { Plus, Pencil, Trash2, Layers2, ToggleLeft, ToggleRight, ArrowLeft } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { graphicTemplatesApi, type GraphicTemplate } from '../../api/graphic-templates.api'
 import { Button } from '../../components/ui/Button'
@@ -49,15 +49,20 @@ export default function GraphicTemplatesPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-3">
-            <Layers2 className="h-6 w-6 text-brand-400" />
-            Templates Gráficos
-          </h1>
-          <p className="text-gray-500 text-sm mt-1">
-            Conjuntos de elementos posicionados para overlays de broadcast
-          </p>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="sm" icon={<ArrowLeft className="h-4 w-4" />} onClick={() => navigate('/graphics')}>
+            Gráficos
+          </Button>
+          <div>
+            <h1 className="text-2xl font-bold text-white flex items-center gap-3">
+              <Layers2 className="h-6 w-6 text-brand-400" />
+              Templates Gráficos
+            </h1>
+            <p className="text-gray-500 text-sm mt-1">
+              Conjuntos de elementos posicionados para overlays de broadcast
+            </p>
+          </div>
         </div>
         <Button onClick={openNew} icon={<Plus className="h-4 w-4" />}>Novo Template</Button>
       </div>
