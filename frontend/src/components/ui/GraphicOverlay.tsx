@@ -119,15 +119,19 @@ function TemplateElement({ el, clock, rssText }: { el: GraphicElementConfig; clo
 
     case 'TICKER': {
       const speed    = Math.max(5, el.tickerSpeed ?? 50)
-      // duração ≈ (largura preview ~600px + texto) / speed — aprox 3000px total
       const duration = Math.max(2, Math.round(3000 / speed))
       const showText = el.rssUrl
         ? (rssText ?? '⏳ carregando RSS...')
         : (el.text || '')
       if (!showText) return null
+      const isBottom = ['BL','BC','BR','BAR_BOTTOM'].includes(el.position)
       return (
-        <div style={{ ...pos, zIndex: 10, opacity: el.opacity, overflow: 'hidden', maxWidth: '90%' }}>
-          <span style={{ ...textBaseStyle(el), display: 'inline-block', animation: `tvplay-ticker ${duration}s linear infinite` }}>
+        <div style={{
+          position: 'absolute', left: 0, right: 0,
+          ...(isBottom ? { bottom: el.padding } : { top: el.padding }),
+          overflow: 'hidden', zIndex: 10, opacity: el.opacity,
+        }}>
+          <span style={{ ...textBaseStyle(el), display: 'inline-block', paddingLeft: '100%', animation: `tvplay-ticker ${duration}s linear infinite` }}>
             {showText}
             {el.rssUrl && rssText && <span style={{ opacity: 0.5, fontSize: '75%', marginLeft: 4 }}>[RSS]</span>}
           </span>
@@ -206,7 +210,7 @@ export function GraphicOverlay({ graphic }: { graphic: GraphicConfig }) {
   return (
     <>
       {/* Keyframe para o ticker */}
-      <style>{`@keyframes tvplay-ticker{0%{transform:translateX(100%)}100%{transform:translateX(-200%)}}`}</style>
+      <style>{`@keyframes tvplay-ticker{0%{transform:translateX(0)}100%{transform:translateX(-100%)}}`}</style>
 
       {isTemplate ? (
         <TemplateOverlay elements={graphic.templateElements!} />

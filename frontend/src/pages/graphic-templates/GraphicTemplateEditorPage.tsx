@@ -500,7 +500,7 @@ function TemplatePreview({ elements }: { elements: GraphicElement[] }) {
 
   return (
     <div className="relative w-full bg-black rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
-      <style>{`@keyframes tmpl-ticker{0%{transform:translateX(100%)}100%{transform:translateX(-200%)}}`}</style>
+      <style>{`@keyframes tmpl-ticker{0%{transform:translateX(0)}100%{transform:translateX(-100%)}}`}</style>
       <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center">
         <span className="text-gray-700 text-xs uppercase tracking-widest">Vídeo</span>
       </div>
@@ -538,12 +538,24 @@ function TemplatePreview({ elements }: { elements: GraphicElement[] }) {
             const tickerText = el.rssUrl
               ? (rssTexts[el.id] ?? '⏳ carregando RSS...')
               : (el.text ?? 'Ticker...')
-            const isRss = !!el.rssUrl
+            const isBot = el.position.startsWith('B')
             return (
-              <div key={el.id} style={{ ...base, maxWidth: '90%', overflow: 'hidden' }}>
-                <span style={{ display: 'inline-block', animation: `tmpl-ticker ${duration}s linear infinite`, whiteSpace: 'nowrap' }}>
+              <div key={el.id} style={{
+                position: 'absolute', left: 0, right: 0,
+                ...(isBot ? { bottom: 8 } : { top: 8 }),
+                overflow: 'hidden', zIndex: 10,
+                backgroundColor: el.bgColor ?? undefined,
+                opacity: el.opacity ?? 1,
+              }}>
+                <span style={{
+                  display: 'inline-block', paddingLeft: '100%', whiteSpace: 'nowrap',
+                  color: el.fontColor ?? '#fff',
+                  fontSize: Math.max(7, Math.round((el.fontSize ?? 32) * 0.35)),
+                  fontWeight: el.bold ? 'bold' : 'normal',
+                  animation: `tmpl-ticker ${duration}s linear infinite`,
+                }}>
                   {tickerText}
-                  {isRss && <span style={{ opacity: 0.5, fontSize: '75%', marginLeft: 4 }}>[RSS]</span>}
+                  {el.rssUrl && rssTexts[el.id] && <span style={{ opacity: 0.5, fontSize: '75%', marginLeft: 4 }}>[RSS]</span>}
                 </span>
               </div>
             )

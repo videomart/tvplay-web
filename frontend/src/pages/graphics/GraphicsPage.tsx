@@ -61,7 +61,7 @@ function GraphicPreview({
 
   return (
     <>
-    <style>{`@keyframes gfx-ticker{0%{transform:translateX(100%)}100%{transform:translateX(-200%)}}`}</style>
+    <style>{`@keyframes gfx-ticker{0%{transform:translateX(0)}100%{transform:translateX(-100%)}}`}</style>
     <div className="relative w-full bg-black rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
       <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center">
         <span className="text-gray-700 text-xs uppercase tracking-widest">Vídeo</span>
@@ -99,11 +99,23 @@ function GraphicPreview({
             const tickerText = el.rssUrl
               ? (rssTexts[el.id] ?? '⏳ carregando RSS...')
               : (el.text || 'Ticker...')
+            const isBot = (el.position as string).startsWith('B')
             return (
-              <div key={el.id} style={{ ...base, maxWidth: '90%', overflow: 'hidden' }}>
-                <span style={{ display: 'inline-block', whiteSpace: 'nowrap', animation: `gfx-ticker ${duration}s linear infinite` }}>
+              <div key={el.id} style={{
+                position: 'absolute', left: 0, right: 0,
+                ...(isBot ? { bottom: 8 } : { top: 8 }),
+                overflow: 'hidden', zIndex: 10,
+                backgroundColor: (el as any).bgColor ?? undefined,
+              }}>
+                <span style={{
+                  display: 'inline-block', paddingLeft: '100%', whiteSpace: 'nowrap',
+                  color: (el as any).fontColor ?? '#fff',
+                  fontSize: Math.max(7, Math.round(((el as any).fontSize ?? 32) * 0.35)),
+                  fontWeight: (el as any).bold ? 'bold' : 'normal',
+                  animation: `gfx-ticker ${duration}s linear infinite`,
+                }}>
                   {tickerText}
-                  {el.rssUrl && <span style={{ opacity: 0.5, fontSize: '75%', marginLeft: 4 }}>[RSS]</span>}
+                  {el.rssUrl && rssTexts[el.id] && <span style={{ opacity: 0.5, fontSize: '75%', marginLeft: 4 }}>[RSS]</span>}
                 </span>
               </div>
             )
