@@ -563,17 +563,17 @@ async function fetchConcatItems(
   return { items, endIndex }
 }
 
-// Inicia feeds RSS de todos os elementos TICKER com rssUrl de um gráfico ativo
-function startTickerFeeds(graphic: GraphicConfig | null): void {
+// Garante que todos os arquivos de ticker estão escritos ANTES de spawnar o FFmpeg
+async function startTickerFeeds(graphic: GraphicConfig | null): Promise<void> {
   const elements = graphic?.templateElements
   if (!elements?.length) return
-  for (const el of elements) {
-    if (el.type === 'TICKER' && el.rssUrl && el.id) {
-      tickerService.startFeed(el.id, el.rssUrl).catch(() => {})
-    } else if (el.type === 'TICKER' && el.text && el.id) {
+  await Promise.all(elements.map(el => {
+    if (el.type === 'TICKER' && el.rssUrl && el.id)
+      return tickerService.startFeed(el.id, el.rssUrl).catch(() => {})
+    if (el.type === 'TICKER' && el.text && el.id)
       tickerService.ensureStaticFile(el.id, el.text)
-    }
-  }
+    return Promise.resolve()
+  }))
 }
 
 // Inicia streaming para um item da playlist, tratando URL clips e FILE clips
@@ -583,7 +583,7 @@ async function startStreamingForItem(
   graphic: GraphicConfig | null,
 ): Promise<void> {
   if (!item) return
-  startTickerFeeds(graphic)
+  await startTickerFeeds(graphic)
   if (isUrlClip(item.sourceType, item.sourceUrl) && item.sourceUrl) {
     const clipUrl = item.sourceUrl
     console.log(`[playout] startStreamingForItem ch=${channelId} — URL clip, resolvendo: ${clipUrl}`)
@@ -820,7 +820,7 @@ export async function play(channelId: string, playlistId: string, startItemId?: 
   states.set(channelId, state)
   await prisma.channel.update({ where: { id: channelId }, data: { status: 'PLAYING' } }).catch(() => {})
   persistState(channelId, playlistId, startIndex)
-  startTickerFeeds(activeGraphic)
+  await startTickerFeeds(activeGraphic)
   startTimer(channelId)
   if (isUrlClip(firstItem?.sourceType, firstItem?.sourceUrl) && firstItem?.sourceUrl) {
     const clipUrl = firstItem.sourceUrl

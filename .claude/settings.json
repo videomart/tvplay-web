@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(SSHPASS=bolais /tmp/sshpass-bin/bin/sshpass -e ssh -o StrictHostKeyChecking=no bolais@vps.avideomart.com.br \"git -C /home/bolais/projects/tvplay-web pull origin main && docker compose -f /home/bolais/projects/tvplay-web/docker-compose.yml --project-directory /home/bolais/projects/tvplay-web up -d --build web 2>&1 | tail -4\")"
+      "Bash(SSHPASS=bolais /tmp/sshpass-bin/bin/sshpass -e ssh -o StrictHostKeyChecking=no bolais@vps.avideomart.com.br \"git -C /home/bolais/projects/tvplay-web pull origin main && docker compose -f /home/bolais/projects/tvplay-web/docker-compose.yml --project-directory /home/bolais/projects/tvplay-web up -d --build web 2>&1 | tail -4\")",
+      "Bash(DATABASE_URL=\"postgresql://tvplay:tvplay123@localhost:5432/tvplay\" npx prisma db push)",
+      "Bash(DATABASE_URL=\"postgresql://tvplay:tvplay123@localhost:5432/tvplay\" npx prisma db push --schema=./prisma/schema.prisma)",
+      "Bash(./node_modules/.bin/tsc --noEmit)"
     ]
   }
 }

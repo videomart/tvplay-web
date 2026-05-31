@@ -15,13 +15,9 @@ docker logs tvplay_api -f
 docker logs tvplay_web -f
 
 
-# Para dar pull no gitHUB
+#Para atualizar no cumputador local e enviar para o GitHUB
 git add -A && git commit -m "mensagem" && git push origin main
 
-# Atualizar em produção (rodar no servidor via SSH)
-cd /home/bolais/projects/tvplay-web && git pull origin main && docker compose up -d --build
+#2 No servidor de produção via SSH
 
-# Para lançar uma nova versão (antes do git push):
-# 1. Edite frontend/package.json e bumpe "version": "1.0.0" → "1.1.0"
-# 2. git add -A && git commit -m "release: v1.1.0" && git push
-# 3. No servidor: cd /home/bolais/projects/tvplay-web && git pull origin main && docker compose up -d --build
+cd /home/bolais/projects/tvplay-web && git pull origin main && docker compose up -d --build
