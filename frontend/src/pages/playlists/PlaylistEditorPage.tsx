@@ -305,13 +305,14 @@ export default function PlaylistEditorPage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-white truncate">{clip.title}</p>
                     <div className="flex items-center gap-1.5">
-                      <span
+                      <button
+                        type="button"
                         title="Duplo clique para editar o clipe"
                         onDoubleClick={() => navigate('/clips', { state: { editClipId: clip.id } })}
-                        className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-brand-600/25 text-brand-300 border border-brand-500/40 cursor-pointer hover:bg-brand-600/40 hover:border-brand-400/60 transition-colors select-none flex-shrink-0"
+                        className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-blue-900 text-blue-300 border border-blue-700 cursor-pointer hover:bg-blue-800 hover:text-blue-200 transition-colors select-none flex-shrink-0 leading-4"
                       >
                         {clip.code}
-                      </span>
+                      </button>
                       {(clip as any).client?.name && (
                         <span className="text-[11px] text-gray-500 truncate">· {(clip as any).client.name}</span>
                       )}
