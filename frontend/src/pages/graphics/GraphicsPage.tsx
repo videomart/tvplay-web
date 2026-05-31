@@ -117,7 +117,7 @@ function PositionCell({
 
   if (elements.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-gray-700 bg-gray-900/30 p-3 flex flex-col items-center justify-center gap-1.5">
+      <div className="self-start rounded-lg border border-dashed border-gray-700 bg-gray-900/30 p-3 flex flex-col items-center gap-1.5">
         <span className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">{label}</span>
         <span className="text-[9px] text-gray-600 bg-gray-800/60 px-2 py-0.5 rounded">não utilizado</span>
       </div>
