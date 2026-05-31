@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Library, Loader2, Plus, Search, Trash2, Copy, Play, ListPlus } from 'lucide-react'
+import { Library, Loader2, Plus, Search, Trash2, Copy, Play, ListPlus, Pencil } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
 import { clipsApi } from '../../api/clips.api'
@@ -55,6 +56,7 @@ interface ClipLibraryPanelProps {
 
 export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
   const qc = useQueryClient()
+  const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [typeId, setTypeId] = useState('')
@@ -78,6 +80,14 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
 
   const activePlaylistId = playoutState?.playlistId ?? null
   const hasActivePlaylist = !!activePlaylistId
+
+  // Itens do roteiro selecionado na biblioteca
+  const { data: selectedRoteiroData } = useQuery({
+    queryKey: ['roteiro-items', selectedRoteiroId],
+    queryFn: () => playlistsApi.get(selectedRoteiroId!),
+    enabled: !!selectedRoteiroId,
+    staleTime: 30_000,
+  })
   const playoutStatus = (playoutState as any)?.status ?? 'IDLE'
 
   const { data: allPlaylists = [] } = useQuery({
@@ -399,6 +409,51 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
           )}
         </div>
       </div>
+
+      {/* Grid do roteiro selecionado */}
+      {selectedRoteiroId && selectedRoteiroData && (
+        <div className="border-b border-gray-800 bg-gray-950/40">
+          <div className="flex items-center justify-between px-3 py-1.5 border-b border-gray-800/60">
+            <p className="text-[10px] font-semibold text-cyan-400 uppercase tracking-wide truncate">
+              {selectedRoteiroData.name} · {selectedRoteiroData.items?.length ?? 0} itens
+            </p>
+            <button onClick={() => setSelectedRoteiroId(null)} className="text-gray-600 hover:text-gray-400 text-[10px] flex-shrink-0 ml-2">✕</button>
+          </div>
+          <div className="max-h-48 overflow-y-auto divide-y divide-gray-800/40">
+            {(selectedRoteiroData.items ?? []).length === 0 ? (
+              <p className="text-[11px] text-gray-600 text-center py-3">Roteiro vazio</p>
+            ) : (selectedRoteiroData.items ?? []).map((item: any) => {
+              const clip = item.clip
+              if (!clip) return null
+              return (
+                <div key={item.id} className="flex items-center gap-1.5 px-3 py-1.5 hover:bg-gray-800/30 transition-colors">
+                  {clip.type && (
+                    <Badge bg={clip.type.fontBackColor} color={clip.type.fontColor} className="text-[8px] flex-shrink-0">
+                      {clip.type.code}
+                    </Badge>
+                  )}
+                  {/* Código — duplo clique navega para edição e volta ao playout */}
+                  <span
+                    onDoubleClick={() => navigate('/clips', { state: { editClipId: clip.id, returnTo: '/playout' } })}
+                    title="Duplo clique para editar o clipe"
+                    style={{ display:'inline-block', fontSize:9, fontFamily:'monospace', fontWeight:700, padding:'1px 4px', borderRadius:3, background:'#1e3a5f', color:'#93c5fd', border:'1px solid #2563eb', cursor:'pointer', userSelect:'none', flexShrink:0, whiteSpace:'nowrap' }}
+                  >
+                    {clip.code}
+                  </span>
+                  <span className="flex-1 text-[10px] text-gray-300 truncate min-w-0">{clip.title}</span>
+                  <button
+                    onClick={() => navigate('/clips', { state: { editClipId: clip.id, returnTo: '/playout' } })}
+                    title="Editar clipe"
+                    className="p-0.5 rounded text-gray-700 hover:text-brand-400 transition-colors flex-shrink-0"
+                  >
+                    <Pencil className="h-2.5 w-2.5" />
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Busca */}
       <div className="px-3 pt-2">

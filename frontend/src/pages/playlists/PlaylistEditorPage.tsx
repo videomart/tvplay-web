@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -305,13 +305,7 @@ export default function PlaylistEditorPage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-white truncate">{clip.title}</p>
                     <p className="text-[11px] text-gray-500 truncate">
-                      <span
-                        onDoubleClick={(e) => { e.stopPropagation(); navigate('/clips', { state: { editClipId: clip.id } }) }}
-                        style={{ color:'#93c5fd', background:'#1e3a5f', border:'1px solid #2563eb', borderRadius:3, padding:'0 5px', cursor:'pointer', fontWeight:700, userSelect:'none' }}
-                        title="Duplo clique para editar o clipe"
-                      >
-                        {clip.code}
-                      </span>
+                      {clip.code}
                       {(clip as any).client?.name && ` · ${(clip as any).client.name}`}
                     </p>
                   </div>

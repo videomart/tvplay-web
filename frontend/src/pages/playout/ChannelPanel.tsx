@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Play, Pause, Square, SkipForward, SkipBack,
@@ -285,27 +284,6 @@ function OutputRow({
 
 // ─── Linha de item do playlist (com drag-and-drop) ───────────────────────────
 
-// Badge clicável do código do clipe — duplo clique navega para edição
-function CodeBadge({ clipId, code }: { clipId: string; code: string }) {
-  const nav = useNavigate()
-  return (
-    <span
-      onDoubleClick={(e) => { e.stopPropagation(); nav('/clips', { state: { editClipId: clipId } }) }}
-      title="Duplo clique para editar o clipe"
-      style={{
-        display: 'inline-block', flexShrink: 0,
-        fontSize: 10, fontFamily: 'monospace', fontWeight: 700,
-        padding: '1px 5px', borderRadius: 3,
-        background: '#1e3a5f', color: '#93c5fd',
-        border: '1px solid #2563eb', cursor: 'pointer',
-        userSelect: 'none', whiteSpace: 'nowrap',
-        maxWidth: '56px', overflow: 'hidden', textOverflow: 'ellipsis',
-      }}
-    >
-      {code}
-    </span>
-  )
-}
 
 function PlaylistItemRow({
   item, isCurrent, isPlayed, isDragging, isDragOver,
@@ -476,12 +454,13 @@ function PlaylistItemRow({
         <span className="w-6 flex-shrink-0" />
       )}
 
-      {/* Código — duplo clique abre edição do clipe */}
-      {item.clipId && !item.isBreak ? (
-        <CodeBadge clipId={item.clipId} code={item.code} />
-      ) : (
-        <span className="text-[10px] font-mono flex-shrink-0 w-14 truncate pl-2 text-gray-600">{item.code}</span>
-      )}
+      {/* Código */}
+      <span className={clsx(
+        'text-[10px] font-mono flex-shrink-0 w-14 truncate pl-2',
+        isCurrent ? 'text-emerald-900 font-semibold' : isSelected ? 'text-black font-semibold' : lightRow ? 'text-gray-700 group-hover:!text-white' : 'text-gray-600 group-hover:!text-white'
+      )} title={item.code}>
+        {item.code}
+      </span>
 
       {/* Título — clique para selecionar posição, duplo-clique para pular */}
       <button

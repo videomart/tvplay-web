@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { useSearchParams, useLocation } from 'react-router-dom'
+import { useSearchParams, useLocation, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, Search, Upload, CheckCircle2, Clock, XCircle, Play, Scissors, Film, Link, HardDrive } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -69,6 +69,7 @@ export default function ClipsPage() {
   const qc = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
   const location = useLocation()
+  const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [previewClip, setPreviewClip] = useState<Clip | null>(null)
   const [urlPreviewClip, setUrlPreviewClip] = useState<Clip | null>(null)
@@ -210,14 +211,15 @@ export default function ClipsPage() {
     setOpen(true)
   }
 
-  // Abre o modal de edição quando navega com state.editClipId (duplo clique no roteiro)
+  // Abre o modal de edição quando navega com state.editClipId
+  // state.returnTo: URL para navegar ao fechar o modal
+  const returnTo = (location.state as any)?.returnTo ?? null
   useEffect(() => {
     const editClipId = (location.state as any)?.editClipId
     if (!editClipId) return
     clipsApi.get(editClipId)
       .then(c => { openEdit(c) })
       .catch(() => toast.error('Clipe não encontrado'))
-    // limpa o state para não reabrir ao voltar
     window.history.replaceState({}, '')
   }, [location.state]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -464,7 +466,7 @@ export default function ClipsPage() {
 
       <Modal
         open={open}
-        onClose={() => setOpen(false)}
+        onClose={() => { setOpen(false); if (returnTo) navigate(returnTo) }}
         title={editing ? 'Editar Clipe' : 'Novo Clipe'}
         size={editing?.media?.ingestStatus === 'READY' ? 'xl' : 'lg'}
       >
