@@ -424,36 +424,40 @@ export function buildTemplateFilter(
     }
 
     const o = nxt()
+    let pushed = false
     switch (el.type) {
       case 'CLOCK':
-        segs.push(`${cur}drawtext=${font}text='%{localtime\\:%H\\:%M\\:%S}':fontsize=${fs}:fontcolor=${fc}:${bg}${xy}${bold}${o}`)
+        segs.push(`${cur}drawtext=${font}text='%{localtime\\:%T}':fontsize=${fs}:fontcolor=${fc}:${bg}${xy}${bold}${o}`)
+        pushed = true
         break
       case 'TEXT':
-        if (el.text) segs.push(`${cur}${makeDrawtext(el.text)}${o}`)
-        else continue
+        if (el.text) { segs.push(`${cur}${makeDrawtext(el.text)}${o}`); pushed = true }
         break
       case 'TICKER':
         if (el.text) {
-          // Scroll horizontal da direita para a esquerda
           const tickerY = el.position.startsWith('B') ? `H-th-${pad}` : `${pad}`
           segs.push(`${cur}drawtext=${font}text='${escTxt(el.text)}':fontsize=${fs}:fontcolor=${fc}:${bg}x=w-mod(n*2\\,w+tw):y=${tickerY}${bold}${o}`)
-        } else continue
+          pushed = true
+        }
         break
       case 'LOWER_THIRD': {
-        // Título + subtítulo empilhados
-        const title = el.text ?? ''
-        const sub   = el.subtitle ?? ''
-        const titleDt = makeDrawtext(title, 0)
-        const out2 = sub ? nxt() : o
-        segs.push(`${cur}${titleDt}${out2}`)
-        if (sub) {
-          cur = out2
-          segs.push(`${cur}${makeDrawtext(sub, fs + 8)}${o}`)
-        } else cur = out2
+        const title = el.text?.trim()
+        const sub   = el.subtitle?.trim()
+        if (!title && !sub) break
+        if (title) {
+          const out2 = sub ? nxt() : o
+          segs.push(`${cur}${makeDrawtext(title, 0)}${out2}`)
+          if (sub) { segs.push(`${out2}${makeDrawtext(sub, fs + 8)}${o}`) }
+          else { /* o já é o output */ }
+          pushed = true
+        } else if (sub) {
+          segs.push(`${cur}${makeDrawtext(sub, 0)}${o}`)
+          pushed = true
+        }
         break
       }
     }
-    cur = o
+    if (pushed) cur = o
   }
 
   if (segs.length === 0) return { extraInputs: [], filterArgs: [], mapArgs: [] }

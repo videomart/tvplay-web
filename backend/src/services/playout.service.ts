@@ -453,9 +453,19 @@ async function resolveGraphic(
 
   // Hierarquia: Clipe → Saída → Entrada → Roteiro → Canal (maior→menor prioridade)
 
+  // Select explícito para garantir que elementValues (JSON) é retornado
+  const gfxSelect = {
+    id: true, name: true, active: true,
+    templateId: true, elementValues: true,
+    logoUrl: true, logoPosition: true, showClock: true, lowerText: true,
+  } as const
+
   // 1. Clipe
   if (clipId) {
-    const clip = await prisma.clip.findUnique({ where: { id: clipId }, select: { graphic: true } })
+    const clip = await prisma.clip.findUnique({
+      where: { id: clipId },
+      select: { graphic: { select: gfxSelect } },
+    })
     const cfg = await graphicToConfig(clip?.graphic)
     if (cfg) { console.log(`[playout] resolveGraphic → CLIPE`); return cfg }
   }
@@ -463,17 +473,17 @@ async function resolveGraphic(
   // 2. Saída de streaming com gráfico associado
   const output = await prisma.streamOutput.findFirst({
     where: { channelId, active: true, graphicId: { not: null } },
-    select: { graphic: true },
+    select: { graphic: { select: gfxSelect } },
   })
   const outCfg = await graphicToConfig(output?.graphic)
-  if (outCfg) { console.log(`[playout] resolveGraphic → SAIDA`); return outCfg }
+  if (outCfg) { console.log(`[playout] resolveGraphic → SAIDA (${output?.graphic?.name})`); return outCfg }
 
   // 3. Entrada ativa com gráfico (ativo ao fazer CUT para a entrada)
   const chFallback = await prisma.channel.findUnique({
     where: { id: channelId },
     select: {
       fallbackType: true,
-      fallbackSource: { select: { graphic: true } },
+      fallbackSource: { select: { graphic: { select: gfxSelect } } },
       graphicTemplate: {
         select: {
           active: true,
@@ -490,7 +500,10 @@ async function resolveGraphic(
 
   // 4. Roteiro
   if (playlistId) {
-    const pl = await prisma.playlist.findUnique({ where: { id: playlistId }, select: { graphic: true } })
+    const pl = await prisma.playlist.findUnique({
+      where: { id: playlistId },
+      select: { graphic: { select: gfxSelect } },
+    })
     const cfg = await graphicToConfig(pl?.graphic)
     if (cfg) { console.log(`[playout] resolveGraphic → ROTEIRO`); return cfg }
   }
