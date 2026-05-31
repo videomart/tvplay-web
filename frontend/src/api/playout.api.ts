@@ -100,8 +100,8 @@ export const playoutApi = {
     api.post(`/playout/${channelId}/outputs/${outputId}/reconnect`).then((r) => r.data),
   getStates: () => api.get<PlayoutState[]>('/playout/states').then((r) => r.data),
   getState: (channelId: string) => api.get<PlayoutState>(`/playout/${channelId}/state`).then((r) => r.data),
-  play: (channelId: string, playlistId: string) =>
-    api.post<PlayoutState>(`/playout/${channelId}/play`, { playlistId }).then((r) => r.data),
+  play: (channelId: string, playlistId: string, startItemId?: string | null) =>
+    api.post<PlayoutState>(`/playout/${channelId}/play`, { playlistId, startItemId }).then((r) => r.data),
   pause: (channelId: string) => api.post<PlayoutState>(`/playout/${channelId}/pause`).then((r) => r.data),
   resume: (channelId: string) => api.post<PlayoutState>(`/playout/${channelId}/resume`).then((r) => r.data),
   stop: (channelId: string) => api.post<PlayoutState>(`/playout/${channelId}/stop`).then((r) => r.data),

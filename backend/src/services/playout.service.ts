@@ -759,19 +759,31 @@ function startTimer(channelId: string) {
   timers.set(channelId, interval)
 }
 
-export async function play(channelId: string, playlistId: string): Promise<PlayoutState> {
-  console.log(`[playout] play ch=${channelId} playlist=${playlistId}`)
+export async function play(channelId: string, playlistId: string, startItemId?: string | null): Promise<PlayoutState> {
+  console.log(`[playout] play ch=${channelId} playlist=${playlistId} startItem=${startItemId ?? 'primeiro'}`)
   stopTimer(channelId)
-  streamService.stopAllStreaming(channelId)  // garante que processos anteriores (câmera, entrada) param
+  streamService.stopAllStreaming(channelId)
   const playlist = await prisma.playlist.findUnique({ where: { id: playlistId } })
   if (!playlist) throw new Error('Playlist não encontrada')
 
+  // Descobre o índice do item selecionado (se informado)
+  let fromIndex = 0
+  if (startItemId) {
+    const items = await prisma.playlistItem.findMany({
+      where: { playlistId },
+      orderBy: { order: 'asc' },
+      select: { id: true },
+    })
+    const idx = items.findIndex(i => i.id === startItemId)
+    if (idx >= 0) fromIndex = idx
+  }
+
   const [firstReady, { totalDuration, count }] = await Promise.all([
-    findNextReadyFrom(playlistId, 0),
+    findNextReadyFrom(playlistId, fromIndex),
     computePlaylistMeta(playlistId),
   ])
-  const startIndex = firstReady?.index ?? 0
-  const firstItem  = firstReady?.item ?? await loadItem(playlistId, 0)
+  const startIndex = firstReady?.index ?? fromIndex
+  const firstItem  = firstReady?.item ?? await loadItem(playlistId, fromIndex)
   const activeGraphic = await resolveGraphic(firstItem?.clipId ?? null, playlistId, channelId).catch(() => null)
   const state: PlayoutState = {
     channelId,

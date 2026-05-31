@@ -50,11 +50,11 @@ export default async function playoutRoutes(app: FastifyInstance) {
     playout.getState(request.params.channelId)
   )
 
-  // Play
+  // Play — startItemId opcional: inicia a partir do item selecionado
   app.post('/:channelId/play', auth, async (request: any, reply) => {
-    const { playlistId } = request.body as { playlistId: string }
+    const { playlistId, startItemId } = request.body as { playlistId: string; startItemId?: string | null }
     if (!playlistId) return reply.status(400).send({ error: 'playlistId é obrigatório' })
-    return playout.play(request.params.channelId, playlistId).catch((e) =>
+    return playout.play(request.params.channelId, playlistId, startItemId).catch((e) =>
       reply.status(400).send({ error: e.message })
     )
   })

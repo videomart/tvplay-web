@@ -958,7 +958,8 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
   const onErr = (e: any) => toast.error(e.response?.data?.error ?? 'Erro')
 
   const playMut = useMutation({
-    mutationFn: (playlistId: string) => playoutApi.play(channel.id, playlistId),
+    mutationFn: ({ playlistId, startItemId }: { playlistId: string; startItemId?: string | null }) =>
+      playoutApi.play(channel.id, playlistId, startItemId),
     onSuccess: () => toast.success('Reprodução iniciada'),
     onError: onErr,
   })
@@ -991,7 +992,8 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
 
   function handlePlay() {
     if (!state?.playlistId) return
-    playMut.mutate(state.playlistId)
+    // Inicia a partir do item selecionado, se houver um
+    playMut.mutate({ playlistId: state.playlistId, startItemId: selectedItemId })
   }
 
   function handleClipPlay(idx: number) {

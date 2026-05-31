@@ -487,6 +487,7 @@ function buildArgs(
 
   // Decide qual sistema gráfico usar: template (novo) ou legado (Graphic simples)
   const useTemplate = !isLive && !!effectiveGraphic?.templateElements?.length
+  console.log(`[stream/${output.name}] gfx: isLive=${isLive} useTemplate=${useTemplate} tmplElems=${effectiveGraphic?.templateElements?.length ?? 0} logoUrl=${effectiveGraphic?.logoUrl ?? 'none'} showClock=${effectiveGraphic?.showClock}`)
   const templateResult = useTemplate
     ? buildTemplateFilter(effectiveGraphic!.templateElements!, output.videoResolution)
     : null
