@@ -429,7 +429,7 @@ function PlaylistItemRow({
         onMouseUp={() => { fromHandle.current = false }}
         className={clsx(
           'h-3.5 w-3.5 flex-shrink-0 cursor-grab active:cursor-grabbing',
-          isCurrent ? 'text-emerald-900' : isSelected ? 'text-black' : lightRow ? 'text-gray-500 group-hover:!text-white' : 'text-gray-700 group-hover:!text-white'
+          isCurrent ? 'text-emerald-900' : isSelected ? 'text-black' : lightRow ? 'text-gray-900 group-hover:!text-white' : 'text-gray-700 group-hover:!text-white'
         )}
       />
 
@@ -441,7 +441,7 @@ function PlaylistItemRow({
             <span className="text-[10px] font-bold text-emerald-900">▶</span>
           </>
         ) : (
-          <span className={clsx('text-[10px] font-mono', lightRow ? 'text-gray-500' : 'text-gray-600')}>{item.index + 1}</span>
+          <span className={clsx('text-[10px] font-mono', lightRow ? 'text-gray-900' : 'text-gray-600')}>{item.index + 1}</span>
         )}
       </span>
 
@@ -457,7 +457,7 @@ function PlaylistItemRow({
       {/* Código */}
       <span className={clsx(
         'text-[10px] font-mono flex-shrink-0 w-14 truncate pl-2',
-        isCurrent ? 'text-emerald-900 font-semibold' : isSelected ? 'text-black font-semibold' : lightRow ? 'text-gray-700 group-hover:!text-white' : 'text-gray-600 group-hover:!text-white'
+        isCurrent ? 'text-emerald-900 font-semibold' : isSelected ? 'text-black font-semibold' : lightRow ? 'text-gray-900 font-medium group-hover:!text-white' : 'text-gray-600 group-hover:!text-white'
       )} title={item.code}>
         {item.code}
       </span>
@@ -499,7 +499,7 @@ function PlaylistItemRow({
           {formatTime(liveElapsed)}
         </span>
       ) : (
-        <span className={clsx('text-[10px] font-mono flex-shrink-0 w-10 text-right', lightRow ? 'text-gray-700' : 'text-gray-600')}>
+        <span className={clsx('text-[10px] font-mono flex-shrink-0 w-10 text-right', lightRow ? 'text-gray-900' : 'text-gray-600')}>
           {item.sourceType === 'URL' && item.maxDuration
             ? formatTime(item.maxDuration)
             : item.sourceType === 'URL'
@@ -588,7 +588,7 @@ function PlaylistItemRow({
         title={item.loop ? 'Desativar loop' : 'Ativar loop'}
         className={clsx(
           'flex-shrink-0 p-0.5 rounded transition-colors disabled:opacity-40',
-          item.loop ? 'text-amber-500 hover:text-amber-400' : lightRow ? 'text-gray-500 hover:text-gray-700' : 'text-gray-700 hover:text-gray-400'
+          item.loop ? 'text-amber-500 hover:text-amber-400' : lightRow ? 'text-gray-600 hover:text-gray-900' : 'text-gray-700 hover:text-gray-400'
         )}
       >
         <RotateCcw className="h-3 w-3" />
@@ -600,7 +600,7 @@ function PlaylistItemRow({
           onClick={onDelete}
           disabled={deletePending}
           title="Remover da playlist"
-          className={clsx('flex-shrink-0 p-0.5 rounded transition-colors disabled:opacity-40', lightRow ? 'text-gray-500 hover:text-red-600' : 'text-gray-700 hover:text-red-400')}
+          className={clsx('flex-shrink-0 p-0.5 rounded transition-colors disabled:opacity-40', lightRow ? 'text-gray-600 hover:text-red-600' : 'text-gray-700 hover:text-red-400')}
         >
           <Trash2 className="h-3 w-3" />
         </button>

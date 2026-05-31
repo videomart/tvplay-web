@@ -1114,11 +1114,11 @@ export async function insertBreak(channelId: string, afterItemId?: string | null
   if (!state || !state.playlistId) throw new Error('Nenhuma playlist ativa')
 
   let insertOrder: number
-  if (afterItemId) {
-    const ref = await prisma.playlistItem.findUnique({ where: { id: afterItemId } })
-    if (!ref) throw new Error('Item de referência não encontrado')
+  const ref = afterItemId ? await prisma.playlistItem.findUnique({ where: { id: afterItemId } }) : null
+  if (ref) {
     insertOrder = ref.order + 1
   } else {
+    // afterItemId não encontrado (stale/deletado) ou ausente → insere no final
     const last = await prisma.playlistItem.findFirst({
       where: { playlistId: state.playlistId },
       orderBy: { order: 'desc' },
@@ -1154,12 +1154,12 @@ export async function insertClip(channelId: string, clipId: string, afterItemId?
   const clip = await prisma.clip.findUnique({ where: { id: clipId } })
   if (!clip) throw new Error('Clipe não encontrado')
 
+  const refItem = afterItemId ? await prisma.playlistItem.findUnique({ where: { id: afterItemId } }) : null
   let insertOrder: number
-  if (afterItemId) {
-    const ref = await prisma.playlistItem.findUnique({ where: { id: afterItemId } })
-    if (!ref) throw new Error('Item de referência não encontrado')
-    insertOrder = ref.order + 1
+  if (refItem) {
+    insertOrder = refItem.order + 1
   } else {
+    // afterItemId não encontrado (stale/deletado) ou ausente → insere no final
     const last = await prisma.playlistItem.findFirst({
       where: { playlistId: state.playlistId },
       orderBy: { order: 'desc' },
