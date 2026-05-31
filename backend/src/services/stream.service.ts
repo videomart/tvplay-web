@@ -5,6 +5,8 @@ import { tmpdir } from 'os'
 import { prisma } from '../lib/prisma'
 import { config } from '../config'
 import { tickerFilePath } from './ticker.service'
+import * as tsProxy from './ts-proxy.service'
+import { buildBreakPackets } from './scte35.service'
 
 // Hook registrado pelo camera.service para parar câmera quando qualquer
 // operação de streaming iniciar — evita dois FFmpeg escrevendo na mesma saída.
@@ -83,8 +85,21 @@ interface RelayProcess {
 }
 
 const relayProcs  = new Map<string, Map<string, RelayProcess>>()
-const relayPortMap = new Map<string, number>()
-let   nextRelayPort = 13100
+const relayPortMap  = new Map<string, number>()
+let   nextRelayPort  = 13100
+
+// Proxy SCTE-35: content → proxy → relay (um por output relay-capable)
+const proxyPortMap  = new Map<string, number>()
+let   nextProxyPort = 14100
+
+function getOrAllocProxyPort(outputId: string): number {
+  if (!proxyPortMap.has(outputId)) proxyPortMap.set(outputId, nextProxyPort++)
+  return proxyPortMap.get(outputId)!
+}
+
+function proxyKey(channelId: string, outputId: string): string {
+  return `${channelId}::${outputId}`
+}
 
 function getOrAllocRelayPort(outputId: string): number {
   if (!relayPortMap.has(outputId)) relayPortMap.set(outputId, nextRelayPort++)
@@ -179,9 +194,16 @@ async function ensureRelays(channelId: string, outputs: OutputConfig[]): Promise
     if (!isRelayCapable(output.type) || !output.url) continue
     const existing = relayMap.get(output.id)
     if (existing && !existing.stopped && existing.proc.exitCode === null) continue
-    const port  = getOrAllocRelayPort(output.id)
-    const relay = spawnRelay(channelId, output, port)
+    const relayPort = getOrAllocRelayPort(output.id)
+    const relay = spawnRelay(channelId, output, relayPort)
     if (relay) relayMap.set(output.id, relay)
+
+    // Inicia proxy SCTE-35 se ainda não está ativo
+    const key = proxyKey(channelId, output.id)
+    if (!tsProxy.isProxyActive(key)) {
+      const proxyPort = getOrAllocProxyPort(output.id)
+      tsProxy.startProxy(key, proxyPort, relayPort)
+    }
   }
 }
 
@@ -723,7 +745,7 @@ export async function startStreaming(
   const hlsUrl = hlsUrlForMedia(mediaId)
   const map = new Map<string, StreamProcess>()
   for (const output of outputs) {
-    const port = isRelayCapable(output.type) ? relayPortMap.get(output.id) ?? null : null
+    const port = isRelayCapable(output.type) ? proxyPortMap.get(output.id) ?? null : null
     const sp = spawnOutput(channelId, output, hlsUrl, cueIn, false, contentGraphic, port)
     if (sp) map.set(output.id, sp)
   }
@@ -749,6 +771,25 @@ export function stopAllStreaming(channelId: string) {
   _stopCameraHook?.(channelId)
   stopStreaming(channelId)
   stopRelays(channelId)
+  // Para todos os proxies SCTE-35 do canal
+  for (const [outputId] of (channelProcs.get(channelId) ?? [])) {
+    tsProxy.stopProxy(proxyKey(channelId, outputId))
+  }
+}
+
+/**
+ * Injeta um evento SCTE-35 splice_insert em todos os streams ativos do canal.
+ * @param outOfNetwork true = início do break (saída da rede), false = retorno
+ * @param durationSecs duração do break em segundos (opcional)
+ */
+export function injectScte35(channelId: string, outOfNetwork: boolean, durationSecs?: number): void {
+  const outputs = channelProcs.get(channelId)
+  if (!outputs?.size) return
+  const packets = buildBreakPackets(outOfNetwork, durationSecs)
+  for (const outputId of outputs.keys()) {
+    tsProxy.injectPackets(proxyKey(channelId, outputId), packets)
+  }
+  console.log(`[scte35/${channelId}] splice_insert out_of_network=${outOfNetwork}${durationSecs ? ` dur=${durationSecs}s` : ''}`)
 }
 
 export async function restartStreaming(
@@ -968,7 +1009,7 @@ export async function startStreamingFromPlaylist(
 
   const map = new Map<string, StreamProcess>()
   for (const output of outputs) {
-    const port = isRelayCapable(output.type) ? relayPortMap.get(output.id) ?? null : null
+    const port = isRelayCapable(output.type) ? proxyPortMap.get(output.id) ?? null : null
     const sp = spawnOutputFromConcat(channelId, output, concatFilePath, contentGraphic, port)
     if (sp) map.set(output.id, sp)
   }
@@ -1085,7 +1126,7 @@ export async function startStreamingFromUrlReencode(
 
   const map = new Map<string, StreamProcess>()
   for (const output of outputs) {
-    const port = isRelayCapable(output.type) ? relayPortMap.get(output.id) ?? null : null
+    const port = isRelayCapable(output.type) ? proxyPortMap.get(output.id) ?? null : null
     // isLive=false → usa -re + re-encode (libx264/aac) em vez de -c copy
     const sp = spawnOutput(channelId, output, inputUrl, 0, false, contentGraphic, port)
     if (sp) map.set(output.id, sp)

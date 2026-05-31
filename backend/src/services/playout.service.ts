@@ -6,6 +6,7 @@ import * as streamService from './stream.service'
 import type { GraphicConfig } from './stream.service'
 import * as tickerService from './ticker.service'
 
+
 const execFileAsync = promisify(execFile)
 
 const YT_DLP_PATTERN = /youtube\.com|youtu\.be|twitch\.tv/i
@@ -684,6 +685,8 @@ function startTimer(channelId: string) {
             state.activeGraphic = newGraphic
 
             if (next.item.isBreak) {
+              // SCTE-35: sinaliza início do intervalo (saída da rede)
+              streamService.injectScte35(channelId, true, next.item.maxDuration ?? undefined)
               // BREAK: switch to fallback/input, keep timer running so maxDuration is respected
               streamService.clearConcatRun(channelId)
               console.log(`[playout] BREAK ch=${channelId} — comutando para fallback/entrada`)
@@ -698,6 +701,10 @@ function startTimer(channelId: string) {
                 })
                 .catch(() => streamService.startStreamingFromFallback(channelId, 'BLACK').catch(() => {}))
             } else {
+              // SCTE-35: retorno da programação (se veio de um BREAK)
+              if (state.currentItem?.isBreak) {
+                streamService.injectScte35(channelId, false)
+              }
               const concatEnd = streamService.getConcatRunEnd(channelId)
               const isInsideConcat = !isLoopRestart
                 && concatEnd !== undefined && next.index <= concatEnd
@@ -921,6 +928,7 @@ async function restartFromIndex(channelId: string, index: number, playlistId: st
   if (!item) return
 
   if (item.isBreak) {
+    streamService.injectScte35(channelId, true, item.maxDuration ?? undefined)
     console.log(`[playout] BREAK manual ch=${channelId} — comutando para fallback/entrada`)
     const ch = await prisma.channel.findUnique({ where: { id: channelId }, include: { fallbackSource: true } }).catch(() => null)
     if (ch?.fallbackType === 'INPUT_SOURCE' && ch.fallbackSource) {
