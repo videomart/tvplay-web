@@ -18,11 +18,10 @@ docker logs tvplay_web -f
 # Para dar pull no gitHUB
 git add -A && git commit -m "mensagem" && git push origin main
 
-# para atualizar na produção
-git -C /home/bolais/projects/tvplay-web pull origin main
+# Atualizar em produção (rodar no servidor via SSH)
+cd /home/bolais/projects/tvplay-web
+git pull origin main
+VITE_APP_BUILD=$(git rev-parse --short HEAD) docker compose up -d --build
 
-# Depois rebuild
-cd /home/bolais/projects/tvplay-web && docker compose up -d --build
-
-# Ou Tudo de vez
-git -C /home/bolais/projects/tvplay-web pull origin main && docker compose -f /home/bolais/projects/tvplay-web/docker-compose.yml --project-directory /home/bolais/projects/tvplay-web up -d --build
+# Ou tudo de uma vez (uma linha)
+cd /home/bolais/projects/tvplay-web && git pull origin main && VITE_APP_BUILD=$(git rev-parse --short HEAD) docker compose up -d --build
