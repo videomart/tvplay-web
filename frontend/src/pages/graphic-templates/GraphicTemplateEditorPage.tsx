@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Plus, Trash2, Save, Eye, EyeOff, Pencil } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Save, Eye, EyeOff, Pencil, GripVertical } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
 import {
@@ -92,6 +92,14 @@ export default function GraphicTemplateEditorPage() {
     saveElements.mutate(elements.map(({ id: _id, templateId: _tid, createdAt: _c, updatedAt: _u, ...rest }) => rest))
   }
 
+  function handleMove(elemId: string, newPos: GraphicPosition) {
+    if (!template) return
+    const elements = template.elements.map(el =>
+      el.id === elemId ? { ...el, position: newPos } : el
+    )
+    saveElements.mutate(elements.map(({ id: _id, templateId: _tid, createdAt: _c, updatedAt: _u, ...rest }) => rest))
+  }
+
   if (isLoading) return <div className="p-6 text-gray-500">Carregando...</div>
   if (!template) return <div className="p-6 text-red-400">Template não encontrado</div>
 
@@ -117,13 +125,13 @@ export default function GraphicTemplateEditorPage() {
         {/* Grid de posições */}
         <div className="card p-4 space-y-3">
           <p className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Posições do overlay</p>
-          <PositionCell pos="BAR_TOP" elements={byPosition('BAR_TOP')} onAdd={openAdd} onEdit={openEdit} onToggle={toggleActive} onDelete={(el) => removeElement.mutate(el.id)} />
+          <PositionCell pos="BAR_TOP" elements={byPosition('BAR_TOP')} onAdd={openAdd} onEdit={openEdit} onToggle={toggleActive} onDelete={(el) => removeElement.mutate(el.id)} onMove={handleMove} />
           <div className="grid grid-cols-3 gap-2">
             {POSITION_GRID.map(row => row.map(pos => (
-              <PositionCell key={pos} pos={pos} elements={byPosition(pos)} onAdd={openAdd} onEdit={openEdit} onToggle={toggleActive} onDelete={(el) => removeElement.mutate(el.id)} />
+              <PositionCell key={pos} pos={pos} elements={byPosition(pos)} onAdd={openAdd} onEdit={openEdit} onToggle={toggleActive} onDelete={(el) => removeElement.mutate(el.id)} onMove={handleMove} />
             )))}
           </div>
-          <PositionCell pos="BAR_BOTTOM" elements={byPosition('BAR_BOTTOM')} onAdd={openAdd} onEdit={openEdit} onToggle={toggleActive} onDelete={(el) => removeElement.mutate(el.id)} />
+          <PositionCell pos="BAR_BOTTOM" elements={byPosition('BAR_BOTTOM')} onAdd={openAdd} onEdit={openEdit} onToggle={toggleActive} onDelete={(el) => removeElement.mutate(el.id)} onMove={handleMove} />
         </div>
 
         {/* Preview visual 16:9 */}
@@ -280,22 +288,53 @@ export default function GraphicTemplateEditorPage() {
   )
 }
 
-// Célula de posição no grid
-function PositionCell({ pos, elements, onAdd, onEdit, onToggle, onDelete }: {
+// Célula de posição no grid — com drag & drop
+function PositionCell({ pos, elements, onAdd, onEdit, onToggle, onDelete, onMove }: {
   pos: GraphicPosition
   elements: GraphicElement[]
   onAdd: (pos: GraphicPosition) => void
   onEdit: (el: GraphicElement) => void
   onToggle: (el: GraphicElement) => void
   onDelete: (el: GraphicElement) => void
+  onMove: (elemId: string, newPos: GraphicPosition) => void
 }) {
+  const [dragOver, setDragOver] = useState(false)
+  const dragElemId = useRef<string | null>(null)
+
+  function handleDragStart(e: React.DragEvent, el: GraphicElement) {
+    dragElemId.current = el.id
+    e.dataTransfer.setData('elemId', el.id)
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setDragOver(true)
+  }
+
+  function handleDragLeave() { setDragOver(false) }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault()
+    setDragOver(false)
+    const elemId = e.dataTransfer.getData('elemId')
+    if (elemId) onMove(elemId, pos)
+  }
+
   const isBar = pos.startsWith('BAR')
   return (
-    <div className={clsx(
-      'rounded-lg border border-dashed border-gray-700 p-2 min-h-[64px] transition-colors',
-      isBar ? 'col-span-3' : '',
-      elements.length === 0 ? 'hover:border-gray-500' : 'border-gray-700/60',
-    )}>
+    <div
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      className={clsx(
+        'rounded-lg border border-dashed p-2 min-h-[64px] transition-colors',
+        isBar ? 'col-span-3' : '',
+        dragOver
+          ? 'border-brand-500 bg-brand-900/20'
+          : elements.length === 0 ? 'border-gray-700 hover:border-gray-500' : 'border-gray-700/60',
+      )}>
       <div className="flex items-center justify-between mb-1">
         <span className="text-[9px] text-gray-600 uppercase tracking-wide font-semibold">{POSITION_LABELS[pos]}</span>
         <button onClick={() => onAdd(pos)} className="p-0.5 rounded text-gray-700 hover:text-brand-400 hover:bg-brand-900/20 transition-colors">
@@ -304,7 +343,15 @@ function PositionCell({ pos, elements, onAdd, onEdit, onToggle, onDelete }: {
       </div>
       <div className="space-y-1">
         {elements.map(el => (
-          <div key={el.id} className={clsx('flex items-center gap-1.5 px-1.5 py-1 rounded text-[10px]', el.active ? 'bg-gray-800' : 'bg-gray-900 opacity-50')}>
+          <div
+            key={el.id}
+            draggable
+            onDragStart={e => handleDragStart(e, el)}
+            className={clsx(
+              'flex items-center gap-1.5 px-1.5 py-1 rounded text-[10px] cursor-grab active:cursor-grabbing select-none',
+              el.active ? 'bg-gray-800 hover:bg-gray-750' : 'bg-gray-900 opacity-50',
+            )}>
+            <GripVertical className="h-2.5 w-2.5 text-gray-600 flex-shrink-0" />
             <span>{ELEMENT_TYPE_ICON[el.type]}</span>
             <span className="flex-1 text-gray-300 truncate">{el.text ?? el.imageUrl ?? el.type}</span>
             <button onClick={() => onToggle(el)} className="text-gray-600 hover:text-gray-300">
@@ -319,7 +366,7 @@ function PositionCell({ pos, elements, onAdd, onEdit, onToggle, onDelete }: {
           </div>
         ))}
         {elements.length === 0 && (
-          <p className="text-[9px] text-gray-700 text-center py-1">vazio</p>
+          <p className="text-[9px] text-gray-700 text-center py-1">{dragOver ? '⬇ solte aqui' : 'vazio'}</p>
         )}
       </div>
     </div>

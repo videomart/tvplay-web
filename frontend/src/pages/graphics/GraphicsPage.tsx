@@ -11,6 +11,14 @@ import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { Table, Thead, Th, Tbody, Tr, Td } from '../../components/ui/Table'
 
+// ─── Grid de posições (mesmo layout do editor de templates) ─────────────────
+
+const POSITION_GRID_ROWS: GraphicPosition[][] = [
+  ['TL', 'TC', 'TR'],
+  ['ML', 'MC', 'MR'],
+  ['BL', 'BC', 'BR'],
+]
+
 // ─── Preview visual 16:9 ────────────────────────────────────────────────────
 
 const POS_STYLE: Record<GraphicPosition, React.CSSProperties> = {
@@ -34,7 +42,6 @@ function GraphicPreview({
   template: GraphicTemplate | null
   elementValues: Record<string, Record<string, any>>
 }) {
-  // Mescla elementos do template com os valores customizados do gráfico
   const merged = (template?.elements ?? []).map(el => ({
     ...el,
     ...(elementValues[el.id] ?? {}),
@@ -51,8 +58,7 @@ function GraphicPreview({
         const isBar = (el.position as string).startsWith('BAR')
         const fs = Math.max(7, Math.round((el.fontSize ?? 32) * 0.35))
         const base: React.CSSProperties = {
-          position: 'absolute',
-          ...posStyle,
+          position: 'absolute', ...posStyle,
           backgroundColor: el.bgColor ?? 'transparent',
           color: el.fontColor ?? '#fff',
           fontSize: fs,
@@ -95,6 +101,46 @@ function GraphicPreview({
   )
 }
 
+// ─── Célula posicional no formulário ────────────────────────────────────────
+
+function PositionCell({
+  pos, elements, elementValues, onChange, onUpload, uploadingFor,
+}: {
+  pos: GraphicPosition
+  elements: GraphicElement[]
+  elementValues: Record<string, Record<string, any>>
+  onChange: (elemId: string, field: string, val: any) => void
+  onUpload: (elemId: string) => void
+  uploadingFor: string | null
+}) {
+  const label = POSITION_LABELS[pos]
+
+  if (elements.length === 0) {
+    return (
+      <div className="rounded-lg border border-dashed border-gray-800 p-2 min-h-[64px] flex flex-col items-center justify-center gap-1 opacity-40">
+        <span className="text-[9px] text-gray-500 uppercase tracking-wide font-semibold">{label}</span>
+        <span className="text-[8px] text-gray-700">não utilizado</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-2">
+      <span className="text-[9px] text-gray-500 uppercase tracking-wide font-semibold block px-0.5">{label}</span>
+      {elements.map(el => (
+        <ElementField
+          key={el.id}
+          element={el}
+          value={elementValues[el.id] ?? {}}
+          onChange={(field, val) => onChange(el.id, field, val)}
+          onUpload={onUpload}
+          isUploading={uploadingFor === el.id}
+        />
+      ))}
+    </div>
+  )
+}
+
 // ─── Página principal ────────────────────────────────────────────────────────
 
 export default function GraphicsPage() {
@@ -106,13 +152,17 @@ export default function GraphicsPage() {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>(FACTORY_TEMPLATE_SIMPLES)
   const [elementValues, setElementValues]           = useState<Record<string, Record<string, any>>>({})
   const [uploadingFor, setUploadingFor]             = useState<string | null>(null)
-  const fileRef                = useRef<HTMLInputElement>(null)
-  const uploadTargetElemId     = useRef<string | null>(null)
+  const fileRef            = useRef<HTMLInputElement>(null)
+  const uploadTargetElemId = useRef<string | null>(null)
 
   const { data: graphics = [], isLoading } = useQuery({ queryKey: ['graphics'],          queryFn: graphicsApi.list })
   const { data: templates = [] }           = useQuery({ queryKey: ['graphic-templates'], queryFn: graphicTemplatesApi.list })
 
   const currentTemplate = templates.find(t => t.id === selectedTemplateId) ?? null
+
+  function byPos(pos: GraphicPosition): GraphicElement[] {
+    return currentTemplate?.elements.filter(el => el.position === pos) ?? []
+  }
 
   function setElemValue(elemId: string, field: string, value: any) {
     setElementValues(v => ({ ...v, [elemId]: { ...(v[elemId] ?? {}), [field]: value } }))
@@ -152,16 +202,11 @@ export default function GraphicsPage() {
   })
 
   function openNew() {
-    setEditing(null)
-    setName('')
-    setSelectedTemplateId(FACTORY_TEMPLATE_SIMPLES)
-    setElementValues({})
-    setFormOpen(true)
+    setEditing(null); setName(''); setSelectedTemplateId(FACTORY_TEMPLATE_SIMPLES); setElementValues({}); setFormOpen(true)
   }
 
   function openEdit(g: Graphic) {
-    setEditing(g)
-    setName(g.name)
+    setEditing(g); setName(g.name)
     setSelectedTemplateId(g.templateId ?? FACTORY_TEMPLATE_SIMPLES)
     const ev: Record<string, Record<string, any>> = { ...(g.elementValues ?? {}) }
     if (!g.templateId || g.templateId === FACTORY_TEMPLATE_SIMPLES) {
@@ -169,33 +214,22 @@ export default function GraphicsPage() {
       if (!ev[TEMPLATE_SIMPLES_ELEM_CLOCK]) ev[TEMPLATE_SIMPLES_ELEM_CLOCK] = { active: g.showClock }
       if (!ev[TEMPLATE_SIMPLES_ELEM_TEXT])  ev[TEMPLATE_SIMPLES_ELEM_TEXT]  = { text: g.lowerText ?? '' }
     }
-    setElementValues(ev)
-    setFormOpen(true)
+    setElementValues(ev); setFormOpen(true)
   }
 
-  function closeForm() {
-    setFormOpen(false)
-    setEditing(null)
-  }
+  function closeForm() { setFormOpen(false); setEditing(null) }
 
   async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>, elemId: string) {
     const file = e.target.files?.[0]
     if (!file) return
     setUploadingFor(elemId)
     try {
-      const fd = new FormData()
-      fd.append('file', file)
-      const res = await api.post<{ imageUrl: string }>('/graphics/upload-image', fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
+      const fd = new FormData(); fd.append('file', file)
+      const res = await api.post<{ imageUrl: string }>('/graphics/upload-image', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
       setElemValue(elemId, 'imageUrl', res.data.imageUrl)
       toast.success('Imagem enviada')
-    } catch {
-      toast.error('Erro ao enviar imagem')
-    } finally {
-      setUploadingFor(null)
-      if (fileRef.current) fileRef.current.value = ''
-    }
+    } catch { toast.error('Erro ao enviar imagem') }
+    finally { setUploadingFor(null); if (fileRef.current) fileRef.current.value = '' }
   }
 
   function elementSummary(g: Graphic): string[] {
@@ -211,42 +245,32 @@ export default function GraphicsPage() {
     return [...new Set(tags)]
   }
 
-  // ── Cabeçalho (sempre visível) ────────────────────────────────────────────
+  // ── Cabeçalho ────────────────────────────────────────────────────────────
   const header = (
     <div className="flex items-center justify-between flex-wrap gap-3">
       <div>
         <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-          <Layers className="h-6 w-6 text-brand-400" />
-          Gráficos
+          <Layers className="h-6 w-6 text-brand-400" />Gráficos
         </h1>
         <p className="text-gray-500 text-sm mt-1">Sobreposições visuais baseadas em templates gráficos.</p>
       </div>
       <div className="flex items-center gap-2">
-        <Button
-          variant="secondary"
-          icon={<Layers2 className="h-4 w-4" />}
-          onClick={() => navigate('/graphic-templates')}
-        >
+        <Button variant="secondary" icon={<Layers2 className="h-4 w-4" />} onClick={() => navigate('/graphic-templates')}>
           Gerenciar Templates
         </Button>
-        {!formOpen && (
-          <Button onClick={openNew} icon={<Plus className="h-4 w-4" />}>Novo Gráfico</Button>
-        )}
+        {!formOpen && <Button onClick={openNew} icon={<Plus className="h-4 w-4" />}>Novo Gráfico</Button>}
       </div>
     </div>
   )
 
-  // ── Lista de gráficos ─────────────────────────────────────────────────────
+  // ── Lista ─────────────────────────────────────────────────────────────────
   if (!formOpen) {
     return (
       <div className="p-6 space-y-6">
         {header}
         <div className="card">
           <Table>
-            <Thead>
-              <Th>Nome</Th><Th>Template</Th><Th>Elementos</Th><Th>Situação</Th>
-              <Th className="w-24 text-right">Ações</Th>
-            </Thead>
+            <Thead><Th>Nome</Th><Th>Template</Th><Th>Elementos</Th><Th>Situação</Th><Th className="w-24 text-right">Ações</Th></Thead>
             <Tbody>
               {isLoading ? (
                 <Tr><Td colSpan={5} className="text-center text-gray-500 py-8">Carregando...</Td></Tr>
@@ -255,16 +279,10 @@ export default function GraphicsPage() {
               ) : graphics.map((g) => (
                 <Tr key={g.id}>
                   <Td><span className="font-medium text-white">{g.name}</span></Td>
-                  <Td>
-                    <span className="text-xs text-gray-400 bg-gray-800 px-1.5 py-0.5 rounded">
-                      {g.template?.name ?? 'Legado'}
-                    </span>
-                  </Td>
+                  <Td><span className="text-xs text-gray-400 bg-gray-800 px-1.5 py-0.5 rounded">{g.template?.name ?? 'Legado'}</span></Td>
                   <Td>
                     <div className="flex gap-1 flex-wrap">
-                      {elementSummary(g).map(t => (
-                        <span key={t} className="text-[10px] bg-violet-900/50 text-violet-300 px-1.5 py-0.5 rounded font-mono">{t}</span>
-                      ))}
+                      {elementSummary(g).map(t => <span key={t} className="text-[10px] bg-violet-900/50 text-violet-300 px-1.5 py-0.5 rounded font-mono">{t}</span>)}
                       {elementSummary(g).length === 0 && <span className="text-gray-600 text-xs">vazio</span>}
                     </div>
                   </Td>
@@ -289,16 +307,14 @@ export default function GraphicsPage() {
     )
   }
 
-  // ── Editor (layout wide: form + preview) ─────────────────────────────────
+  // ── Editor wide: form + preview ───────────────────────────────────────────
   return (
     <div className="p-6 space-y-6">
       {header}
-
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
 
-        {/* ── Coluna esquerda: formulário ─────────────────────────────── */}
+        {/* Coluna esquerda: formulário */}
         <div className="card p-5 space-y-5">
-          {/* Título + voltar */}
           <div className="flex items-center gap-3">
             <button onClick={closeForm} className="text-gray-500 hover:text-gray-300 transition-colors">
               <ArrowLeft className="h-4 w-4" />
@@ -315,16 +331,14 @@ export default function GraphicsPage() {
             <label className="text-xs font-medium text-gray-400 uppercase tracking-wide block">Template</label>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {[...templates].sort((a) => a.id === FACTORY_TEMPLATE_SIMPLES ? -1 : 1).map(t => (
-                <button
-                  key={t.id}
+                <button key={t.id}
                   onClick={() => { setSelectedTemplateId(t.id); setElementValues({}) }}
                   className={clsx(
                     'text-left px-3 py-2.5 rounded-lg border text-sm transition-colors',
                     selectedTemplateId === t.id
                       ? 'border-brand-500 bg-brand-600/20 text-brand-300'
                       : 'border-gray-700 bg-gray-800 text-gray-400 hover:border-gray-600',
-                  )}
-                >
+                  )}>
                   <div className="font-medium truncate">{t.name}</div>
                   <div className="text-[10px] text-gray-600 mt-0.5">{t.elements?.length ?? 0} elem.</div>
                 </button>
@@ -332,29 +346,40 @@ export default function GraphicsPage() {
             </div>
           </div>
 
-          {/* Campos de elementos */}
+          {/* Grid positional de elementos */}
           {currentTemplate && (
-            <div className="space-y-2 border-t border-gray-800 pt-4">
+            <div className="space-y-3 border-t border-gray-800 pt-4">
               <label className="text-xs font-medium text-gray-400 uppercase tracking-wide block">
                 Elementos — {currentTemplate.name}
               </label>
-              <div className={clsx(
-                'grid gap-3',
-                currentTemplate.elements.length <= 2 ? 'grid-cols-1 sm:grid-cols-2' :
-                currentTemplate.elements.length <= 4 ? 'grid-cols-2' :
-                'grid-cols-2',
-              )}>
-                {currentTemplate.elements.map(el => (
-                  <ElementField
-                    key={el.id}
-                    element={el}
-                    value={elementValues[el.id] ?? {}}
-                    onChange={(field, val) => setElemValue(el.id, field, val)}
-                    onUpload={(elemId) => { uploadTargetElemId.current = elemId; fileRef.current?.click() }}
-                    isUploading={uploadingFor === el.id}
+
+              {/* BAR_TOP */}
+              <PositionCell
+                pos="BAR_TOP" elements={byPos('BAR_TOP')}
+                elementValues={elementValues}
+                onChange={setElemValue} onUpload={(id) => { uploadTargetElemId.current = id; fileRef.current?.click() }}
+                uploadingFor={uploadingFor}
+              />
+
+              {/* 3×3 grid */}
+              <div className="grid grid-cols-3 gap-2">
+                {POSITION_GRID_ROWS.flat().map(pos => (
+                  <PositionCell
+                    key={pos} pos={pos} elements={byPos(pos)}
+                    elementValues={elementValues}
+                    onChange={setElemValue} onUpload={(id) => { uploadTargetElemId.current = id; fileRef.current?.click() }}
+                    uploadingFor={uploadingFor}
                   />
                 ))}
               </div>
+
+              {/* BAR_BOTTOM */}
+              <PositionCell
+                pos="BAR_BOTTOM" elements={byPos('BAR_BOTTOM')}
+                elementValues={elementValues}
+                onChange={setElemValue} onUpload={(id) => { uploadTargetElemId.current = id; fileRef.current?.click() }}
+                uploadingFor={uploadingFor}
+              />
             </div>
           )}
 
@@ -370,15 +395,13 @@ export default function GraphicsPage() {
           </div>
         </div>
 
-        {/* ── Coluna direita: preview ─────────────────────────────────── */}
+        {/* Coluna direita: preview */}
         <div className="space-y-3 xl:sticky xl:top-6">
           <div className="flex items-center gap-2">
             <Eye className="h-4 w-4 text-brand-400" />
             <span className="text-sm font-medium text-gray-300">Preview em tempo real</span>
             {currentTemplate && (
-              <span className="ml-auto text-[10px] bg-gray-800 text-gray-500 px-2 py-0.5 rounded">
-                {currentTemplate.name}
-              </span>
+              <span className="ml-auto text-[10px] bg-gray-800 text-gray-500 px-2 py-0.5 rounded">{currentTemplate.name}</span>
             )}
           </div>
           <GraphicPreview template={currentTemplate} elementValues={elementValues} />
@@ -402,7 +425,6 @@ function ElementField({ element, value, onChange, onUpload, isUploading }: {
   isUploading: boolean
 }) {
   const isActive = value.active !== false
-  const label = `${ELEMENT_TYPE_LABELS[element.type]} — ${POSITION_LABELS[element.position]}`
 
   return (
     <div className={clsx(
@@ -410,14 +432,12 @@ function ElementField({ element, value, onChange, onUpload, isUploading }: {
       isActive ? 'border-gray-700 bg-gray-900/40' : 'border-gray-800 bg-gray-900/20 opacity-60',
     )}>
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-300 truncate mr-2">{label}</span>
-        <label className="flex items-center gap-2 cursor-pointer flex-shrink-0">
-          <span className="text-xs text-gray-500">Ativo</span>
-          <div
-            onClick={() => onChange('active', !isActive)}
-            className={clsx('relative w-8 h-4 rounded-full transition-colors cursor-pointer', isActive ? 'bg-brand-500' : 'bg-gray-700')}
-          >
-            <span className={clsx('absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform', isActive ? 'translate-x-4' : '')} />
+        <span className="text-xs font-medium text-gray-300 truncate mr-2">{ELEMENT_TYPE_LABELS[element.type]}</span>
+        <label className="flex items-center gap-1.5 cursor-pointer flex-shrink-0">
+          <span className="text-[10px] text-gray-500">Ativo</span>
+          <div onClick={() => onChange('active', !isActive)}
+            className={clsx('relative w-7 h-3.5 rounded-full transition-colors cursor-pointer', isActive ? 'bg-brand-500' : 'bg-gray-700')}>
+            <span className={clsx('absolute top-[1px] left-[1px] w-3 h-3 rounded-full bg-white shadow transition-transform', isActive ? 'translate-x-[14px]' : '')} />
           </div>
         </label>
       </div>
@@ -426,16 +446,11 @@ function ElementField({ element, value, onChange, onUpload, isUploading }: {
         <>
           {element.type === 'LOGO' && (
             <div className="flex gap-2 items-center">
-              <input
-                type="text"
-                value={value.imageUrl ?? ''}
-                onChange={e => onChange('imageUrl', e.target.value)}
+              <input type="text" value={value.imageUrl ?? ''} onChange={e => onChange('imageUrl', e.target.value)}
                 placeholder="URL da imagem..."
-                className="flex-1 min-w-0 rounded bg-gray-800 border border-gray-700 text-white text-sm px-2.5 py-1.5 focus:outline-none focus:border-brand-500"
-              />
+                className="flex-1 min-w-0 rounded bg-gray-800 border border-gray-700 text-white text-xs px-2 py-1.5 focus:outline-none focus:border-brand-500" />
               <Button size="sm" variant="secondary" loading={isUploading}
-                icon={<Upload className="h-3.5 w-3.5" />}
-                onClick={() => onUpload(element.id)}>
+                icon={<Upload className="h-3 w-3" />} onClick={() => onUpload(element.id)}>
                 Upload
               </Button>
             </div>
@@ -443,41 +458,36 @@ function ElementField({ element, value, onChange, onUpload, isUploading }: {
 
           {(element.type === 'TEXT' || element.type === 'TICKER') && (
             <input type="text" value={value.text ?? ''} onChange={e => onChange('text', e.target.value)}
-              placeholder={element.type === 'TICKER' ? 'Texto do ticker rolante...' : 'Texto...'}
-              className="w-full rounded bg-gray-800 border border-gray-700 text-white text-sm px-2.5 py-1.5 focus:outline-none focus:border-brand-500" />
+              placeholder={element.type === 'TICKER' ? 'Ticker rolante...' : 'Texto...'}
+              className="w-full rounded bg-gray-800 border border-gray-700 text-white text-xs px-2 py-1.5 focus:outline-none focus:border-brand-500" />
           )}
 
           {element.type === 'LOWER_THIRD' && (
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <input type="text" value={value.text ?? ''} onChange={e => onChange('text', e.target.value)}
                 placeholder="Título (linha 1)"
-                className="w-full rounded bg-gray-800 border border-gray-700 text-white text-sm px-2.5 py-1.5 focus:outline-none focus:border-brand-500" />
+                className="w-full rounded bg-gray-800 border border-gray-700 text-white text-xs px-2 py-1.5 focus:outline-none focus:border-brand-500" />
               <input type="text" value={value.subtitle ?? ''} onChange={e => onChange('subtitle', e.target.value)}
                 placeholder="Subtítulo (linha 2)"
-                className="w-full rounded bg-gray-800 border border-gray-700 text-white text-sm px-2.5 py-1.5 focus:outline-none focus:border-brand-500" />
+                className="w-full rounded bg-gray-800 border border-gray-700 text-white text-xs px-2 py-1.5 focus:outline-none focus:border-brand-500" />
             </div>
           )}
 
           {element.type === 'CLOCK' && (
-            <p className="text-[11px] text-gray-500">
-              Relógio em tempo real — exibido na posição {POSITION_LABELS[element.position]}.
-            </p>
+            <p className="text-[10px] text-gray-500">Relógio automático — posição {POSITION_LABELS[element.position]}.</p>
           )}
 
-          <div className="flex items-center gap-3 flex-wrap">
-            <label className="text-[11px] text-gray-500">Cor:</label>
-            <div className="flex items-center gap-1.5">
-              <input type="color" value={value.fontColor ?? element.fontColor ?? '#FFFFFF'}
-                onChange={e => onChange('fontColor', e.target.value)}
-                className="h-6 w-8 rounded border border-gray-700 bg-gray-800 cursor-pointer" />
-              <span className="text-[10px] text-gray-600">{value.fontColor ?? element.fontColor ?? '#FFFFFF'}</span>
-            </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <label className="text-[10px] text-gray-500">Cor:</label>
+            <input type="color" value={value.fontColor ?? element.fontColor ?? '#FFFFFF'}
+              onChange={e => onChange('fontColor', e.target.value)}
+              className="h-5 w-7 rounded border border-gray-700 bg-gray-800 cursor-pointer" />
             {(element.bgColor !== null || value.bgColor) && (
               <>
-                <label className="text-[11px] text-gray-500">Fundo:</label>
+                <label className="text-[10px] text-gray-500">Fundo:</label>
                 <input type="color" value={value.bgColor ?? element.bgColor ?? '#000000'}
                   onChange={e => onChange('bgColor', e.target.value)}
-                  className="h-6 w-8 rounded border border-gray-700 bg-gray-800 cursor-pointer" />
+                  className="h-5 w-7 rounded border border-gray-700 bg-gray-800 cursor-pointer" />
               </>
             )}
           </div>
