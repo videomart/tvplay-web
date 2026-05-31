@@ -19,6 +19,7 @@ export interface GraphicElementConfig {
   height?: number | null
   padding: number
   tickerSpeed?: number | null
+  tickerLoop?:  boolean | null
   rssUrl?: string | null
 }
 
@@ -118,8 +119,11 @@ function TemplateElement({ el, clock, rssText }: { el: GraphicElementConfig; clo
       )
 
     case 'TICKER': {
-      const speed    = Math.max(5, el.tickerSpeed ?? 50)
-      const duration = Math.max(2, Math.round(3000 / speed))
+      const speed    = Math.max(1, el.tickerSpeed ?? 5)
+      const loop     = el.tickerLoop !== false
+      // preview: mín 30px/s visual para o ticker ser visível no monitor pequeno
+      const previewSpeed = Math.max(speed, 30)
+      const duration = Math.max(2, Math.round(3000 / previewSpeed))
       const showText = el.rssUrl
         ? (rssText ?? '⏳ carregando RSS...')
         : (el.text || '')
@@ -131,7 +135,7 @@ function TemplateElement({ el, clock, rssText }: { el: GraphicElementConfig; clo
           ...(isBottom ? { bottom: el.padding } : { top: el.padding }),
           overflow: 'hidden', zIndex: 10, opacity: el.opacity,
         }}>
-          <span style={{ ...textBaseStyle(el), display: 'inline-block', paddingLeft: '100%', animation: `tvplay-ticker ${duration}s linear infinite` }}>
+          <span style={{ ...textBaseStyle(el), display: 'inline-block', paddingLeft: '100%', animation: `tvplay-ticker ${duration}s linear ${loop ? 'infinite' : '1 forwards'}` }}>
             {showText}
             {el.rssUrl && rssText && <span style={{ opacity: 0.5, fontSize: '75%', marginLeft: 4 }}>[RSS]</span>}
           </span>

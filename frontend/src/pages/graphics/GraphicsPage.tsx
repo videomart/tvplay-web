@@ -94,8 +94,10 @@ function GraphicPreview({
           case 'TEXT':
             return <div key={el.id} style={base}>{el.text || 'Texto'}</div>
           case 'TICKER': {
-            const speed    = Math.max(5, (el as any).tickerSpeed ?? 50)
-            const duration = Math.max(2, Math.round(3000 / speed))
+            const speed    = Math.max(1, (el as any).tickerSpeed ?? 5)
+            const loop     = (el as any).tickerLoop !== false
+            const previewSpeed = Math.max(speed, 30)
+            const duration = Math.max(2, Math.round(3000 / previewSpeed))
             const tickerText = el.rssUrl
               ? (rssTexts[el.id] ?? '⏳ carregando RSS...')
               : (el.text || 'Ticker...')
@@ -112,7 +114,7 @@ function GraphicPreview({
                   color: (el as any).fontColor ?? '#fff',
                   fontSize: Math.max(7, Math.round(((el as any).fontSize ?? 32) * 0.35)),
                   fontWeight: (el as any).bold ? 'bold' : 'normal',
-                  animation: `gfx-ticker ${duration}s linear infinite`,
+                  animation: `gfx-ticker ${duration}s linear ${loop ? 'infinite' : '1 forwards'}`,
                 }}>
                   {tickerText}
                   {el.rssUrl && rssTexts[el.id] && <span style={{ opacity: 0.5, fontSize: '75%', marginLeft: 4 }}>[RSS]</span>}

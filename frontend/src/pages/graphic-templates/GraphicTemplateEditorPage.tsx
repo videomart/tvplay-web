@@ -29,7 +29,7 @@ const emptyElement: Omit<GraphicElement, 'id' | 'templateId' | 'createdAt' | 'up
   imageUrl: null, text: '', subtitle: null,
   fontColor: '#FFFFFF', bgColor: null, fontSize: 32,
   opacity: 1, bold: false, width: null, height: null, padding: 10,
-  tickerSpeed: 50, rssUrl: null,
+  tickerSpeed: 5, tickerLoop: true, rssUrl: null,
   active: true, order: 0,
 }
 
@@ -227,18 +227,36 @@ export default function GraphicTemplateEditorPage() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Velocidade</label>
-                  <span className="text-sm font-bold text-brand-300">{form.tickerSpeed ?? 50} px/s</span>
+                  <span className="text-sm font-bold text-brand-300">{form.tickerSpeed ?? 5} px/s</span>
                 </div>
                 <input
-                  type="range" min={5} max={400} step={5}
-                  value={form.tickerSpeed ?? 50}
+                  type="range" min={1} max={200} step={1}
+                  value={form.tickerSpeed ?? 5}
                   onChange={e => setForm(v => ({ ...v, tickerSpeed: +e.target.value }))}
                   className="w-full accent-brand-500 cursor-pointer"
                 />
                 <div className="flex justify-between text-[10px] text-gray-600">
-                  <span>5 (lento)</span><span>50 (normal)</span><span>400 (rápido)</span>
+                  <span>1 (muito lento)</span><span>5 (padrão)</span><span>200 (rápido)</span>
                 </div>
               </div>
+
+              {/* Loop */}
+              <label className="flex items-center gap-3 cursor-pointer select-none">
+                <div
+                  onClick={() => setForm(v => ({ ...v, tickerLoop: !(v.tickerLoop ?? true) }))}
+                  className={clsx('relative w-9 h-5 rounded-full transition-colors cursor-pointer flex-shrink-0',
+                    (form.tickerLoop ?? true) ? 'bg-brand-500' : 'bg-gray-700')}
+                >
+                  <span className={clsx('absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform',
+                    (form.tickerLoop ?? true) ? 'translate-x-4' : '')} />
+                </div>
+                <div>
+                  <span className="text-sm text-gray-300">Loop contínuo</span>
+                  <p className="text-[10px] text-gray-600">
+                    {(form.tickerLoop ?? true) ? 'Rola indefinidamente' : 'Exibe uma vez e para'}
+                  </p>
+                </div>
+              </label>
 
               {/* Feed RSS */}
               <div className="space-y-1">
@@ -533,8 +551,10 @@ function TemplatePreview({ elements }: { elements: GraphicElement[] }) {
           case 'TEXT':
             return <div key={el.id} style={base}>{el.text ?? 'Texto'}</div>
           case 'TICKER': {
-            const speed    = Math.max(5, el.tickerSpeed ?? 50)
-            const duration = Math.max(2, Math.round(3000 / speed))
+            const speed    = Math.max(1, el.tickerSpeed ?? 5)
+            const loop     = el.tickerLoop !== false
+            const previewSpeed = Math.max(speed, 30)
+            const duration = Math.max(2, Math.round(3000 / previewSpeed))
             const tickerText = el.rssUrl
               ? (rssTexts[el.id] ?? '⏳ carregando RSS...')
               : (el.text ?? 'Ticker...')
@@ -552,7 +572,7 @@ function TemplatePreview({ elements }: { elements: GraphicElement[] }) {
                   color: el.fontColor ?? '#fff',
                   fontSize: Math.max(7, Math.round((el.fontSize ?? 32) * 0.35)),
                   fontWeight: el.bold ? 'bold' : 'normal',
-                  animation: `tmpl-ticker ${duration}s linear infinite`,
+                  animation: `tmpl-ticker ${duration}s linear ${loop ? 'infinite' : '1 forwards'}`,
                 }}>
                   {tickerText}
                   {el.rssUrl && rssTexts[el.id] && <span style={{ opacity: 0.5, fontSize: '75%', marginLeft: 4 }}>[RSS]</span>}

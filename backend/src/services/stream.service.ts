@@ -29,7 +29,8 @@ export type GraphicElementConfig = {
   width?:       number | null
   height?:      number | null
   padding:      number
-  tickerSpeed?: number | null  // pixels/frame (default 2)
+  tickerSpeed?: number | null  // pixels/segundo (default 5)
+  tickerLoop?:  boolean | null // false = exibe uma vez e para (default true)
   rssUrl?:      string | null  // feed RSS — usa textfile quando preenchido
 }
 
@@ -439,9 +440,13 @@ export function buildTemplateFilter(
         break
       case 'TICKER': {
         // t = tempo em segundos (framerate-independent); speed em px/seg
-        const speed    = Math.max(5, Math.min(400, el.tickerSpeed ?? 50))
+        const speed    = Math.max(1, Math.min(400, el.tickerSpeed ?? 5))
+        const loop     = el.tickerLoop !== false   // default true
         const tickerY  = el.position.startsWith('B') ? `H-th-${pad}` : `${pad}`
-        const scrollX  = `x=w-mod(t*${speed}\\,w+tw):y=${tickerY}`
+        // loop=true: mod (cicla); loop=false: max(-tw, ...) (para ao sair)
+        const scrollX  = loop
+          ? `x=w-mod(t*${speed}\\,w+tw):y=${tickerY}`
+          : `x=max(-tw\\,w-t*${speed}):y=${tickerY}`
         if (el.rssUrl) {
           // Feed RSS: usa textfile com reload periódico (a cada 300 frames ≈ 12s)
           const file = tickerFilePath(el.id ?? 'default').replace(/'/g, "\\'")
