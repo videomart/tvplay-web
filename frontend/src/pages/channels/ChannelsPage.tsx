@@ -3,13 +3,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, Tv2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { channelsApi, type Channel } from '../../api/channels.api'
+import { graphicTemplatesApi } from '../../api/graphic-templates.api'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { Modal } from '../../components/ui/Modal'
 import { Table, Thead, Th, Tbody, Tr, Td } from '../../components/ui/Table'
 import { StatusBadge } from '../../components/ui/Badge'
 
-const empty = { name: '', number: '' as any, description: '' }
+const empty = { name: '', number: '' as any, description: '', graphicTemplateId: '' }
 
 export default function ChannelsPage() {
   const qc = useQueryClient()
@@ -18,12 +19,17 @@ export default function ChannelsPage() {
   const [form, setForm] = useState(empty)
 
   const { data = [], isLoading } = useQuery({ queryKey: ['channels'], queryFn: channelsApi.list })
+  const { data: templates = [] } = useQuery({ queryKey: ['graphic-templates'], queryFn: graphicTemplatesApi.list, staleTime: 30_000 })
 
   const save = useMutation({
-    mutationFn: () =>
-      editing
-        ? channelsApi.update(editing.id, { ...form, number: Number(form.number) })
-        : channelsApi.create({ ...form, number: Number(form.number) }),
+    mutationFn: () => {
+      const payload = {
+        ...form,
+        number: Number(form.number),
+        graphicTemplateId: form.graphicTemplateId || null,
+      }
+      return editing ? channelsApi.update(editing.id, payload) : channelsApi.create(payload)
+    },
     onSuccess: () => {
       toast.success(editing ? 'Canal atualizado' : 'Canal criado')
       qc.invalidateQueries({ queryKey: ['channels'] })
@@ -38,7 +44,11 @@ export default function ChannelsPage() {
   })
 
   function openNew() { setEditing(null); setForm(empty); setOpen(true) }
-  function openEdit(ch: Channel) { setEditing(ch); setForm({ name: ch.name, number: ch.number as any, description: ch.description ?? '' }); setOpen(true) }
+  function openEdit(ch: Channel) {
+    setEditing(ch)
+    setForm({ name: ch.name, number: ch.number as any, description: ch.description ?? '', graphicTemplateId: (ch as any).graphicTemplateId ?? '' })
+    setOpen(true)
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -93,6 +103,23 @@ export default function ChannelsPage() {
             <Input label="Número" type="number" value={form.number} onChange={(e) => setForm((f) => ({ ...f, number: e.target.value }))} placeholder="1" />
           </div>
           <Input label="Descrição" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} placeholder="Opcional" />
+
+          {/* Template gráfico — fallback global do canal */}
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Template Gráfico (fallback global)</label>
+            <select
+              value={form.graphicTemplateId}
+              onChange={(e) => setForm((f) => ({ ...f, graphicTemplateId: e.target.value }))}
+              className="w-full rounded-lg bg-gray-800 border border-gray-700 text-gray-100 text-sm px-3 py-2 focus:outline-none focus:border-brand-500"
+            >
+              <option value="">Nenhum</option>
+              {templates.filter(t => t.active).map(t => (
+                <option key={t.id} value={t.id}>{t.name} ({t.elements?.length ?? 0} elem.)</option>
+              ))}
+            </select>
+            <p className="text-[11px] text-gray-600">Menor prioridade — sobrescrito por gráficos de clipe, saída, entrada ou roteiro.</p>
+          </div>
+
           <div className="flex gap-3 justify-end pt-2">
             <Button variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button>
             <Button loading={save.isPending} onClick={() => save.mutate()}>Salvar</Button>
