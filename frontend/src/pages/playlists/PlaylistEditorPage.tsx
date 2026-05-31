@@ -303,20 +303,34 @@ export default function PlaylistEditorPage() {
 
                   {/* Título + código clicável */}
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-white truncate">{clip.title}</p>
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        title="Duplo clique para editar o clipe"
-                        onDoubleClick={() => navigate('/clips', { state: { editClipId: clip.id } })}
-                        className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-blue-900 text-blue-300 border border-blue-700 cursor-pointer hover:bg-blue-800 hover:text-blue-200 transition-colors select-none flex-shrink-0 leading-4"
+                    <div className="flex items-center gap-2">
+                      {/* Badge código — duplo clique abre edição do clipe */}
+                      <span
+                        onDoubleClick={(e) => { e.stopPropagation(); navigate('/clips', { state: { editClipId: clip.id } }) }}
+                        style={{
+                          display: 'inline-block',
+                          fontSize: '10px',
+                          fontFamily: 'monospace',
+                          fontWeight: 700,
+                          padding: '1px 6px',
+                          borderRadius: '4px',
+                          background: '#1e3a5f',
+                          color: '#93c5fd',
+                          border: '1px solid #2563eb',
+                          cursor: 'pointer',
+                          userSelect: 'none',
+                          flexShrink: 0,
+                          whiteSpace: 'nowrap',
+                        }}
+                        title="Duplo clique para editar"
                       >
                         {clip.code}
-                      </button>
-                      {(clip as any).client?.name && (
-                        <span className="text-[11px] text-gray-500 truncate">· {(clip as any).client.name}</span>
-                      )}
+                      </span>
+                      <p className="text-sm font-medium text-white truncate">{clip.title}</p>
                     </div>
+                    {(clip as any).client?.name && (
+                      <p className="text-[11px] text-gray-500 truncate mt-0.5">{(clip as any).client.name}</p>
+                    )}
                   </div>
 
                   {/* Duração */}
