@@ -343,10 +343,10 @@ function PlaylistItemRow({
         onDragEnd={() => { fromHandle.current = false; onDragEnd() }}
         onDrop={(e) => { e.preventDefault(); onDrop() }}
         className={clsx(
-          'flex items-center gap-1.5 px-2 py-1.5 rounded transition-all',
+          'flex items-center gap-1.5 px-2 py-1.5 rounded transition-all bg-[rgb(9_23_110)]',
           isCurrent
-            ? 'bg-black ring-2 ring-yellow-400/80 shadow-[inset_3px_0_0_0_rgb(250_204_21)]'
-            : 'bg-black border-l-2 border-l-yellow-600/60',
+            ? 'ring-2 ring-yellow-400/80 shadow-[inset_3px_0_0_0_rgb(250_204_21)]'
+            : 'border-l-2 border-l-yellow-600/60',
           isDragging ? 'opacity-30' : '',
           isDragOver ? 'border-t-2 border-brand-400' : '',
         )}
