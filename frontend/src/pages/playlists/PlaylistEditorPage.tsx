@@ -301,36 +301,19 @@ export default function PlaylistEditorPage() {
                     </Badge>
                   )}
 
-                  {/* Título + código clicável */}
+                  {/* Título */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      {/* Badge código — duplo clique abre edição do clipe */}
+                    <p className="text-sm font-medium text-white truncate">{clip.title}</p>
+                    <p className="text-[11px] text-gray-500 truncate">
                       <span
                         onDoubleClick={(e) => { e.stopPropagation(); navigate('/clips', { state: { editClipId: clip.id } }) }}
-                        style={{
-                          display: 'inline-block',
-                          fontSize: '10px',
-                          fontFamily: 'monospace',
-                          fontWeight: 700,
-                          padding: '1px 6px',
-                          borderRadius: '4px',
-                          background: '#1e3a5f',
-                          color: '#93c5fd',
-                          border: '1px solid #2563eb',
-                          cursor: 'pointer',
-                          userSelect: 'none',
-                          flexShrink: 0,
-                          whiteSpace: 'nowrap',
-                        }}
-                        title="Duplo clique para editar"
+                        style={{ color:'#93c5fd', background:'#1e3a5f', border:'1px solid #2563eb', borderRadius:3, padding:'0 5px', cursor:'pointer', fontWeight:700, userSelect:'none' }}
+                        title="Duplo clique para editar o clipe"
                       >
                         {clip.code}
                       </span>
-                      <p className="text-sm font-medium text-white truncate">{clip.title}</p>
-                    </div>
-                    {(clip as any).client?.name && (
-                      <p className="text-[11px] text-gray-500 truncate mt-0.5">{(clip as any).client.name}</p>
-                    )}
+                      {(clip as any).client?.name && ` · ${(clip as any).client.name}`}
+                    </p>
                   </div>
 
                   {/* Duração */}
