@@ -117,9 +117,9 @@ function PositionCell({
 
   if (elements.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-gray-800 p-2 min-h-[64px] flex flex-col items-center justify-center gap-1 opacity-40">
-        <span className="text-[9px] text-gray-500 uppercase tracking-wide font-semibold">{label}</span>
-        <span className="text-[8px] text-gray-700">não utilizado</span>
+      <div className="rounded-lg border border-dashed border-gray-700 bg-gray-900/30 p-2 min-h-[64px] flex flex-col items-center justify-center gap-1.5">
+        <span className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">{label}</span>
+        <span className="text-[9px] text-gray-600 bg-gray-800/60 px-2 py-0.5 rounded">não utilizado</span>
       </div>
     )
   }
