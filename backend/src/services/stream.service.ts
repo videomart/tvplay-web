@@ -763,32 +763,59 @@ function buildConcatArgs(
   relayPort: number | null = null,
 ): string[] | null {
   const effectiveGraphic = contentGraphic ?? output.graphic ?? null
-  const logoUrl = effectiveGraphic?.logoUrl ? resolveLogoUrl(effectiveGraphic.logoUrl) : null
+
+  // Decide sistema gráfico: template (novo) ou legado
+  const useTemplate = !!effectiveGraphic?.templateElements?.length
+  const templateResult = useTemplate
+    ? buildTemplateFilter(effectiveGraphic!.templateElements!, output.videoResolution)
+    : null
+
+  // Inputs extras: logos do template OU logo legado
+  const logoUrl = (!useTemplate && effectiveGraphic?.logoUrl) ? resolveLogoUrl(effectiveGraphic.logoUrl) : null
+  const extraLogoInputs: string[] = templateResult
+    ? templateResult.extraInputs.flatMap(url => ['-stream_loop', '-1', '-i', resolveLogoUrl(url)])
+    : (logoUrl ? ['-stream_loop', '-1', '-i', logoUrl] : [])
+
+  console.log(`[stream/concat/${output.name}] gfx: useTemplate=${useTemplate} tmplElems=${effectiveGraphic?.templateElements?.length ?? 0} logoUrl=${effectiveGraphic?.logoUrl ?? 'none'}`)
 
   const input: string[] = [
     '-hide_banner', '-loglevel', 'warning', '-stats',
-    '-re',  // must be before -i; after -i it's treated as an output flag and FFmpeg rejects it
+    '-re',
     '-f', 'concat', '-safe', '0',
     '-protocol_whitelist', 'file,http,https,tcp,tls,crypto',
     '-i', concatFilePath,
-    ...(logoUrl ? ['-stream_loop', '-1', '-i', logoUrl] : []),
+    ...extraLogoInputs,
   ]
 
   const aBitrate = output.audioBitrate ?? 128
-  const videoBitrateArgs = output.videoBitrate
-    ? ['-b:v', `${output.videoBitrate}k`,
-       '-maxrate', `${Math.round(output.videoBitrate * 1.5)}k`,
-       '-bufsize', `${output.videoBitrate * 2}k`]
-    : []
-
-  const { filterArgs, mapArgs } = buildVideoFilter(output.videoResolution, effectiveGraphic, !!logoUrl)
-  const videoCodec = [
-    ...filterArgs,
-    '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
-    ...videoBitrateArgs,
-    '-c:a', 'aac', '-ar', '44100', '-b:a', `${aBitrate}k`,
-    ...mapArgs,
+  const vBitrate = output.videoBitrate || 4000
+  const videoBitrateArgs = [
+    '-b:v', `${vBitrate}k`,
+    '-maxrate', `${Math.round(vBitrate * 1.2)}k`,
+    '-bufsize', `${vBitrate}k`,
   ]
+
+  let videoCodec: string[]
+  if (useTemplate && templateResult) {
+    videoCodec = [
+      ...templateResult.filterArgs,
+      '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
+      ...videoBitrateArgs,
+      '-g', '60', '-keyint_min', '60', '-sc_threshold', '0',
+      '-c:a', 'aac', '-ar', '44100', '-b:a', `${aBitrate}k`,
+      ...templateResult.mapArgs,
+    ]
+  } else {
+    const { filterArgs, mapArgs } = buildVideoFilter(output.videoResolution, effectiveGraphic, !!logoUrl)
+    videoCodec = [
+      ...filterArgs,
+      '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
+      ...videoBitrateArgs,
+      '-g', '60', '-keyint_min', '60', '-sc_threshold', '0',
+      '-c:a', 'aac', '-ar', '44100', '-b:a', `${aBitrate}k`,
+      ...mapArgs,
+    ]
+  }
 
   // Relay mode: redirect to UDP loopback
   if (relayPort !== null && isRelayCapable(output.type)) {
