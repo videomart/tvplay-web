@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma'
 import { config } from '../config'
 import * as streamService from './stream.service'
 import type { GraphicConfig } from './stream.service'
+import * as tickerService from './ticker.service'
 
 const execFileAsync = promisify(execFile)
 
@@ -562,6 +563,19 @@ async function fetchConcatItems(
   return { items, endIndex }
 }
 
+// Inicia feeds RSS de todos os elementos TICKER com rssUrl de um gráfico ativo
+function startTickerFeeds(graphic: GraphicConfig | null): void {
+  const elements = graphic?.templateElements
+  if (!elements?.length) return
+  for (const el of elements) {
+    if (el.type === 'TICKER' && el.rssUrl && el.id) {
+      tickerService.startFeed(el.id, el.rssUrl).catch(() => {})
+    } else if (el.type === 'TICKER' && el.text && el.id) {
+      tickerService.ensureStaticFile(el.id, el.text)
+    }
+  }
+}
+
 // Inicia streaming para um item da playlist, tratando URL clips e FILE clips
 async function startStreamingForItem(
   channelId: string,
@@ -569,6 +583,7 @@ async function startStreamingForItem(
   graphic: GraphicConfig | null,
 ): Promise<void> {
   if (!item) return
+  startTickerFeeds(graphic)
   if (isUrlClip(item.sourceType, item.sourceUrl) && item.sourceUrl) {
     const clipUrl = item.sourceUrl
     console.log(`[playout] startStreamingForItem ch=${channelId} — URL clip, resolvendo: ${clipUrl}`)
@@ -805,6 +820,7 @@ export async function play(channelId: string, playlistId: string, startItemId?: 
   states.set(channelId, state)
   await prisma.channel.update({ where: { id: channelId }, data: { status: 'PLAYING' } }).catch(() => {})
   persistState(channelId, playlistId, startIndex)
+  startTickerFeeds(activeGraphic)
   startTimer(channelId)
   if (isUrlClip(firstItem?.sourceType, firstItem?.sourceUrl) && firstItem?.sourceUrl) {
     const clipUrl = firstItem.sourceUrl
@@ -868,6 +884,7 @@ export async function stop(channelId: string): Promise<PlayoutState> {
   stopTimer(channelId)
   streamService.clearConcatRun(channelId)
   streamService.stopAllStreaming(channelId)
+  tickerService.stopAll()
   const state = states.get(channelId) ?? defaultState(channelId)
   state.status = 'STOPPED'
   state.position = 0

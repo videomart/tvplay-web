@@ -81,7 +81,9 @@ function GraphicPreview({
           case 'TEXT':
             return <div key={el.id} style={base}>{el.text || 'Texto'}</div>
           case 'TICKER':
-            return <div key={el.id} style={base}>📜 {el.text || 'Ticker...'}</div>
+            return <div key={el.id} style={base}>
+              📜 {el.rssUrl ? `[RSS] ${el.text || '...'}` : (el.text || 'Ticker...')}
+            </div>
           case 'LOWER_THIRD':
             return (
               <div key={el.id} style={{ ...base, whiteSpace: 'normal' }}>

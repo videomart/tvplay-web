@@ -16,8 +16,10 @@ const elementSchema = z.object({
   width:     z.number().int().optional().nullable(),
   height:    z.number().int().optional().nullable(),
   padding:   z.number().int().min(0).default(10),
-  active:    z.boolean().default(true),
-  order:     z.number().int().default(0),
+  tickerSpeed: z.number().int().min(1).max(16).default(2),
+  rssUrl:      z.string().url().optional().nullable(),
+  active:      z.boolean().default(true),
+  order:       z.number().int().default(0),
 })
 
 const templateSchema = z.object({

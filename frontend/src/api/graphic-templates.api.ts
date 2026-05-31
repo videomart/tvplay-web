@@ -35,10 +35,12 @@ export interface GraphicElement {
   width?:    number | null
   height?:   number | null
   padding:   number
-  active:    boolean
-  order:     number
-  createdAt: string
-  updatedAt: string
+  tickerSpeed: number       // 1–8, padrão 2
+  rssUrl?:     string | null
+  active:      boolean
+  order:       number
+  createdAt:   string
+  updatedAt:   string
 }
 
 export interface GraphicTemplate {

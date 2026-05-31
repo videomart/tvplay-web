@@ -28,6 +28,7 @@ const emptyElement: Omit<GraphicElement, 'id' | 'templateId' | 'createdAt' | 'up
   imageUrl: null, text: '', subtitle: null,
   fontColor: '#FFFFFF', bgColor: null, fontSize: 32,
   opacity: 1, bold: false, width: null, height: null, padding: 10,
+  tickerSpeed: 2, rssUrl: null,
   active: true, order: 0,
 }
 
@@ -208,11 +209,54 @@ export default function GraphicTemplateEditorPage() {
           {(['TEXT', 'TICKER', 'LOWER_THIRD'].includes(form.type)) && (
             <div className="space-y-1">
               <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">
-                {form.type === 'LOWER_THIRD' ? 'Título (linha 1)' : 'Texto'}
+                {form.type === 'LOWER_THIRD' ? 'Título (linha 1)' : form.type === 'TICKER' ? 'Texto padrão (quando sem RSS)' : 'Texto'}
               </label>
               <input value={form.text ?? ''} onChange={e => setForm(v => ({ ...v, text: e.target.value || null }))}
-                placeholder={form.type === 'CLOCK' ? 'ex: %H:%M:%S' : 'Texto...'}
+                placeholder={form.type === 'TICKER' ? 'Texto que será exibido no ticker...' : 'Texto...'}
                 className="w-full rounded-lg bg-gray-800 border border-gray-700 text-white text-sm px-3 py-2 focus:outline-none focus:border-brand-500" />
+            </div>
+          )}
+
+          {/* Controles exclusivos do Ticker */}
+          {form.type === 'TICKER' && (
+            <div className="space-y-4 p-4 rounded-lg bg-gray-800/40 border border-gray-700">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Configurações do Ticker</p>
+
+              {/* Velocidade */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Velocidade</label>
+                  <span className="text-sm font-bold text-brand-300">{form.tickerSpeed}×</span>
+                </div>
+                <input
+                  type="range" min={1} max={8} step={1}
+                  value={form.tickerSpeed ?? 2}
+                  onChange={e => setForm(v => ({ ...v, tickerSpeed: +e.target.value }))}
+                  className="w-full accent-brand-500 cursor-pointer"
+                />
+                <div className="flex justify-between text-[10px] text-gray-600">
+                  <span>Lento</span><span>Normal (2)</span><span>Rápido</span>
+                </div>
+              </div>
+
+              {/* Feed RSS */}
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+                  Feed RSS <span className="text-gray-600 font-normal normal-case">(opcional — substitui o texto padrão)</span>
+                </label>
+                <input
+                  type="url"
+                  value={form.rssUrl ?? ''}
+                  onChange={e => setForm(v => ({ ...v, rssUrl: e.target.value || null }))}
+                  placeholder="https://feeds.example.com/noticias.rss"
+                  className="w-full rounded-lg bg-gray-800 border border-gray-700 text-white text-sm px-3 py-2 focus:outline-none focus:border-brand-500"
+                />
+                {form.rssUrl && (
+                  <p className="text-[11px] text-emerald-400/80">
+                    ✓ Manchetes atualizadas a cada 5 min. Texto padrão usado se o feed falhar.
+                  </p>
+                )}
+              </div>
             </div>
           )}
 

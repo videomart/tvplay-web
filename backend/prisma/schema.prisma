@@ -363,6 +363,10 @@ model GraphicElement {
   height     Int?      // px — LOGO/BOX
   padding    Int       @default(10)
 
+  // Ticker
+  tickerSpeed Int      @default(2)  // pixels/frame (1=lento … 8=rápido)
+  rssUrl      String?              // URL de feed RSS (substitui text quando preenchido)
+
   active     Boolean   @default(true)
   order      Int       @default(0)
 

@@ -16,6 +16,8 @@ export interface GraphicElementConfig {
   width?: number | null
   height?: number | null
   padding: number
+  tickerSpeed?: number | null
+  rssUrl?: string | null
 }
 
 export interface GraphicConfig {
@@ -113,20 +115,21 @@ function TemplateElement({ el, clock }: { el: GraphicElementConfig; clock: strin
         </div>
       )
 
-    case 'TICKER':
-      if (!el.text) return null
+    case 'TICKER': {
+      const hasRss   = !!el.rssUrl
+      const showText = hasRss ? (el.text || 'Feed RSS ativo') : el.text
+      if (!showText) return null
+      const speed    = Math.max(1, Math.min(16, el.tickerSpeed ?? 2))
+      const duration = Math.round(28 / speed)
       return (
         <div style={{ ...pos, zIndex: 10, opacity: el.opacity, overflow: 'hidden', maxWidth: '80%' }}>
-          <span
-            style={{
-              ...textBaseStyle(el),
-              animation: 'tvplay-ticker 14s linear infinite',
-            }}
-          >
-            {el.text}
+          <span style={{ ...textBaseStyle(el), animation: `tvplay-ticker ${duration}s linear infinite` }}>
+            {showText}
+            {hasRss && <span style={{ opacity: 0.5, fontSize: '75%', marginLeft: 4 }}>[RSS]</span>}
           </span>
         </div>
       )
+    }
 
     case 'LOWER_THIRD': {
       const title = el.text?.trim()

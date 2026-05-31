@@ -4,6 +4,7 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { prisma } from '../lib/prisma'
 import { config } from '../config'
+import { tickerFilePath } from './ticker.service'
 
 // Hook registrado pelo camera.service para parar câmera quando qualquer
 // operação de streaming iniciar — evita dois FFmpeg escrevendo na mesma saída.
@@ -14,19 +15,22 @@ export function registerStopCameraHook(fn: (channelId: string) => void) {
 
 // Elemento individual de um template gráfico
 export type GraphicElementConfig = {
-  type:      'LOGO' | 'CLOCK' | 'TEXT' | 'TICKER' | 'LOWER_THIRD'
-  position:  'TL' | 'TC' | 'TR' | 'ML' | 'MC' | 'MR' | 'BL' | 'BC' | 'BR' | 'BAR_TOP' | 'BAR_BOTTOM'
-  imageUrl?: string | null
-  text?:     string | null
-  subtitle?: string | null
-  fontColor: string
-  bgColor?:  string | null
-  fontSize:  number
-  opacity:   number
-  bold:      boolean
-  width?:    number | null
-  height?:   number | null
-  padding:   number
+  id?:          string           // presente quando vem do DB; usado pelo ticker RSS
+  type:         'LOGO' | 'CLOCK' | 'TEXT' | 'TICKER' | 'LOWER_THIRD'
+  position:     'TL' | 'TC' | 'TR' | 'ML' | 'MC' | 'MR' | 'BL' | 'BC' | 'BR' | 'BAR_TOP' | 'BAR_BOTTOM'
+  imageUrl?:    string | null
+  text?:        string | null
+  subtitle?:    string | null
+  fontColor:    string
+  bgColor?:     string | null
+  fontSize:     number
+  opacity:      number
+  bold:         boolean
+  width?:       number | null
+  height?:      number | null
+  padding:      number
+  tickerSpeed?: number | null  // pixels/frame (default 2)
+  rssUrl?:      string | null  // feed RSS — usa textfile quando preenchido
 }
 
 export type GraphicConfig = {
@@ -433,13 +437,21 @@ export function buildTemplateFilter(
       case 'TEXT':
         if (el.text) { segs.push(`${cur}${makeDrawtext(el.text)}${o}`); pushed = true }
         break
-      case 'TICKER':
-        if (el.text) {
-          const tickerY = el.position.startsWith('B') ? `H-th-${pad}` : `${pad}`
-          segs.push(`${cur}drawtext=${font}text='${escTxt(el.text)}':fontsize=${fs}:fontcolor=${fc}:${bg}x=w-mod(n*2\\,w+tw):y=${tickerY}${bold}${o}`)
+      case 'TICKER': {
+        const speed    = Math.max(1, Math.min(16, el.tickerSpeed ?? 2))
+        const tickerY  = el.position.startsWith('B') ? `H-th-${pad}` : `${pad}`
+        const scrollX  = `x=w-mod(n*${speed}\\,w+tw):y=${tickerY}`
+        if (el.rssUrl) {
+          // Feed RSS: usa textfile com reload periódico (a cada 300 frames ≈ 12s)
+          const file = tickerFilePath(el.id ?? 'default').replace(/'/g, "\\'")
+          segs.push(`${cur}drawtext=${font}textfile='${file}':reload=300:fontsize=${fs}:fontcolor=${fc}:${bg}${scrollX}${bold}${o}`)
+          pushed = true
+        } else if (el.text) {
+          segs.push(`${cur}drawtext=${font}text='${escTxt(el.text)}':fontsize=${fs}:fontcolor=${fc}:${bg}${scrollX}${bold}${o}`)
           pushed = true
         }
         break
+      }
       case 'LOWER_THIRD': {
         const title = el.text?.trim()
         const sub   = el.subtitle?.trim()
