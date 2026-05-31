@@ -175,17 +175,21 @@ export default function PlaylistsListPage() {
               </Tr>
             ) : data.map((pl) => (
               <React.Fragment key={pl.id}>
-              <Tr onClick={() => navigate(`/roteiros/${pl.id}`)}>
+              <Tr>
                 <Td>
                   <div className="flex items-center gap-2">
-                    <ListVideo className="h-4 w-4 text-gray-600 shrink-0" />
-                    {/* Badge azul — duplo clique expande os itens do roteiro */}
+                    {/* Badge azul — clique expande/fecha, ícone → navega para editor */}
                     <span
-                      onDoubleClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === pl.id ? null : pl.id) }}
-                      style={{ display:'inline-block', fontFamily:'monospace', fontWeight:700, fontSize:13, padding:'2px 8px', borderRadius:4, background: expandedId === pl.id ? '#1e40af' : '#1e3a5f', color:'#93c5fd', border:'1px solid #2563eb', cursor:'pointer', userSelect:'none', whiteSpace:'nowrap' }}
-                      title="Duplo clique para ver os itens do roteiro"
+                      onClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === pl.id ? null : pl.id) }}
+                      style={{ display:'inline-flex', alignItems:'center', gap:4, fontFamily:'monospace', fontWeight:700, fontSize:13, padding:'2px 8px', borderRadius:4, background: expandedId === pl.id ? '#1e40af' : '#1e3a5f', color:'#93c5fd', border:'1px solid #2563eb', cursor:'pointer', userSelect:'none', whiteSpace:'nowrap' }}
+                      title={expandedId === pl.id ? 'Clique para fechar' : 'Clique para ver itens'}
                     >
                       {pl.name}
+                      <span
+                        onClick={(e) => { e.stopPropagation(); navigate(`/roteiros/${pl.id}`) }}
+                        title="Abrir editor completo"
+                        style={{ fontSize:11, opacity:0.7, marginLeft:2, cursor:'pointer' }}
+                      >→</span>
                     </span>
                     {pl.locked && <span className="text-[10px] bg-gray-700 text-gray-400 px-1.5 py-0.5 rounded">Bloqueado</span>}
                     {(pl as any).loop && (
