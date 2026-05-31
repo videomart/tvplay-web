@@ -307,7 +307,7 @@ export default function PlaylistEditorPage() {
                     <div className="flex items-center gap-1.5">
                       <span
                         title="Duplo clique para editar o clipe"
-                        onDoubleClick={() => navigate(`/clips?edit=${clip.id}`)}
+                        onDoubleClick={() => navigate('/clips', { state: { editClipId: clip.id } })}
                         className="text-[11px] font-mono text-brand-400/80 hover:text-brand-300 cursor-pointer underline-offset-2 hover:underline truncate transition-colors select-none"
                       >
                         {clip.code}

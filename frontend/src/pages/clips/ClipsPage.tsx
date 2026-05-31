@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useLocation } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, Search, Upload, CheckCircle2, Clock, XCircle, Play, Scissors, Film, Link, HardDrive } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -68,6 +68,7 @@ function formatDur(sec?: number) {
 export default function ClipsPage() {
   const qc = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
+  const location = useLocation()
   const [open, setOpen] = useState(false)
   const [previewClip, setPreviewClip] = useState<Clip | null>(null)
   const [urlPreviewClip, setUrlPreviewClip] = useState<Clip | null>(null)
@@ -209,17 +210,16 @@ export default function ClipsPage() {
     setOpen(true)
   }
 
-  // Abre o modal de edição quando navega com ?edit=clipId (ex: duplo clique no roteiro)
-  const editIdFromUrl = searchParams.get('edit')
+  // Abre o modal de edição quando navega com state.editClipId (duplo clique no roteiro)
   useEffect(() => {
-    if (!editIdFromUrl) return
-    clipsApi.get(editIdFromUrl)
-      .then(c => {
-        openEdit(c)
-        setSearchParams(p => { p.delete('edit'); return p })
-      })
-      .catch(() => {})
-  }, [editIdFromUrl]) // eslint-disable-line react-hooks/exhaustive-deps
+    const editClipId = (location.state as any)?.editClipId
+    if (!editClipId) return
+    clipsApi.get(editClipId)
+      .then(c => { openEdit(c) })
+      .catch(() => toast.error('Clipe não encontrado'))
+    // limpa o state para não reabrir ao voltar
+    window.history.replaceState({}, '')
+  }, [location.state]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleDirectUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? [])
