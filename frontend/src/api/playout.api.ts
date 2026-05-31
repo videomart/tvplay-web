@@ -26,11 +26,28 @@ export interface CurrentItem {
   mediaReady: boolean
 }
 
+export interface GraphicElementConfig {
+  type: 'LOGO' | 'CLOCK' | 'TEXT' | 'TICKER' | 'LOWER_THIRD'
+  position: 'TL' | 'TC' | 'TR' | 'ML' | 'MC' | 'MR' | 'BL' | 'BC' | 'BR' | 'BAR_TOP' | 'BAR_BOTTOM'
+  imageUrl?: string | null
+  text?: string | null
+  subtitle?: string | null
+  fontColor: string
+  bgColor?: string | null
+  fontSize: number
+  opacity: number
+  bold: boolean
+  width?: number | null
+  height?: number | null
+  padding: number
+}
+
 export interface ActiveGraphic {
   logoUrl?: string | null
   logoPosition?: string | null
   showClock?: boolean
   lowerText?: string | null
+  templateElements?: GraphicElementConfig[]
 }
 
 export interface PlayoutState {

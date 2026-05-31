@@ -121,6 +121,7 @@ export interface ActiveGraphic {
   logoPosition?: string | null
   showClock?: boolean
   lowerText?: string | null
+  templateElements?: import('./stream.service').GraphicElementConfig[]
 }
 
 export interface PlayoutState {
@@ -436,13 +437,13 @@ async function resolveGraphic(
   // Converte Graphic (com ou sem template) em GraphicConfig unificado
   async function graphicToConfig(graphic: any): Promise<GraphicConfig | null> {
     if (!graphic?.active) return null
-    if (graphic.templateId && graphic.elementValues) {
+    if (graphic.templateId) {
       const tmpl = await prisma.graphicTemplate.findUnique({
         where: { id: graphic.templateId },
         include: { elements: { where: { active: true }, orderBy: { order: 'asc' } } },
       })
       if (!tmpl?.active || !tmpl.elements.length) return null
-      const values = graphic.elementValues as Record<string, any>
+      const values = (graphic.elementValues ?? {}) as Record<string, any>
       const merged = tmpl.elements
         .map((el: any) => ({ ...el, ...(values[el.id] ?? {}) }))
         .filter((el: any) => el.active !== false)

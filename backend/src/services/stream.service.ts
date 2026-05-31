@@ -778,19 +778,32 @@ function buildConcatArgs(
 ): string[] | null {
   const effectiveGraphic = contentGraphic ?? output.graphic ?? null
 
+  // Se graphic (raw Prisma) tem templateId mas não templateElements, converte inline
+  let resolvedGraphic = effectiveGraphic as any
+  if (resolvedGraphic && resolvedGraphic.templateId && !resolvedGraphic.templateElements) {
+    const tmplElems = resolvedGraphic.template?.elements
+    if (tmplElems?.length) {
+      const values: Record<string, any> = resolvedGraphic.elementValues ?? {}
+      const merged = tmplElems
+        .map((el: any) => ({ ...el, ...(values[el.id] ?? {}) }))
+        .filter((el: any) => el.active !== false)
+      resolvedGraphic = { templateElements: merged }
+    }
+  }
+
   // Decide sistema gráfico: template (novo) ou legado
-  const useTemplate = !!effectiveGraphic?.templateElements?.length
+  const useTemplate = !!resolvedGraphic?.templateElements?.length
   const templateResult = useTemplate
-    ? buildTemplateFilter(effectiveGraphic!.templateElements!, output.videoResolution)
+    ? buildTemplateFilter(resolvedGraphic.templateElements, output.videoResolution)
     : null
 
   // Inputs extras: logos do template OU logo legado
-  const logoUrl = (!useTemplate && effectiveGraphic?.logoUrl) ? resolveLogoUrl(effectiveGraphic.logoUrl) : null
+  const logoUrl = (!useTemplate && resolvedGraphic?.logoUrl) ? resolveLogoUrl(resolvedGraphic.logoUrl) : null
   const extraLogoInputs: string[] = templateResult
-    ? templateResult.extraInputs.flatMap(url => ['-stream_loop', '-1', '-i', resolveLogoUrl(url)])
+    ? templateResult.extraInputs.flatMap((url: string) => ['-stream_loop', '-1', '-i', resolveLogoUrl(url)])
     : (logoUrl ? ['-stream_loop', '-1', '-i', logoUrl] : [])
 
-  console.log(`[stream/concat/${output.name}] gfx: useTemplate=${useTemplate} tmplElems=${effectiveGraphic?.templateElements?.length ?? 0} logoUrl=${effectiveGraphic?.logoUrl ?? 'none'}`)
+  console.log(`[stream/concat/${output.name}] gfx: useTemplate=${useTemplate} tmplElems=${resolvedGraphic?.templateElements?.length ?? 0} logoUrl=${resolvedGraphic?.logoUrl ?? 'none'}`)
 
   const input: string[] = [
     '-hide_banner', '-loglevel', 'warning', '-stats',
@@ -820,7 +833,7 @@ function buildConcatArgs(
       ...templateResult.mapArgs,
     ]
   } else {
-    const { filterArgs, mapArgs } = buildVideoFilter(output.videoResolution, effectiveGraphic, !!logoUrl)
+    const { filterArgs, mapArgs } = buildVideoFilter(output.videoResolution, resolvedGraphic, !!logoUrl)
     videoCodec = [
       ...filterArgs,
       '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
