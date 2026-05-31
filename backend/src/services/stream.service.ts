@@ -153,7 +153,7 @@ function spawnRelay(channelId: string, output: OutputConfig, port: number): Rela
         if (!relayProcs.has(channelId)) return
         const current = relayProcs.get(channelId)?.get(output.id)
         if (current && current.proc !== proc) return
-        const dbOutput = await prisma.streamOutput.findUnique({ where: { id: output.id }, include: { graphic: true } })
+        const dbOutput = await prisma.streamOutput.findUnique({ where: { id: output.id }, include: { graphic: { include: { template: { include: { elements: { where: { active: true }, orderBy: { order: 'asc' } } } } } } } })
         if (!dbOutput?.active) return
         const newEntry = spawnRelay(channelId, dbOutput, port)
         if (!newEntry) return
@@ -485,17 +485,31 @@ function buildArgs(
   const isRtspInput = lowerInputUrl.startsWith('rtsp://')
   const isHttpInput = lowerInputUrl.startsWith('http://') || lowerInputUrl.startsWith('https://')
 
+  // Se output.graphic (raw Prisma) tem templateId mas não templateElements, converte inline
+  let resolvedGraphic = effectiveGraphic as any
+  if (resolvedGraphic && resolvedGraphic.templateId && !resolvedGraphic.templateElements) {
+    const tmplElems = resolvedGraphic.template?.elements
+    if (tmplElems?.length) {
+      const values: Record<string, any> = resolvedGraphic.elementValues ?? {}
+      const merged = tmplElems
+        .map((el: any) => ({ ...el, ...(values[el.id] ?? {}) }))
+        .filter((el: any) => el.active !== false)
+      resolvedGraphic = { templateElements: merged }
+    }
+  }
+
   // Decide qual sistema gráfico usar: template (novo) ou legado (Graphic simples)
-  const useTemplate = !isLive && !!effectiveGraphic?.templateElements?.length
-  console.log(`[stream/${output.name}] gfx: isLive=${isLive} useTemplate=${useTemplate} tmplElems=${effectiveGraphic?.templateElements?.length ?? 0} logoUrl=${effectiveGraphic?.logoUrl ?? 'none'} showClock=${effectiveGraphic?.showClock}`)
+  const useTemplate = !isLive && !!(resolvedGraphic?.templateElements?.length)
+  console.log(`[stream/${output.name}] gfx: isLive=${isLive} useTemplate=${useTemplate} tmplElems=${resolvedGraphic?.templateElements?.length ?? 0}`)
   const templateResult = useTemplate
-    ? buildTemplateFilter(effectiveGraphic!.templateElements!, output.videoResolution)
+    ? buildTemplateFilter(resolvedGraphic.templateElements, output.videoResolution)
     : null
 
   // Inputs extras: logos do template OU logo legado
+  const legacyLogoUrl = (!isLive && resolvedGraphic?.logoUrl) ? resolveLogoUrl(resolvedGraphic.logoUrl) : null
   const extraLogoInputs: string[] = templateResult
-    ? templateResult.extraInputs.flatMap(url => ['-stream_loop', '-1', '-i', resolveLogoUrl(url)])
-    : (logoUrl ? ['-stream_loop', '-1', '-i', logoUrl] : [])
+    ? templateResult.extraInputs.flatMap((url: string) => ['-stream_loop', '-1', '-i', resolveLogoUrl(url)])
+    : (legacyLogoUrl ? ['-stream_loop', '-1', '-i', legacyLogoUrl] : [])
 
   const input: string[] = [
     '-hide_banner', '-loglevel', 'warning', '-stats',
@@ -529,7 +543,7 @@ function buildArgs(
     ]
   } else {
     // Sistema legado: Graphic simples
-    const { filterArgs, mapArgs } = buildVideoFilter(output.videoResolution, effectiveGraphic, !!logoUrl)
+    const { filterArgs, mapArgs } = buildVideoFilter(output.videoResolution, resolvedGraphic, !!legacyLogoUrl)
     videoCodec = [
       ...filterArgs,
       '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
@@ -645,7 +659,7 @@ function spawnOutput(
         if (current && current.proc !== proc) return
         const dbOutput = await prisma.streamOutput.findUnique({
           where: { id: output.id },
-          include: { graphic: true },
+          include: { graphic: { include: { template: { include: { elements: { where: { active: true }, orderBy: { order: 'asc' } } } } } } },
         })
         if (!dbOutput?.active) return
         const newSp = spawnOutput(channelId, dbOutput, hlsUrl, 0, false, sp.contentGraphic, relayPort)
@@ -677,7 +691,7 @@ export async function startStreaming(
 
   const outputs = await prisma.streamOutput.findMany({
     where: { channelId, active: true },
-    include: { graphic: true },
+    include: { graphic: { include: { template: { include: { elements: { where: { active: true }, orderBy: { order: 'asc' } } } } } } },
   })
   if (!outputs.length) return
 
@@ -908,7 +922,7 @@ export async function startStreamingFromPlaylist(
 
   const outputs = await prisma.streamOutput.findMany({
     where: { channelId, active: true },
-    include: { graphic: true },
+    include: { graphic: { include: { template: { include: { elements: { where: { active: true }, orderBy: { order: 'asc' } } } } } } },
   })
   if (!outputs.length) return
 
@@ -961,7 +975,7 @@ export async function startOutput(
   stopOutput(channelId, outputId)
   const output = await prisma.streamOutput.findUnique({
     where: { id: outputId },
-    include: { graphic: true },
+    include: { graphic: { include: { template: { include: { elements: { where: { active: true }, orderBy: { order: 'asc' } } } } } } },
   })
   if (!output || !output.active) return
 
@@ -1004,7 +1018,7 @@ export async function startStreamingFromUrl(
   stopAllStreaming(channelId)
   const outputs = await prisma.streamOutput.findMany({
     where: { channelId, active: true },
-    include: { graphic: true },
+    include: { graphic: { include: { template: { include: { elements: { where: { active: true }, orderBy: { order: 'asc' } } } } } } },
   })
   if (!outputs.length) return
   const map = new Map<string, StreamProcess>()
@@ -1027,7 +1041,7 @@ export async function startStreamingFromUrlReencode(
 ) {
   const outputs = await prisma.streamOutput.findMany({
     where: { channelId, active: true },
-    include: { graphic: true },
+    include: { graphic: { include: { template: { include: { elements: { where: { active: true }, orderBy: { order: 'asc' } } } } } } },
   })
   if (!outputs.length) return
 
@@ -1051,7 +1065,7 @@ export async function startStreamingFromFallback(channelId: string, fallbackType
   stopAllStreaming(channelId)
   const outputs = await prisma.streamOutput.findMany({
     where: { channelId, active: true },
-    include: { graphic: true },
+    include: { graphic: { include: { template: { include: { elements: { where: { active: true }, orderBy: { order: 'asc' } } } } } } },
   })
   if (!outputs.length) return
 
