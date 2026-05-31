@@ -346,8 +346,8 @@ function drawtextXY(pos: string, pad: number, _w?: number | null, _h?: number | 
     case 'BL': return `x=${pad}:y=H-th-${pad}`
     case 'BC': return `x=(W-tw)/2:y=H-th-${pad}`
     case 'BR': return `x=W-tw-${pad}:y=H-th-${pad}`
-    case 'BAR_TOP': return `x=${pad}:y=${pad}`
-    case 'BAR_BOTTOM': return `x=${pad}:y=H-th-${pad}`
+    case 'BAR_TOP':    return `x=0:y=0`
+    case 'BAR_BOTTOM': return `x=0:y=H-th`
     default: return `x=${pad}:y=${pad}`
   }
 }
@@ -442,7 +442,10 @@ export function buildTemplateFilter(
         // t = tempo em segundos (framerate-independent); speed em px/seg
         const speed    = Math.max(1, Math.min(400, el.tickerSpeed ?? 5))
         const loop     = el.tickerLoop !== false   // default true
-        const tickerY  = el.position.startsWith('B') ? `H-th-${pad}` : `${pad}`
+        const tickerY  = el.position === 'BAR_BOTTOM' ? `H-th`
+                       : el.position === 'BAR_TOP'    ? `0`
+                       : el.position.startsWith('B')  ? `H-th-${pad}`
+                       : `${pad}`
         // loop=true: mod (cicla); loop=false: max(-tw, ...) (para ao sair)
         const scrollX  = loop
           ? `x=w-mod(t*${speed}\\,w+tw):y=${tickerY}`

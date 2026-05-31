@@ -128,11 +128,14 @@ function TemplateElement({ el, clock, rssText }: { el: GraphicElementConfig; clo
         ? (rssText ?? '⏳ carregando RSS...')
         : (el.text || '')
       if (!showText) return null
+      const isBar    = el.position === 'BAR_BOTTOM' || el.position === 'BAR_TOP'
       const isBottom = ['BL','BC','BR','BAR_BOTTOM'].includes(el.position)
       return (
         <div style={{
           position: 'absolute', left: 0, right: 0,
-          ...(isBottom ? { bottom: el.padding } : { top: el.padding }),
+          ...(isBottom
+            ? { bottom: isBar ? 0 : el.padding }
+            : { top:    isBar ? 0 : el.padding }),
           overflow: 'hidden', zIndex: 10, opacity: el.opacity,
         }}>
           <span style={{ ...textBaseStyle(el), display: 'inline-block', paddingLeft: '100%', animation: `tvplay-ticker ${duration}s linear ${loop ? 'infinite' : '1 forwards'}` }}>

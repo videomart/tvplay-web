@@ -517,7 +517,7 @@ function TemplatePreview({ elements }: { elements: GraphicElement[] }) {
   }, [elements.map(e => e.id + e.rssUrl).join(',')])  // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="relative w-full bg-black rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
+    <div className="relative w-full bg-black rounded-t-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
       <style>{`@keyframes tmpl-ticker{0%{transform:translateX(0)}100%{transform:translateX(-100%)}}`}</style>
       <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center">
         <span className="text-gray-700 text-xs uppercase tracking-widest">Vídeo</span>
@@ -559,10 +559,11 @@ function TemplatePreview({ elements }: { elements: GraphicElement[] }) {
               ? (rssTexts[el.id] ?? '⏳ carregando RSS...')
               : (el.text ?? 'Ticker...')
             const isBot = el.position.startsWith('B')
+            const isBar = el.position === 'BAR_BOTTOM' || el.position === 'BAR_TOP'
             return (
               <div key={el.id} style={{
                 position: 'absolute', left: 0, right: 0,
-                ...(isBot ? { bottom: 8 } : { top: 8 }),
+                ...(isBot ? { bottom: isBar ? 0 : 8 } : { top: isBar ? 0 : 8 }),
                 overflow: 'hidden', zIndex: 10,
                 backgroundColor: el.bgColor ?? undefined,
                 opacity: el.opacity ?? 1,
