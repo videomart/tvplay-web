@@ -186,17 +186,19 @@ export default function SettingsPage() {
               placeholder="https://..."
             />
             <p className="text-[11px] text-gray-600">
-              Recomendado: fundo transparente, quadrado, mínimo 128×128 px.
-              Aparece na barra lateral com altura de 28 px.
+              Formato ideal: <strong className="text-gray-400">400 × 120 px</strong>, paisagem (horizontal), fundo transparente — PNG ou SVG.
+              Aparece em largura total na barra lateral.
             </p>
             {empresa.logoUrl && (
-              <div className="mt-1 flex items-center gap-3">
-                <img
-                  src={empresa.logoUrl}
-                  alt="preview"
-                  className="h-14 w-14 object-contain rounded-lg bg-gray-800 p-1 border border-gray-700"
-                />
-                <span className="text-xs text-gray-500">Pré-visualização</span>
+              <div className="mt-2 space-y-1">
+                <span className="text-[11px] text-gray-500">Pré-visualização (proporção real na sidebar):</span>
+                <div className="bg-gray-900 rounded-lg p-3 border border-gray-700" style={{ width: 224 }}>
+                  <img
+                    src={empresa.logoUrl}
+                    alt="preview"
+                    className="w-full max-h-20 object-contain rounded-xl bg-white/5 p-2"
+                  />
+                </div>
               </div>
             )}
           </div>
