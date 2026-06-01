@@ -115,7 +115,8 @@ function buildRelayArgs(output: OutputConfig, port: number): string[] | null {
   if (!isRelayCapable(output.type)) return null
   // -re: lê o buffer UDP na taxa nativa do stream (evita burst ao vivo para YouTube/RTMP)
   // fifo_size reduzido: menos acúmulo de buffer entre troca de clipes
-  const udpUrl    = `udp://0.0.0.0:${port}?fifo_size=1000000&overrun_nonfatal=1`
+  // timeout=3s: relay sai rápido se o content process morrer, evitando 30s de silêncio no RTMP
+  const udpUrl    = `udp://0.0.0.0:${port}?fifo_size=1000000&overrun_nonfatal=1&timeout=3000000`
   const inputArgs = ['-hide_banner', '-loglevel', 'warning', '-stats', '-re', '-f', 'mpegts', '-i', udpUrl]
   const codec     = ['-c', 'copy']
   switch (output.type) {
@@ -166,7 +167,7 @@ function spawnRelay(channelId: string, output: OutputConfig, port: number): Rela
     if (registered?.proc === proc) channel?.delete(output.id)
     const isError = code !== null && code !== 0 && code !== 255
     if (isError && !entry.stopped) {
-      console.warn(`[relay/${channelId}/${output.name}] Saiu com código ${code} — reconectando relay em 5s...`)
+      console.warn(`[relay/${channelId}/${output.name}] Saiu com código ${code} — reconectando relay em 2s...`)
       setTimeout(async () => {
         if (entry.stopped) return
         // If the channel relay map was deleted (stopRelays called), don't resurrect
@@ -178,7 +179,7 @@ function spawnRelay(channelId: string, output: OutputConfig, port: number): Rela
         const newEntry = spawnRelay(channelId, dbOutput, port)
         if (!newEntry) return
         relayProcs.get(channelId)!.set(output.id, newEntry)
-      }, 5000)
+      }, 2000)
     }
   })
 
@@ -558,7 +559,10 @@ function buildArgs(
     '-hide_banner', '-loglevel', 'warning', '-stats',
     ...(isLive && isRtmpInput ? ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5'] : []),
     ...(isLive && isRtspInput ? ['-rtsp_transport', 'tcp', '-stimeout', '10000000'] : []),
-    ...(isLive && isHttpInput ? ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '10', '-timeout', '30000000'] : []),
+    // reconnect em HTTP/HLS tanto para live quanto para VOD (YouTube googlevideo.com pode dar flap)
+    ...(isHttpInput ? ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5'] : []),
+    ...(!isLive && isHttpInput ? ['-timeout', '15000000'] : []),
+    ...(isLive && isHttpInput ? ['-timeout', '30000000'] : []),
     ...(isLive ? [] : ['-re']),
     ...(cueIn > 0 && !isLive ? ['-ss', String(Math.floor(cueIn))] : []),
     '-i', inputUrl,
