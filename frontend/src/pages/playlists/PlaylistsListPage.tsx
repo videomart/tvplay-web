@@ -25,6 +25,17 @@ export default function PlaylistsListPage() {
   const [filterChannel, setFilterChannel] = useState('')
   const [form, setForm] = useState(empty)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [sortBy,  setSortBy]  = useState('date')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+
+  function toggleSort(col: string) {
+    if (sortBy === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortBy(col); setSortDir('asc') }
+  }
+  function si(col: string) {
+    if (sortBy !== col) return ' ↕'
+    return sortDir === 'asc' ? ' ▲' : ' ▼'
+  }
 
   // Busca itens do roteiro expandido
   const { data: expandedPlaylist, isLoading: expandedLoading } = useQuery({
@@ -92,6 +103,21 @@ export default function PlaylistsListPage() {
 
   const selectedChannel = channels.find((ch) => ch.id === filterChannel)
 
+  const sorted = [...data].sort((a, b) => {
+    let av: any, bv: any
+    switch (sortBy) {
+      case 'name':    av = a.name.toLowerCase(); bv = b.name.toLowerCase(); break
+      case 'channel': av = a.channel?.number ?? 999; bv = b.channel?.number ?? 999; break
+      case 'date':    av = a.date; bv = b.date; break
+      case 'items':   av = a._count?.items ?? 0; bv = b._count?.items ?? 0; break
+      case 'graphic': av = (a.graphic?.name ?? '').toLowerCase(); bv = (b.graphic?.name ?? '').toLowerCase(); break
+      default:        av = a.date; bv = b.date
+    }
+    if (av < bv) return sortDir === 'asc' ? -1 : 1
+    if (av > bv) return sortDir === 'asc' ? 1 : -1
+    return 0
+  })
+
   return (
     <div className="p-6 space-y-6">
 
@@ -155,11 +181,11 @@ export default function PlaylistsListPage() {
       <div className="card">
         <Table>
           <Thead>
-            <Th>Roteiro</Th>
-            <Th>Canal</Th>
-            <Th>Data</Th>
-            <Th>Itens</Th>
-            <Th>Gráfico</Th>
+            <Th onClick={() => toggleSort('name')}    title="Ordenar por nome"    className="cursor-pointer select-none hover:text-white">Roteiro{si('name')}</Th>
+            <Th onClick={() => toggleSort('channel')} title="Ordenar por canal"   className="cursor-pointer select-none hover:text-white">Canal{si('channel')}</Th>
+            <Th onClick={() => toggleSort('date')}    title="Ordenar por data"    className="cursor-pointer select-none hover:text-white">Data{si('date')}</Th>
+            <Th onClick={() => toggleSort('items')}   title="Ordenar por itens"   className="cursor-pointer select-none hover:text-white">Itens{si('items')}</Th>
+            <Th onClick={() => toggleSort('graphic')} title="Ordenar por gráfico" className="cursor-pointer select-none hover:text-white">Gráfico{si('graphic')}</Th>
             <Th className="w-24 text-right">Ações</Th>
           </Thead>
           <Tbody>
@@ -173,7 +199,7 @@ export default function PlaylistsListPage() {
                     : 'Nenhum roteiro cadastrado.'}
                 </Td>
               </Tr>
-            ) : data.map((pl) => (
+            ) : sorted.map((pl) => (
               <React.Fragment key={pl.id}>
               <Tr>
                 <Td>
