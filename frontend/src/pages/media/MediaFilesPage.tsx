@@ -150,11 +150,30 @@ export default function MediaFilesPage() {
           Upload de Mídia
         </Button>
 
-        {/* Contexto da mídia selecionada */}
+      </div>
+
+      {/* ── Filtros + botões contextuais ────────────────────────────────────── */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <Filter className="h-4 w-4 text-gray-500 flex-shrink-0" />
+        <button onClick={() => setFilterOrphan(v => !v)}
+          className={clsx('flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+            filterOrphan ? 'bg-orange-600/30 text-orange-300 ring-1 ring-orange-500/40' : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>
+          <AlertTriangle className="h-3.5 w-3.5" />Somente órfãos
+        </button>
+        {['', 'READY', 'ERROR', 'PENDING', 'PROCESSING'].map(s => (
+          <button key={s} onClick={() => setFilterStatus(s)}
+            className={clsx('px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+              filterStatus === s ? 'bg-brand-600/30 text-brand-300 ring-1 ring-brand-500/40' : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>
+            {s || 'Todos'}
+          </button>
+        ))}
+
+        {/* Contexto da mídia selecionada — canto direito */}
         {selected && (
           <>
-            <div className="w-px h-5 bg-gray-700 flex-shrink-0" />
-            <span className="text-sm font-medium text-brand-300 truncate max-w-[200px]" title={selected.originalName}>
+            <div className="flex-1" />
+            <div className="w-px h-4 bg-gray-700 flex-shrink-0" />
+            <span className="text-sm font-medium text-brand-300 truncate max-w-[180px]" title={selected.originalName}>
               {selected.originalName}
             </span>
             {selected.ingestStatus === 'READY' && selected.hlsPath && (
@@ -190,23 +209,6 @@ export default function MediaFilesPage() {
               className="p-1.5 rounded text-gray-600 hover:text-gray-400 transition-colors text-xs">✕</button>
           </>
         )}
-      </div>
-
-      {/* ── Filtros ─────────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <Filter className="h-4 w-4 text-gray-500 flex-shrink-0" />
-        <button onClick={() => setFilterOrphan(v => !v)}
-          className={clsx('flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
-            filterOrphan ? 'bg-orange-600/30 text-orange-300 ring-1 ring-orange-500/40' : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>
-          <AlertTriangle className="h-3.5 w-3.5" />Somente órfãos
-        </button>
-        {['', 'READY', 'ERROR', 'PENDING', 'PROCESSING'].map(s => (
-          <button key={s} onClick={() => setFilterStatus(s)}
-            className={clsx('px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
-              filterStatus === s ? 'bg-brand-600/30 text-brand-300 ring-1 ring-brand-500/40' : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>
-            {s || 'Todos'}
-          </button>
-        ))}
       </div>
 
       {/* ── Tabela ──────────────────────────────────────────────────────────── */}
