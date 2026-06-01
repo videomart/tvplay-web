@@ -71,7 +71,10 @@ async function resolveViaYtDlp(rawUrl: string): Promise<string | null> {
         return url
       }
     } catch (err: any) {
-      console.error(`[yt-dlp] Falha (client=${client || 'default'}): ${String(err?.message ?? err).slice(0, 200)}`)
+      const msg = String(err?.message ?? err)
+      const stderr = (err as any)?.stderr ? String((err as any).stderr).slice(0, 400) : ''
+      console.error(`[yt-dlp] Falha (client=${client || 'default'}): ${msg.slice(0, 300)}`)
+      if (stderr) console.error(`[yt-dlp] stderr: ${stderr}`)
     }
   }
   console.error(`[yt-dlp] TODAS as tentativas falharam para: ${rawUrl}`)
