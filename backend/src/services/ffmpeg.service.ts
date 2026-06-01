@@ -130,12 +130,17 @@ export async function transcodeImageToHLS(
   const h = dims.height % 2 === 0 ? dims.height : dims.height - 1
 
   await new Promise<void>((resolve, reject) => {
-    ffmpeg(inputPath)
-      .inputOptions(['-loop', '1'])
+    ffmpeg()
+      // Input 0: imagem em loop
+      .input(inputPath)
+      .inputOptions(['-loop', '1', '-r', '25'])
+      // Input 1: áudio silencioso via lavfi
+      .input('anullsrc=r=44100:cl=stereo')
+      .inputOptions(['-f', 'lavfi'])
       .videoCodec('libx264')
+      .audioCodec('aac')
       .addOptions([
         `-t ${durationSecs}`,
-        '-r 25',
         `-vf scale=${w}:${h}`,
         '-pix_fmt yuv420p',
         '-profile:v main',
@@ -144,8 +149,8 @@ export async function transcodeImageToHLS(
         '-crf 23',
         '-g 50',
         '-keyint_min 50',
-        '-f lavfi -i anullsrc=r=44100:cl=stereo',   // áudio silencioso
-        '-c:a aac',
+        '-map', '0:v:0',
+        '-map', '1:a:0',
         '-shortest',
         '-hls_time 6',
         '-hls_playlist_type vod',
