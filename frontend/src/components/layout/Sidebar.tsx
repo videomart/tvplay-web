@@ -63,19 +63,23 @@ export default function Sidebar({ isOpen = true, onClose }: SidebarProps) {
         <X className="h-4 w-4" />
       </button>
 
-      {/* Logo + nome — 2 linhas */}
-      <div className="px-4 py-4 border-b border-gray-800">
-        <NavLink to="/playout" onClick={onClose} className="flex flex-col items-center gap-2 hover:opacity-80 transition-opacity">
-          {logoUrl ? (
-            <img src={logoUrl} alt={companyName} className="h-12 w-12 rounded-xl object-contain bg-white/5 p-1" />
-          ) : (
-            <div className="p-2.5 bg-brand-600 rounded-xl">
-              <Radio className="h-5 w-5 text-white" />
-            </div>
-          )}
-          <div className="text-center w-full">
-            <p className="text-sm font-bold text-white leading-tight truncate">{companyName}</p>
-            <p className="text-[10px] text-gray-500 leading-tight">Web Playout</p>
+      {/* Logo + nome — 2 colunas iguais */}
+      <div className="px-3 py-4 border-b border-gray-800">
+        <NavLink to="/playout" onClick={onClose} className="grid grid-cols-2 items-center gap-2 hover:opacity-80 transition-opacity">
+          {/* Coluna esquerda: logo */}
+          <div className="flex items-center justify-center">
+            {logoUrl ? (
+              <img src={logoUrl} alt={companyName} className="h-16 w-16 rounded-xl object-contain bg-white/5 p-1" />
+            ) : (
+              <div className="p-3 bg-brand-600 rounded-xl">
+                <Radio className="h-7 w-7 text-white" />
+              </div>
+            )}
+          </div>
+          {/* Coluna direita: nome */}
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-white leading-snug break-words">{companyName}</p>
+            <p className="text-[10px] text-gray-500 leading-tight mt-0.5">Web Playout</p>
           </div>
         </NavLink>
       </div>
