@@ -158,8 +158,7 @@ export default function MediaFilesPage() {
           </button>
         ))}
 
-        {/* Separador + Novo + Upload — fixos à direita dos filtros */}
-        <div className={selected ? undefined : 'flex-1'} />
+        {/* Novo + Upload — fixos logo após os filtros */}
         {uploadLoading && (
           <span className="text-xs text-gray-400 flex items-center gap-1 flex-shrink-0">
             <Loader2 className="h-3 w-3 animate-spin" />{uploadCount.done}/{uploadCount.total} · {uploadProgress}%
