@@ -63,14 +63,18 @@ export default function Sidebar({ isOpen = true, onClose }: SidebarProps) {
         <X className="h-4 w-4" />
       </button>
 
-      {/* Logo — topo, centrada, sem título */}
-      <div className="px-3 pt-6 pb-4 border-b border-gray-800 flex justify-center">
-        <NavLink to="/playout" onClick={onClose} className="hover:opacity-80 transition-opacity">
+      {/* Logo — topo, retangular, largura total */}
+      <div className="px-3 pt-4 pb-3 border-b border-gray-800">
+        <NavLink to="/playout" onClick={onClose} className="block hover:opacity-80 transition-opacity">
           {logoUrl ? (
-            <img src={logoUrl} alt={companyName} className="h-24 w-24 rounded-2xl object-contain bg-white/5 p-1.5" />
+            <img
+              src={logoUrl}
+              alt={companyName}
+              className="w-full max-h-20 object-contain rounded-xl bg-white/5 p-2"
+            />
           ) : (
-            <div className="p-4 bg-brand-600 rounded-2xl">
-              <Radio className="h-10 w-10 text-white" />
+            <div className="flex items-center justify-center py-4 bg-brand-600/20 rounded-xl">
+              <Radio className="h-8 w-8 text-brand-400" />
             </div>
           )}
         </NavLink>
