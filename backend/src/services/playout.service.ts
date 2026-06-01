@@ -1169,7 +1169,7 @@ export async function insertClip(channelId: string, clipId: string, afterItemId?
   const state = states.get(channelId)
   if (!state || !state.playlistId) throw new Error('Nenhuma playlist ativa')
 
-  const clip = await prisma.clip.findUnique({ where: { id: clipId } })
+  const clip = await prisma.clip.findUnique({ where: { id: clipId }, include: { media: { select: { mimeType: true } } } })
   if (!clip) throw new Error('Clipe não encontrado')
 
   const refItem = afterItemId ? await prisma.playlistItem.findUnique({ where: { id: afterItemId } }) : null
@@ -1190,8 +1190,20 @@ export async function insertClip(channelId: string, clipId: string, afterItemId?
     data: { order: { increment: 1 } },
   })
 
+  // Aplica duração padrão conforme tipo do clipe (slide/imagem ou URL)
+  const sysSettings = await prisma.systemSettings.findUnique({ where: { id: 'singleton' } })
+  let defaultMaxDuration: number | null = null
+  const isUrlClipType = isUrlClip(clip.sourceType, clip.sourceUrl)
+  const isImageClip   = !isUrlClipType && clip.media?.mimeType?.startsWith('image/')
+
+  if (isImageClip && (sysSettings?.defaultSlideDuration ?? 0) > 0)
+    defaultMaxDuration = sysSettings!.defaultSlideDuration
+  else if (isUrlClipType && (sysSettings?.defaultUrlDuration ?? 0) > 0)
+    defaultMaxDuration = sysSettings!.defaultUrlDuration
+
   await prisma.playlistItem.create({
-    data: { playlistId: state.playlistId, clipId, order: insertOrder, loop: false, breakNum: 0 },
+    data: { playlistId: state.playlistId, clipId, order: insertOrder, loop: false, breakNum: 0,
+            ...(defaultMaxDuration ? { maxDuration: defaultMaxDuration } : {}) },
   })
 
   const { totalDuration, count } = await computePlaylistMeta(state.playlistId)

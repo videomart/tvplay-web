@@ -456,6 +456,12 @@ model SystemSettings {
   // Duração padrão do item BREAK ao inserir (em segundos)
   defaultBreakDuration Int @default(300)
 
+  // Duração padrão de slides (imagens) ao inserir na playlist (em segundos)
+  defaultSlideDuration Int @default(15)
+
+  // Duração máxima padrão de clipes URL (YouTube/SRT) ao inserir na playlist (em segundos, 0 = sem limite)
+  defaultUrlDuration   Int @default(0)
+
   updatedAt DateTime @updatedAt
 
   @@map("system_settings")

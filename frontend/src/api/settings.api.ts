@@ -11,6 +11,8 @@ export interface SystemSettings {
   defaultPlaylistOpen: boolean
   clockOffsetHours: number
   defaultBreakDuration: number
+  defaultSlideDuration: number
+  defaultUrlDuration: number
   updatedAt: string
 }
 

@@ -56,8 +56,10 @@ export default function SettingsPage() {
     defaultOutputsOpen: true,
     defaultPlaylistOpen: true,
   })
-  const [clockOffsetHours, setClockOffsetHours] = useState(0)
-  const [defaultBreakDuration, setDefaultBreakDuration] = useState(300)
+  const [clockOffsetHours,      setClockOffsetHours]      = useState(0)
+  const [defaultBreakDuration,  setDefaultBreakDuration]  = useState(300)
+  const [defaultSlideDuration,  setDefaultSlideDuration]  = useState(15)
+  const [defaultUrlDuration,    setDefaultUrlDuration]    = useState(0)
   const [channelNames, setChannelNames] = useState<Record<string, { name: string; description: string }>>({})
 
   useEffect(() => {
@@ -75,6 +77,8 @@ export default function SettingsPage() {
       })
       setClockOffsetHours(settings.clockOffsetHours ?? 0)
       setDefaultBreakDuration(settings.defaultBreakDuration ?? 300)
+      setDefaultSlideDuration(settings.defaultSlideDuration ?? 15)
+      setDefaultUrlDuration(settings.defaultUrlDuration ?? 0)
     }
   }, [settings])
 
@@ -370,11 +374,52 @@ export default function SettingsPage() {
             </div>
           </div>
 
+          {/* Duração padrão de slides (imagens) */}
+          <div className="border-t border-gray-800 pt-4 space-y-2">
+            <h3 className="text-sm font-semibold text-white">Slide (Imagem) — Duração Padrão</h3>
+            <p className="text-xs text-gray-500">
+              Tempo aplicado automaticamente ao inserir um clipe de imagem (PNG, JPG, etc.) na playlist.
+              Pode ser ajustado individualmente com o ⏱ por item.
+            </p>
+            <div className="flex items-center gap-3">
+              <label className="text-sm text-gray-300 flex-shrink-0">Duração (segundos):</label>
+              <input
+                type="number" min={1} max={3600}
+                value={defaultSlideDuration}
+                onChange={(e) => setDefaultSlideDuration(Math.max(1, Number(e.target.value)))}
+                className={inputCls + ' w-28'}
+              />
+              <span className="text-xs text-gray-500">
+                {Math.floor(defaultSlideDuration / 60)}:{String(defaultSlideDuration % 60).padStart(2, '0')} min
+              </span>
+            </div>
+          </div>
+
+          {/* Duração padrão de clipes URL (YouTube, SRT) */}
+          <div className="border-t border-gray-800 pt-4 space-y-2">
+            <h3 className="text-sm font-semibold text-white">YouTube / URL — Duração Máxima Padrão</h3>
+            <p className="text-xs text-gray-500">
+              Limite automático ao inserir clipes URL (YouTube, SRT) na playlist. Use <code className="bg-gray-800 px-1 rounded">0</code> para sem limite (avança só manualmente ou pelo timer do clipe).
+            </p>
+            <div className="flex items-center gap-3">
+              <label className="text-sm text-gray-300 flex-shrink-0">Duração máx. (segundos):</label>
+              <input
+                type="number" min={0} max={86400}
+                value={defaultUrlDuration}
+                onChange={(e) => setDefaultUrlDuration(Math.max(0, Number(e.target.value)))}
+                className={inputCls + ' w-28'}
+              />
+              <span className="text-xs text-gray-500">
+                {defaultUrlDuration === 0 ? 'sem limite' : `${Math.floor(defaultUrlDuration / 60)}:${String(defaultUrlDuration % 60).padStart(2, '0')} min`}
+              </span>
+            </div>
+          </div>
+
           <div className="flex justify-end pt-2">
             <Button
               icon={<Save className="h-4 w-4" />}
               loading={saveMut.isPending}
-              onClick={() => saveMut.mutate({ ...playoutDefaults, clockOffsetHours, defaultBreakDuration })}
+              onClick={() => saveMut.mutate({ ...playoutDefaults, clockOffsetHours, defaultBreakDuration, defaultSlideDuration, defaultUrlDuration })}
             >
               Salvar
             </Button>

@@ -20,7 +20,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
       companyName, logoUrl, email,
       defaultMonitorOpen, defaultFallbackOpen,
       defaultOutputsOpen, defaultPlaylistOpen,
-      clockOffsetHours, defaultBreakDuration,
+      clockOffsetHours, defaultBreakDuration, defaultSlideDuration, defaultUrlDuration,
     } = request.body as {
       companyName?: string
       logoUrl?: string | null
@@ -31,6 +31,8 @@ export default async function settingsRoutes(app: FastifyInstance) {
       defaultPlaylistOpen?: boolean
       clockOffsetHours?: number
       defaultBreakDuration?: number
+      defaultSlideDuration?: number
+      defaultUrlDuration?: number
     }
 
     const result = await prisma.systemSettings.upsert({
@@ -46,6 +48,8 @@ export default async function settingsRoutes(app: FastifyInstance) {
         defaultPlaylistOpen:  defaultPlaylistOpen  ?? true,
         clockOffsetHours:     clockOffsetHours     ?? 0,
         defaultBreakDuration: defaultBreakDuration ?? 300,
+        defaultSlideDuration: defaultSlideDuration ?? 15,
+        defaultUrlDuration:   defaultUrlDuration   ?? 0,
       },
       update: {
         ...(companyName           !== undefined && { companyName }),
@@ -57,6 +61,8 @@ export default async function settingsRoutes(app: FastifyInstance) {
         ...(defaultPlaylistOpen   !== undefined && { defaultPlaylistOpen }),
         ...(clockOffsetHours      !== undefined && { clockOffsetHours }),
         ...(defaultBreakDuration  !== undefined && { defaultBreakDuration }),
+        ...(defaultSlideDuration  !== undefined && { defaultSlideDuration }),
+        ...(defaultUrlDuration    !== undefined && { defaultUrlDuration }),
       },
     })
 
