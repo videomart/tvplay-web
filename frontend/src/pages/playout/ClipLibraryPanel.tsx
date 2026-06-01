@@ -594,10 +594,10 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
       {/* ── Cabeçalho colunas (clicável para ordenar) ─────────────────────── */}
       <div className="flex items-center gap-1 px-3 py-1 border-y border-gray-800 bg-gray-900/90 sticky top-0 z-10 flex-shrink-0">
         <span className="text-[9px] font-bold text-gray-600 uppercase tracking-wide w-6 flex-shrink-0">T</span>
-        <button onClick={() => toggleSort('code')} className="text-[9px] font-bold text-gray-600 uppercase tracking-wide w-10 flex-shrink-0 text-left hover:text-gray-400 transition-colors cursor-pointer">
+        <button onClick={() => toggleSort('code')} className="text-[9px] font-bold text-gray-600 uppercase tracking-wide w-14 flex-shrink-0 text-left hover:text-gray-400 transition-colors cursor-pointer">
           Cód{si('code')}
         </button>
-        <button onClick={() => toggleSort('title')} className="text-[9px] font-bold text-gray-600 uppercase tracking-wide w-16 flex-shrink-0 text-left hover:text-gray-400 transition-colors cursor-pointer">
+        <button onClick={() => toggleSort('title')} className="text-[9px] font-bold text-gray-600 uppercase tracking-wide flex-1 min-w-0 text-left hover:text-gray-400 transition-colors cursor-pointer">
           Título{si('title')}
         </button>
         <span className="text-[9px] font-bold text-emerald-700 uppercase tracking-wide w-5 text-center flex-shrink-0">✓</span>
@@ -634,12 +634,12 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
                   : <span className="w-6 flex-shrink-0" />}
 
                 {/* Código */}
-                <span style={{ fontSize:9, fontFamily:'monospace', fontWeight:700, padding:'1px 4px', borderRadius:3, background:'#1e3a5f', color:'#93c5fd', border:'1px solid #2563eb', flexShrink:0, whiteSpace:'nowrap', width:42, overflow:'hidden', textOverflow:'ellipsis', display:'block' }}>
+                <span style={{ fontSize:9, fontFamily:'monospace', fontWeight:700, padding:'1px 4px', borderRadius:3, background:'#1e3a5f', color:'#93c5fd', border:'1px solid #2563eb', flexShrink:0, whiteSpace:'nowrap', width:56, overflow:'hidden', textOverflow:'ellipsis', display:'block' }}>
                   {clip.code}
                 </span>
 
                 {/* Título */}
-                <p className="w-16 flex-shrink-0 text-xs text-gray-200 truncate leading-tight">{clip.title}</p>
+                <p className="flex-1 min-w-0 text-xs text-gray-200 truncate leading-tight">{clip.title}</p>
 
                 {/* Presença */}
                 <span className="w-5 flex-shrink-0 text-center">
