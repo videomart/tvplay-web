@@ -564,10 +564,7 @@ function buildArgs(
     '-hide_banner', '-loglevel', 'warning', '-stats',
     ...(isLive && isRtmpInput ? ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5'] : []),
     ...(isLive && isRtspInput ? ['-rtsp_transport', 'tcp', '-stimeout', '10000000'] : []),
-    // Live HTTP (YouTube/HLS ao vivo): reconnect automático
     ...(isLive && isHttpInput ? ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '10', '-timeout', '30000000'] : []),
-    // VOD HTTP (googlevideo.com MP4): só reconnect simples — _streamed quebra URLs diretas do YouTube
-    ...(!isLive && isHttpInput ? ['-reconnect', '1', '-reconnect_delay_max', '5'] : []),
     ...(isLive ? [] : ['-re']),
     ...(cueIn > 0 && !isLive ? ['-ss', String(Math.floor(cueIn))] : []),
     '-i', inputUrl,
