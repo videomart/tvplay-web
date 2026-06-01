@@ -130,6 +130,7 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
   const [sortBy,  setSortBy]  = useState('title')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [page, setPage] = useState(1)
+  const [selectedLibraryClip, setSelectedLibraryClip] = useState<any | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // ── Estado CRUD ──────────────────────────────────────────────────────────
@@ -442,6 +443,55 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
         <Button size="sm" onClick={openNew} icon={<Plus className="h-3 w-3" />}>Novo</Button>
       </div>
 
+      {/* ── Barra contextual — aparece ao selecionar um clipe ─────────────── */}
+      {selectedLibraryClip && (
+        <div className="px-3 py-1.5 flex items-center gap-1.5 border-b border-brand-800/40 bg-brand-950/20 flex-shrink-0">
+          <span className="text-[10px] text-brand-400 font-mono font-bold truncate flex-1 min-w-0" title={selectedLibraryClip.title}>
+            {selectedLibraryClip.code} · {selectedLibraryClip.title}
+          </span>
+          {/* Preview HLS */}
+          {selectedLibraryClip.media?.hlsPath && selectedLibraryClip.media?.ingestStatus === 'READY' && (
+            <button onClick={() => setPreviewClip(selectedLibraryClip)} title="Preview"
+              className="p-1.5 rounded text-gray-500 hover:text-emerald-400 hover:bg-emerald-900/20 transition-colors">
+              <Play className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {/* Preview URL */}
+          {selectedLibraryClip.sourceType === 'URL' && selectedLibraryClip.sourceUrl && (
+            <button onClick={() => setUrlPreviewClip(selectedLibraryClip)} title="Preview URL"
+              className="p-1.5 rounded text-gray-500 hover:text-sky-400 hover:bg-sky-900/20 transition-colors">
+              <Link className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {/* Substituir mídia — apenas FILE */}
+          {selectedLibraryClip.sourceType !== 'URL' && (
+            <button onClick={() => { if (selectedLibraryClip.media?.ingestStatus === 'READY' && !window.confirm('Substituir arquivo?')) return; startUpload(selectedLibraryClip.id) }}
+              disabled={uploadingClipId !== null && uploadingClipId !== selectedLibraryClip.id}
+              title={selectedLibraryClip.media?.ingestStatus === 'READY' ? 'Substituir mídia' : 'Enviar mídia'}
+              className="p-1.5 rounded text-gray-500 hover:text-blue-400 hover:bg-blue-900/20 transition-colors disabled:opacity-30">
+              {uploadingClipId === selectedLibraryClip.id
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-400" />
+                : <Upload className={`h-3.5 w-3.5 ${selectedLibraryClip.media?.ingestStatus === 'READY' ? 'text-amber-400' : ''}`} />}
+            </button>
+          )}
+          {/* Editar */}
+          <button onClick={() => openEdit(selectedLibraryClip)} title="Editar"
+            className="p-1.5 rounded text-gray-500 hover:text-brand-400 hover:bg-brand-900/20 transition-colors">
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+          {/* Excluir */}
+          <button onClick={() => { remove.mutate(selectedLibraryClip.id); setSelectedLibraryClip(null) }} title="Desativar"
+            className="p-1.5 rounded text-gray-500 hover:text-red-400 hover:bg-red-900/20 transition-colors">
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+          {/* Fechar seleção */}
+          <button onClick={() => setSelectedLibraryClip(null)} title="Desfazer seleção"
+            className="p-1.5 rounded text-gray-600 hover:text-gray-400 transition-colors ml-1">
+            <span className="text-[10px] leading-none">✕</span>
+          </button>
+        </div>
+      )}
+
       {/* ── Seletor de canal ─────────────────────────────────────────────── */}
       {channels.length > 1 && (
         <div className="px-3 py-1.5 border-b border-gray-800 flex-shrink-0">
@@ -591,23 +641,23 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
         </div>
       </div>
 
-      {/* ── Cabeçalho colunas (clicável para ordenar) ─────────────────────── */}
+      {/* ── Cabeçalho colunas ─────────────────────────────────────────────── */}
       <div className="flex items-center gap-1 px-3 py-1 border-y border-gray-800 bg-gray-900/90 sticky top-0 z-10 flex-shrink-0">
         <span className="text-[9px] font-bold text-gray-600 uppercase tracking-wide w-6 flex-shrink-0">T</span>
-        <button onClick={() => toggleSort('code')} className="text-[9px] font-bold text-gray-600 uppercase tracking-wide w-14 flex-shrink-0 text-left hover:text-gray-400 transition-colors cursor-pointer">
+        <button onClick={() => toggleSort('code')} className="text-[9px] font-bold text-gray-600 uppercase w-14 flex-shrink-0 text-left hover:text-gray-400 cursor-pointer">
           Cód{si('code')}
         </button>
-        <button onClick={() => toggleSort('title')} className="text-[9px] font-bold text-gray-600 uppercase tracking-wide flex-1 min-w-0 text-left hover:text-gray-400 transition-colors cursor-pointer">
+        <button onClick={() => toggleSort('title')} className="text-[9px] font-bold text-gray-600 uppercase flex-1 min-w-0 text-left hover:text-gray-400 cursor-pointer">
           Título{si('title')}
         </button>
-        <span className="text-[9px] font-bold text-emerald-700 uppercase tracking-wide w-5 text-center flex-shrink-0">✓</span>
-        <button onClick={() => toggleSort('media')} className="text-[9px] font-bold text-gray-600 uppercase tracking-wide w-9 text-center flex-shrink-0 hover:text-gray-400 transition-colors cursor-pointer">
+        <span className="text-[9px] font-bold text-emerald-700 uppercase w-4 text-center flex-shrink-0">✓</span>
+        <button onClick={() => toggleSort('media')} className="text-[9px] font-bold text-gray-600 uppercase w-9 text-center flex-shrink-0 hover:text-gray-400 cursor-pointer">
           Mídia{si('media')}
         </button>
-        <button onClick={() => toggleSort('duration')} className="text-[9px] font-bold text-gray-600 uppercase tracking-wide w-9 text-right flex-shrink-0 hover:text-gray-400 transition-colors cursor-pointer">
+        <button onClick={() => toggleSort('duration')} className="text-[9px] font-bold text-gray-600 uppercase w-9 text-right flex-shrink-0 hover:text-gray-400 cursor-pointer">
           Dur{si('duration')}
         </button>
-        <span className="w-20 flex-shrink-0" />
+        <span className="w-6 flex-shrink-0" />
       </div>
 
       {/* ── Lista de clipes ───────────────────────────────────────────────── */}
@@ -625,9 +675,14 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
               <div key={clip.id}
                 draggable
                 onDragStart={(e) => { e.dataTransfer.setData('application/x-clip-id', clip.id); e.dataTransfer.effectAllowed = 'copy' }}
+                onClick={() => setSelectedLibraryClip(selectedLibraryClip?.id === clip.id ? null : clip)}
                 className={clsx(
-                  'flex items-center gap-1 px-2 py-1.5 transition-colors group cursor-grab active:cursor-grabbing',
-                  inPlaylistCount > 0 ? 'bg-emerald-950/20 hover:bg-emerald-950/30 border-l-2 border-emerald-700/40' : 'hover:bg-gray-800/30 border-l-2 border-transparent'
+                  'flex items-center gap-1 px-2 py-1.5 transition-colors cursor-pointer',
+                  selectedLibraryClip?.id === clip.id
+                    ? 'bg-brand-900/30 border-l-2 border-brand-500'
+                    : inPlaylistCount > 0
+                    ? 'bg-emerald-950/20 hover:bg-emerald-950/30 border-l-2 border-emerald-700/40'
+                    : 'hover:bg-gray-800/30 border-l-2 border-transparent'
                 )}>
                 {/* Tipo badge */}
                 {t ? <Badge bg={t.fontBackColor} color={t.fontColor} className="text-[8px] flex-shrink-0 w-6 text-center px-0.5">{t.code}</Badge>
@@ -654,37 +709,14 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
                   ? <span className="text-[9px] font-mono text-gray-600 flex-shrink-0 w-9 text-right">{formatTime(clip.media.duration)}</span>
                   : <span className="w-9 flex-shrink-0" />}
 
-                {/* Ações — ml-1 separa do badge Mídia */}
-                <div className="flex items-center gap-1 flex-shrink-0 w-20 justify-end ml-1">
-                  {clip.media?.hlsPath && clip.media.ingestStatus === 'READY' && (
-                    <button onClick={() => setPreviewClip(clip)} title="Preview" className="p-1 rounded text-gray-700 hover:text-emerald-400 transition-colors opacity-0 group-hover:opacity-100">
-                      <Play className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                  {clip.sourceType === 'URL' && clip.sourceUrl && (
-                    <button onClick={() => setUrlPreviewClip(clip)} title="Preview URL" className="p-1 rounded text-gray-700 hover:text-sky-400 transition-colors opacity-0 group-hover:opacity-100">
-                      <Link className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                  {clip.sourceType !== 'URL' && (
-                    <button onClick={() => { if (clip.media?.ingestStatus === 'READY' && !window.confirm('Substituir arquivo de mídia?')) return; startUpload(clip.id) }}
-                      disabled={uploadingClipId !== null && uploadingClipId !== clip.id}
-                      title={clip.media?.ingestStatus === 'READY' ? 'Substituir mídia' : 'Enviar mídia'}
-                      className="p-1 rounded text-gray-700 hover:text-blue-400 transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-20">
-                      {uploadingClipId === clip.id ? <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-400" /> : <Upload className={`h-3.5 w-3.5 ${clip.media?.ingestStatus === 'READY' ? 'text-amber-400' : ''}`} />}
-                    </button>
-                  )}
-                  <button onClick={() => openEdit(clip)} title="Editar" className="p-1 rounded text-gray-700 hover:text-brand-400 transition-colors opacity-0 group-hover:opacity-100">
-                    <Pencil className="h-3.5 w-3.5" />
-                  </button>
-                  <button onClick={() => remove.mutate(clip.id)} title="Desativar" className="p-1 rounded text-gray-700 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100">
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                  <button onClick={() => handleInsertClick(clip.id)} disabled={isPending || !targetChannelId} title="Inserir na playlist"
-                    className="p-1 rounded text-gray-600 hover:text-emerald-400 hover:bg-emerald-900/20 transition-colors disabled:opacity-40">
-                    {isPending ? <Loader2 className="h-4 w-4 animate-spin text-emerald-400" /> : <Plus className="h-4 w-4" />}
-                  </button>
-                </div>
+                {/* Apenas o botão inserir na linha */}
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleInsertClick(clip.id) }}
+                  disabled={isPending || !targetChannelId}
+                  title="Inserir na playlist"
+                  className="flex-shrink-0 p-1 rounded text-gray-600 hover:text-emerald-400 hover:bg-emerald-900/20 transition-colors disabled:opacity-40 w-6">
+                  {isPending ? <Loader2 className="h-4 w-4 animate-spin text-emerald-400" /> : <Plus className="h-4 w-4" />}
+                </button>
               </div>
             )
           })

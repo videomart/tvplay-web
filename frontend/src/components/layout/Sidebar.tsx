@@ -9,7 +9,7 @@ const primaryNav = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/playout',   icon: Radio,           label: 'Playout' },
   { to: '/roteiros',  icon: ListVideo,       label: 'Roteiros' },
-  { to: '/media',     icon: HardDrive,       label: 'Arquivos' },
+  { to: '/media',     icon: HardDrive,       label: 'Mídias' },
   { to: '/graphics', icon: Layers, label: 'Gráficos' },
 ]
 
