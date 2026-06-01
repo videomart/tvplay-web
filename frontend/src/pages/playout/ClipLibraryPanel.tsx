@@ -597,7 +597,7 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
         <button onClick={() => toggleSort('code')} className="text-[9px] font-bold text-gray-600 uppercase tracking-wide w-14 flex-shrink-0 text-left hover:text-gray-400 transition-colors cursor-pointer">
           Cód{si('code')}
         </button>
-        <button onClick={() => toggleSort('title')} className="text-[9px] font-bold text-gray-600 uppercase tracking-wide w-24 flex-shrink-0 text-left hover:text-gray-400 transition-colors cursor-pointer">
+        <button onClick={() => toggleSort('title')} className="text-[9px] font-bold text-gray-600 uppercase tracking-wide flex-1 min-w-0 text-left hover:text-gray-400 transition-colors cursor-pointer">
           Título{si('title')}
         </button>
         <span className="text-[9px] font-bold text-emerald-700 uppercase tracking-wide w-5 text-center flex-shrink-0">✓</span>
@@ -639,7 +639,7 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
                 </span>
 
                 {/* Título */}
-                <p className="w-24 flex-shrink-0 text-xs text-gray-200 truncate leading-tight">{clip.title}</p>
+                <p className="flex-1 min-w-0 text-xs text-gray-200 truncate leading-tight">{clip.title}</p>
 
                 {/* Presença */}
                 <span className="w-5 flex-shrink-0 text-center">
