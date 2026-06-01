@@ -130,22 +130,27 @@ export async function transcodeImageToHLS(
   const h = dims.height % 2 === 0 ? dims.height : dims.height - 1
 
   await new Promise<void>((resolve, reject) => {
+    // aevalsrc gera áudio silencioso via filter_complex (não requer demuxer lavfi)
+    const filterComplex = `aevalsrc=0:sample_rate=44100:duration=${durationSecs}:c=stereo[a];[0:v]scale=${w}:${h},format=yuv420p[v]`
     ffmpeg(inputPath)
       .inputOptions(['-loop', '1', '-r', '25'])
-      .videoCodec('libx264')
       .addOptions([
         `-t ${durationSecs}`,
-        `-vf scale=${w}:${h}`,
-        '-pix_fmt yuv420p',
-        '-profile:v main',
-        '-level 4.0',
-        '-preset fast',
-        '-crf 23',
-        '-g 50',
-        '-keyint_min 50',
-        '-an',                    // sem áudio (lavfi não disponível neste build)
-        '-hls_time 6',
-        '-hls_playlist_type vod',
+        '-filter_complex', filterComplex,
+        '-map', '[v]',
+        '-map', '[a]',
+        '-c:v', 'libx264',
+        '-profile:v', 'main',
+        '-level', '4.0',
+        '-preset', 'fast',
+        '-crf', '23',
+        '-g', '50',
+        '-keyint_min', '50',
+        '-c:a', 'aac',
+        '-ar', '44100',
+        '-b:a', '128k',
+        '-hls_time', '6',
+        '-hls_playlist_type', 'vod',
         `-hls_segment_filename ${segmentPattern}`,
       ])
       .output(playlistPath)

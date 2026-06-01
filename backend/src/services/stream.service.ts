@@ -566,7 +566,9 @@ function buildArgs(
     ...(isLive && isRtmpInput ? ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5'] : []),
     ...(isLive && isRtspInput ? ['-rtsp_transport', 'tcp', '-stimeout', '10000000'] : []),
     ...(isLive && isHttpInput ? ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '10', '-timeout', '30000000'] : []),
-    ...(isSrtInput ? ['-timeout', '10000000'] : []),   // SRT: timeout de reconexão
+    // VOD HTTP (YouTube googlevideo.com): desativa seek HTTP → FFmpeg lê linearmente sem tentar buscar o moov atom no fim do arquivo
+    ...(!isLive && isHttpInput ? ['-http_seekable', '0', '-reconnect', '1', '-reconnect_at_eof', '1', '-reconnect_delay_max', '5'] : []),
+    ...(isSrtInput ? ['-timeout', '10000000'] : []),
     ...(isLive ? [] : ['-re']),
     ...(cueIn > 0 && !isLive ? ['-ss', String(Math.floor(cueIn))] : []),
     '-i', inputUrl,

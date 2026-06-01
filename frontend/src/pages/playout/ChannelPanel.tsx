@@ -415,7 +415,7 @@ function PlaylistItemRow({
       className={clsx(
         'flex items-center gap-1.5 px-2 rounded transition-all',
         isCurrent  ? 'py-2 bg-emerald-400 ring-2 ring-emerald-300 shadow-[inset_3px_0_0_0_rgb(52_211_153)]' : 'py-1.5',
-        isPlayed   ? 'opacity-35' : '',
+        isPlayed   ? 'italic' : '',
         !isCurrent && !isSelected ? (lightRow ? 'bg-gray-200' : 'bg-gray-800') : '',
         !isCurrent && !isPlayed && !isSelected ? 'group hover:bg-violet-700' : '',
         isSelected && !isCurrent ? 'bg-blue-300 shadow-[inset_4px_0_0_0_rgb(29_78_216)]' : '',
@@ -469,7 +469,7 @@ function PlaylistItemRow({
         title={isSelected ? 'Clique para desselecionar · Duplo clique para ir para este clipe' : 'Clique para selecionar posição · Duplo clique para ir para este clipe'}
         className={clsx(
           'flex-1 text-left text-xs truncate transition-colors min-w-0 pl-1',
-          isCurrent ? 'text-emerald-950 font-bold cursor-default' : isPlayed ? 'text-gray-500 cursor-pointer' : isSelected ? 'text-black font-bold cursor-pointer' : lightRow ? 'text-gray-900 font-medium group-hover:!text-white cursor-pointer' : 'text-gray-300 group-hover:!text-white cursor-pointer'
+          isCurrent ? 'text-emerald-950 font-bold cursor-default' : isPlayed ? 'text-gray-500 cursor-pointer not-italic' : isSelected ? 'text-black font-bold cursor-pointer' : lightRow ? 'text-gray-900 font-medium group-hover:!text-white cursor-pointer' : 'text-gray-300 group-hover:!text-white cursor-pointer'
         )}
       >
         {item.title}
