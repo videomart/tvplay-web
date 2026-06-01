@@ -1138,26 +1138,31 @@ export async function startStreamingFromUrlReencode(
   if (map.size) channelProcs.set(channelId, map)
 }
 
-// Inicia streaming com fonte gerada (BLACK ou COLORBARS) para manter saída ativa enquanto parado.
-// Stops relays first (full streaming reset), then starts direct fallback output.
+// Inicia streaming com fonte gerada (BLACK ou COLORBARS).
+// Preserva o relay ativo para manter a conexão RTMP/SRT sem dropout.
 export async function startStreamingFromFallback(channelId: string, fallbackType: 'BLACK' | 'COLORBARS' | string) {
-  stopAllStreaming(channelId)
   const outputs = await prisma.streamOutput.findMany({
     where: { channelId, active: true },
     include: { graphic: { include: { template: { include: { elements: { where: { active: true }, orderBy: { order: 'asc' } } } } } } },
   })
   if (!outputs.length) return
 
+  // Garante que os relays estão ativos ANTES de parar o content process
+  await ensureRelays(channelId, outputs)
+  await stopStreaming(channelId)   // para só o content — relay continua vivo
+
   const map = new Map<string, StreamProcess>()
   for (const output of outputs) {
-    // Usa resolução configurada da saída ou padrão SD
     const size = output.videoResolution ?? '1280x720'
-    // Input lavfi correto: sem prefixo 'lavfi:' pois -f lavfi já define o formato
     const videoInput = fallbackType === 'COLORBARS'
       ? `smptehdbars=size=${size}:rate=25`
       : `color=c=black:size=${size}:rate=25`
-    const args = buildFallbackArgs(videoInput, output, output.graphic ?? null)
+
+    // Usa proxy port se relay-capable (mantém RTMP vivo via relay)
+    const port = isRelayCapable(output.type) ? proxyPortMap.get(output.id) ?? null : null
+    const args = buildFallbackArgs(videoInput, output, output.graphic ?? null, port)
     if (!args) continue
+
     const proc = spawn(config.ffmpeg.path, args, {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, TZ: clockTz() },
@@ -1170,19 +1175,16 @@ export async function startStreamingFromFallback(channelId: string, fallbackType
     })
     proc.on('exit', (code) => {
       const registeredFb = channelProcs.get(channelId)?.get(output.id)
-      if (registeredFb?.proc === proc) {
-        channelProcs.get(channelId)?.delete(output.id)
-      }
+      if (registeredFb?.proc === proc) channelProcs.get(channelId)?.delete(output.id)
       if (code !== null && code !== 0 && code !== 255 && !sp.stopped) {
-        console.warn(`[stream/${channelId}/${output.name}/fallback] Saiu com código ${code} — reconectando em 5s...`)
+        console.warn(`[stream/${channelId}/${output.name}/fallback] Saiu com código ${code} — reconectando em 2s...`)
         setTimeout(() => {
           if (sp.stopped) return
           startStreamingFromFallback(channelId, fallbackType).catch(() => {})
-        }, 5000)
+        }, 2000)
       }
     })
-    console.log(`[stream/${channelId}] Fallback ${fallbackType} (${size}) → ${output.name}`)
-    console.log(`[stream/${channelId}] FFmpeg args: ${args.join(' ')}`)
+    console.log(`[stream/${channelId}] Fallback ${fallbackType} (${size}) → ${output.name}${port ? ` via relay:${port}` : ' direto'}`)
     map.set(output.id, sp)
   }
   if (map.size) channelProcs.set(channelId, map)
@@ -1190,7 +1192,7 @@ export async function startStreamingFromFallback(channelId: string, fallbackType
 
 // Dois inputs: [0] padrão de vídeo lavfi, [1] áudio silencioso lavfi
 // Mapeamento explícito -map 0:v -map 1:a para evitar ambiguidade
-function buildFallbackArgs(videoInput: string, output: OutputConfig, graphic: GraphicConfig | null): string[] | null {
+function buildFallbackArgs(videoInput: string, output: OutputConfig, graphic: GraphicConfig | null, relayPort: number | null = null): string[] | null {
   const aBitrate = output.audioBitrate ?? 128
   // Sem logo no fallback (não há segundo input de imagem)
   const { filterArgs } = buildVideoFilter(output.videoResolution, graphic, false)
@@ -1208,6 +1210,11 @@ function buildFallbackArgs(videoInput: string, output: OutputConfig, graphic: Gr
     ...(output.videoBitrate ? ['-b:v', `${output.videoBitrate}k`, '-maxrate', `${Math.round(output.videoBitrate * 1.5)}k`, '-bufsize', `${output.videoBitrate * 2}k`] : []),
     '-c:a', 'aac', '-ar', '44100', '-b:a', `${aBitrate}k`,
   ]
+
+  // Relay-capable: roteia pelo proxy para manter RTMP/SRT vivo sem dropout
+  if (relayPort !== null && isRelayCapable(output.type)) {
+    return [...inputArgs, ...encodeArgs, '-f', 'mpegts', `udp://127.0.0.1:${relayPort}?pkt_size=1316`]
+  }
 
   switch (output.type) {
     case 'RTMP': {
