@@ -74,8 +74,8 @@ export default function LoginPage() {
           </Button>
         </form>
 
-        <p className="text-center text-xs text-gray-600 mt-6">
-          TVPlay Web — Fase 1 &middot; v1.0.0
+        <p className="text-center text-xs text-gray-600 mt-6 font-mono">
+          TVPlay Web &middot; v{__APP_BUILD__} &middot; {__BUILD_TIME__}
         </p>
       </div>
     </div>

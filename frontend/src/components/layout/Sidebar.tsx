@@ -143,6 +143,13 @@ export default function Sidebar({ isOpen = true, onClose }: SidebarProps) {
         <p className="text-[10px] text-gray-500 leading-tight mt-0.5">Web Playout</p>
       </div>
 
+      {/* Versão — acima do usuário */}
+      <div className="px-4 py-1.5 text-center border-t border-gray-800/40">
+        <p className="text-[9px] font-mono text-gray-700 leading-tight">
+          v{__APP_BUILD__} · {__BUILD_TIME__}
+        </p>
+      </div>
+
       {/* User */}
       <div className="p-3 border-t border-gray-800">
         <div className="flex items-center gap-3 px-2 py-1.5">
