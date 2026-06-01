@@ -575,7 +575,7 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
             className={clsx('text-[10px] px-2 py-0.5 rounded transition-colors', !typeId ? 'bg-brand-600/30 text-brand-300 ring-1 ring-brand-500/30' : 'bg-gray-800 text-gray-500 hover:bg-gray-700')}>
             Todos
           </button>
-          {activeTypes.map((t) => (
+          {allTypes.map((t) => (
             <button key={t.id} onClick={() => setTypeId(t.id === typeId ? '' : t.id)}
               className={clsx('text-[10px] px-2 py-0.5 rounded transition-colors', typeId === t.id ? 'ring-1 ring-white/20' : 'bg-gray-800 text-gray-500 hover:bg-gray-700')}
               style={typeId === t.id ? { backgroundColor: t.fontBackColor + '44', color: t.fontColor } : {}}>
