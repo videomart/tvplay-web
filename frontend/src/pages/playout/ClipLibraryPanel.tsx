@@ -433,7 +433,7 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
       <div className="px-3 py-2 flex items-center gap-1.5 border-b border-gray-800 flex-shrink-0 min-h-0">
         {/* Esquerda: label + Upload + Novo */}
         <Library className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
-        <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide flex-shrink-0">Mídias</span>
+        <span className="text-[10px] font-bold text-gray-300 bg-gray-800 border border-gray-700 px-2 py-0.5 rounded flex-shrink-0">Mídias</span>
         <Button size="sm" variant="secondary" loading={uploadDirectLoading}
           onClick={() => fileRefDirect.current?.click()}
           icon={<Film className="h-3 w-3 text-purple-400" />}
