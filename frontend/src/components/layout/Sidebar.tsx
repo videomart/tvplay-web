@@ -63,24 +63,16 @@ export default function Sidebar({ isOpen = true, onClose }: SidebarProps) {
         <X className="h-4 w-4" />
       </button>
 
-      {/* Logo + nome — 2 colunas iguais */}
-      <div className="px-3 py-4 border-b border-gray-800">
-        <NavLink to="/playout" onClick={onClose} className="grid grid-cols-2 items-center gap-2 hover:opacity-80 transition-opacity">
-          {/* Coluna esquerda: logo */}
-          <div className="flex items-center justify-center">
-            {logoUrl ? (
-              <img src={logoUrl} alt={companyName} className="h-16 w-16 rounded-xl object-contain bg-white/5 p-1" />
-            ) : (
-              <div className="p-3 bg-brand-600 rounded-xl">
-                <Radio className="h-7 w-7 text-white" />
-              </div>
-            )}
-          </div>
-          {/* Coluna direita: nome */}
-          <div className="min-w-0">
-            <p className="text-sm font-bold text-white leading-snug break-words">{companyName}</p>
-            <p className="text-[10px] text-gray-500 leading-tight mt-0.5">Web Playout</p>
-          </div>
+      {/* Logo — topo, centrada, sem título */}
+      <div className="px-3 pt-6 pb-4 border-b border-gray-800 flex justify-center">
+        <NavLink to="/playout" onClick={onClose} className="hover:opacity-80 transition-opacity">
+          {logoUrl ? (
+            <img src={logoUrl} alt={companyName} className="h-24 w-24 rounded-2xl object-contain bg-white/5 p-1.5" />
+          ) : (
+            <div className="p-4 bg-brand-600 rounded-2xl">
+              <Radio className="h-10 w-10 text-white" />
+            </div>
+          )}
         </NavLink>
       </div>
 
@@ -141,6 +133,12 @@ export default function Sidebar({ isOpen = true, onClose }: SidebarProps) {
           </>
         )}
       </nav>
+
+      {/* Nome da empresa — acima do usuário */}
+      <div className="px-4 py-3 border-t border-gray-800/60 text-center">
+        <p className="text-sm font-bold text-white leading-tight truncate">{companyName}</p>
+        <p className="text-[10px] text-gray-500 leading-tight mt-0.5">Web Playout</p>
+      </div>
 
       {/* User */}
       <div className="p-3 border-t border-gray-800">
