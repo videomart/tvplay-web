@@ -1204,6 +1204,7 @@ function buildFallbackArgs(videoInput: string, output: OutputConfig, graphic: Gr
 
   const inputArgs = [
     '-hide_banner', '-loglevel', 'warning',
+    '-re',                                          // gera em tempo real, não sobrecarrega relay
     '-f', 'lavfi', '-i', videoInput,
     '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo',
   ]
@@ -1213,6 +1214,7 @@ function buildFallbackArgs(videoInput: string, output: OutputConfig, graphic: Gr
     '-map', '0:v', '-map', '1:a',
     '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
     ...(output.videoBitrate ? ['-b:v', `${output.videoBitrate}k`, '-maxrate', `${Math.round(output.videoBitrate * 1.5)}k`, '-bufsize', `${output.videoBitrate * 2}k`] : []),
+    '-g', '50', '-keyint_min', '50', '-sc_threshold', '0',  // keyframe a cada 2s (25fps) — dentro do limite de 4s do YouTube
     '-c:a', 'aac', '-ar', '44100', '-b:a', `${aBitrate}k`,
   ]
 
