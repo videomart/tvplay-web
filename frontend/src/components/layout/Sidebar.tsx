@@ -70,8 +70,7 @@ export default function Sidebar({ isOpen = true, onClose }: SidebarProps) {
             <img
               src={logoUrl}
               alt={companyName}
-              className="w-full object-cover"
-              style={{ maxHeight: 72 }}
+              className="w-full h-auto block"
             />
           ) : (
             <div className="flex items-center justify-center py-5 bg-brand-600/20">
