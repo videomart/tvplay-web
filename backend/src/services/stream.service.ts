@@ -193,13 +193,18 @@ async function ensureRelays(channelId: string, outputs: OutputConfig[]): Promise
   const relayMap = relayProcs.get(channelId)!
   for (const output of outputs) {
     if (!isRelayCapable(output.type) || !output.url) continue
-    const existing = relayMap.get(output.id)
-    if (existing && !existing.stopped && existing.proc.exitCode === null) continue
-    const relayPort = getOrAllocRelayPort(output.id)
-    const relay = spawnRelay(channelId, output, relayPort)
-    if (relay) relayMap.set(output.id, relay)
 
-    // Inicia proxy SCTE-35 se ainda não está ativo
+    const relayPort = getOrAllocRelayPort(output.id)  // sempre aloca (idempotente)
+
+    // Inicia relay se não estiver ativo
+    const existing = relayMap.get(output.id)
+    if (!existing || existing.stopped || existing.proc.exitCode !== null) {
+      const relay = spawnRelay(channelId, output, relayPort)
+      if (relay) relayMap.set(output.id, relay)
+    }
+
+    // Proxy SCTE-35: sempre verifica — fora do guard do relay
+    // Garante que proxyPortMap tem a porta mesmo quando relay já estava ativo
     const key = proxyKey(channelId, output.id)
     if (!tsProxy.isProxyActive(key)) {
       const proxyPort = getOrAllocProxyPort(output.id)
