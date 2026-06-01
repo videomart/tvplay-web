@@ -59,12 +59,17 @@ export async function checkIsLive(url: string): Promise<{ isLive: boolean | null
 
 // Resolve via yt-dlp — tenta múltiplos player_client para contornar bot-check do YouTube
 async function resolveViaYtDlp(rawUrl: string): Promise<string | null> {
-  const base = ['--no-playlist', '-g', '--no-warnings', '--socket-timeout', '15']
-  const fmt  = 'best[protocol=m3u8_native]/best[vcodec!=none][acodec!=none][height<=720]/best[vcodec!=none][acodec!=none]/best'
+  const base = [
+    '--no-playlist', '-g', '--no-warnings', '--socket-timeout', '15',
+    '--js-runtimes', 'node',          // usa Node.js para resolver n-challenge do YouTube
+    '--remote-components', 'ejs:github', // baixa o solver EJS do GitHub se necessário
+  ]
+  // itag=18: combined MP4 360p (sempre tem video+audio) — fallback confiável
+  const fmt  = '18/best[protocol=m3u8_native]/best[vcodec!=none][acodec!=none][height<=720]/best[vcodec!=none][acodec!=none]/best'
   const cookies = ytCookiesArgs()
   for (const client of YT_CLIENTS) {
     try {
-      const { stdout } = await execFileAsync('yt-dlp', [...base, '-f', fmt, ...cookies, ...ytClientArgs(client), rawUrl], { timeout: 35000 })
+      const { stdout } = await execFileAsync('yt-dlp', [...base, '-f', fmt, ...cookies, ...ytClientArgs(client), rawUrl], { timeout: 60000 })
       const url = stdout.trim().split('\n')[0]
       if (url) {
         console.log(`[yt-dlp] URL resolvida OK (client=${client || 'default'}): ${url.slice(0, 80)}`)
