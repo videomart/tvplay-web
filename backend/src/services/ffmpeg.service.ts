@@ -105,6 +105,66 @@ export async function transcodeToHLS(
   return playlistPath
 }
 
+// Converte imagem estática em vídeo HLS com loop (duração padrão 30s, substituível pelo cueOut do clipe)
+export async function transcodeImageToHLS(
+  inputPath: string,
+  outputDir: string,
+  mediaId: string,
+  durationSecs = 30,
+): Promise<{ playlistPath: string; width: number; height: number }> {
+  const hlsDir = path.join(outputDir, mediaId)
+  fs.mkdirSync(hlsDir, { recursive: true })
+  const playlistPath  = path.join(hlsDir, 'index.m3u8')
+  const segmentPattern = path.join(hlsDir, 'seg%03d.ts')
+
+  // Obtém dimensões da imagem via ffprobe
+  const dims = await new Promise<{ width: number; height: number }>((resolve) => {
+    ffmpeg.ffprobe(inputPath, (err, meta) => {
+      const vs = meta?.streams?.find((s: any) => s.codec_type === 'video')
+      resolve({ width: vs?.width ?? 1280, height: vs?.height ?? 720 })
+    })
+  })
+
+  // Normaliza para dimensões pares (libx264 exige divisível por 2)
+  const w = dims.width  % 2 === 0 ? dims.width  : dims.width  - 1
+  const h = dims.height % 2 === 0 ? dims.height : dims.height - 1
+
+  await new Promise<void>((resolve, reject) => {
+    ffmpeg(inputPath)
+      .inputOptions(['-loop', '1'])
+      .videoCodec('libx264')
+      .addOptions([
+        `-t ${durationSecs}`,
+        '-r 25',
+        `-vf scale=${w}:${h}`,
+        '-pix_fmt yuv420p',
+        '-profile:v main',
+        '-level 4.0',
+        '-preset fast',
+        '-crf 23',
+        '-g 50',
+        '-keyint_min 50',
+        '-f lavfi -i anullsrc=r=44100:cl=stereo',   // áudio silencioso
+        '-c:a aac',
+        '-shortest',
+        '-hls_time 6',
+        '-hls_playlist_type vod',
+        `-hls_segment_filename ${segmentPattern}`,
+      ])
+      .output(playlistPath)
+      .on('end', () => resolve())
+      .on('error', reject)
+      .run()
+  })
+
+  const m3u8 = fs.readFileSync(playlistPath, 'utf-8')
+  const fixed = m3u8.replace(new RegExp(hlsDir.replace(/\\/g, '/') + '/', 'g'), '')
+                    .replace(new RegExp(hlsDir + '/', 'g'), '')
+  fs.writeFileSync(playlistPath, fixed)
+
+  return { playlistPath, width: w, height: h }
+}
+
 export async function transcodeToMP4(
   inputPath: string,
   outputPath: string,

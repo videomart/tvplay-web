@@ -533,6 +533,7 @@ function buildArgs(
   const isRtmpInput = lowerInputUrl.startsWith('rtmp://')
   const isRtspInput = lowerInputUrl.startsWith('rtsp://')
   const isHttpInput = lowerInputUrl.startsWith('http://') || lowerInputUrl.startsWith('https://')
+  const isSrtInput  = lowerInputUrl.startsWith('srt://')
 
   // Se output.graphic (raw Prisma) tem templateId mas não templateElements, converte inline
   let resolvedGraphic = effectiveGraphic as any
@@ -565,6 +566,7 @@ function buildArgs(
     ...(isLive && isRtmpInput ? ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5'] : []),
     ...(isLive && isRtspInput ? ['-rtsp_transport', 'tcp', '-stimeout', '10000000'] : []),
     ...(isLive && isHttpInput ? ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '10', '-timeout', '30000000'] : []),
+    ...(isSrtInput ? ['-timeout', '10000000'] : []),   // SRT: timeout de reconexão
     ...(isLive ? [] : ['-re']),
     ...(cueIn > 0 && !isLive ? ['-ss', String(Math.floor(cueIn))] : []),
     '-i', inputUrl,

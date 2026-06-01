@@ -26,9 +26,11 @@ export default async function ingestRoutes(app: FastifyInstance) {
       'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/mpeg', 'video/webm',
       'application/mxf', 'video/mxf',
       'video/mp2t', 'video/mts',                        // MPEG-TS / MTS
+      'image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp', 'image/bmp', 'image/tiff',
       'application/octet-stream',                        // fallback genérico de browsers
     ]
-    const allowedExts = ['.mp4', '.mov', '.avi', '.mpeg', '.mpg', '.webm', '.mxf', '.ts', '.mts', '.m2ts', '.wmv', '.mkv']
+    const allowedExts = ['.mp4', '.mov', '.avi', '.mpeg', '.mpg', '.webm', '.mxf', '.ts', '.mts', '.m2ts', '.wmv', '.mkv',
+                         '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tiff', '.tif']
     const fileExt = path.extname(data.filename).toLowerCase()
     if (!allowedMimes.includes(data.mimetype) && !allowedExts.includes(fileExt)) {
       return reply.status(415).send({ error: `Formato não suportado: ${data.mimetype} (${fileExt})` })

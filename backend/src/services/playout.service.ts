@@ -99,6 +99,11 @@ async function resolveInputUrl(
     })
     if (!clip) return null
     if (isUrlClip(clip.sourceType, clip.sourceUrl) && clip.sourceUrl) {
+      // SRT, RTMP, RTSP: usa a URL diretamente (yt-dlp não suporta esses protocolos)
+      if (/^srt:|^rtmps?:|^rtsp:/i.test(clip.sourceUrl)) {
+        console.log(`[playout] CLIP input — URL direta (sem yt-dlp): ${clip.sourceUrl}`)
+        return clip.sourceUrl
+      }
       console.log(`[playout] CLIP input — resolvendo URL via yt-dlp: ${clip.sourceUrl}`)
       return resolveViaYtDlp(clip.sourceUrl)
     }

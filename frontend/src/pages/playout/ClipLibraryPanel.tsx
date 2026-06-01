@@ -349,8 +349,8 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
     const errors: FormErrors = {}
     if (!form.code.trim()) errors.code = 'Código é obrigatório'
     if (!form.title.trim()) errors.title = 'Título é obrigatório'
-    if (form.sourceType === 'URL' && form.sourceUrl && !/^https?:\/\/.+/.test(form.sourceUrl))
-      errors.sourceUrl = 'URL inválida'
+    if (form.sourceType === 'URL' && form.sourceUrl && !/^(https?|srt|rtmps?|rtsp):\/\/.+/i.test(form.sourceUrl))
+      errors.sourceUrl = 'URL inválida (use https://, srt://, rtmp:// ou rtsp://)'
     if (Object.keys(errors).length > 0) { setFormErrors(errors); return }
     setFormErrors({})
     save.mutate()
@@ -425,13 +425,13 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
     <div className="flex flex-col h-full overflow-hidden">
 
       {/* Inputs ocultos */}
-      <input ref={fileRef}       type="file" accept="video/*,.mxf,.mts,.m2ts" className="hidden" onChange={handleFileUpload} />
-      <input ref={fileRefDirect} type="file" accept="video/*,.mxf,.mts,.m2ts" multiple className="hidden" onChange={handleDirectUpload} />
+      <input ref={fileRef}       type="file" accept="video/*,image/*,.mxf,.mts,.m2ts" className="hidden" onChange={handleFileUpload} />
+      <input ref={fileRefDirect} type="file" accept="video/*,image/*,.mxf,.mts,.m2ts" multiple className="hidden" onChange={handleDirectUpload} />
 
       {/* ── Cabeçalho ────────────────────────────────────────────────────── */}
       <div className="px-3 py-2 flex items-center gap-2 border-b border-gray-800 flex-shrink-0">
         <Library className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
-        <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide flex-1">Biblioteca</span>
+        <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide flex-1">Mídias</span>
         <Button size="sm" variant="secondary" loading={uploadDirectLoading}
           onClick={() => fileRefDirect.current?.click()}
           icon={<Film className="h-3 w-3 text-purple-400" />}
@@ -775,7 +775,7 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
                 <div className="col-span-2 space-y-1">
                   <Input label="URL do vídeo *" value={form.sourceUrl}
                     onChange={(e) => { setForm(v => ({ ...v, sourceUrl: e.target.value })); setUrlCheckResult(null) }}
-                    placeholder="https://www.youtube.com/watch?v=..." error={formErrors.sourceUrl} icon={<Link className="h-4 w-4" />} />
+                    placeholder="https://youtube.com/... · srt://host:port · rtmp://..." error={formErrors.sourceUrl} icon={<Link className="h-4 w-4" />} />
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-[10px] text-gray-500">Use canais LIVE para evitar throttle.</p>
                     <Button size="sm" variant="secondary" loading={urlCheckLoading} disabled={!form.sourceUrl}
@@ -812,7 +812,7 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
                   <Button size="sm" variant="secondary" loading={modalUploadLoading} onClick={() => fileRefModal.current?.click()} icon={<Upload className="h-3.5 w-3.5 text-purple-400" />}>
                     {modalUploadLoading ? `${modalUploadProgress}%` : 'Enviar arquivo(s)'}
                   </Button>
-                  <input ref={fileRefModal} type="file" multiple accept="video/*,.mxf,.mts,.m2ts" className="hidden" onChange={handleModalUpload} />
+                  <input ref={fileRefModal} type="file" multiple accept="video/*,image/*,.mxf,.mts,.m2ts" className="hidden" onChange={handleModalUpload} />
                 </div>
                 {orphanMedia.length > 0 && (
                   <div className="max-h-36 overflow-y-auto space-y-1 rounded-lg border border-gray-700 p-2">

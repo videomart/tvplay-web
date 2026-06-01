@@ -3,7 +3,9 @@ import path from 'path'
 import fs from 'fs'
 import { config } from '../config'
 import { prisma } from '../lib/prisma'
-import { probeMedia, transcodeToHLS, generateThumbnail } from '../services/ffmpeg.service'
+import { probeMedia, transcodeToHLS, transcodeImageToHLS, generateThumbnail } from '../services/ffmpeg.service'
+
+const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tiff', '.tif'])
 import { storageService } from '../services/storage.service'
 
 const connection = { host: new URL(config.redis.url).hostname, port: parseInt(new URL(config.redis.url).port || '6379') }
@@ -18,50 +20,54 @@ const worker = new Worker(
     await prisma.mediaFile.update({ where: { id: mediaId }, data: { ingestStatus: 'PROCESSING' } })
 
     try {
-      // 1. Probe
-      const probe = await probeMedia(tmpPath)
-
-      // 2. Thumbnail
-      const thumbDir = path.join(config.storage.transcodeOutputPath, 'thumbs')
-      const thumbPath = await generateThumbnail(tmpPath, thumbDir)
-      const thumbObjectName = `thumbs/${mediaId}.jpg`
-      await storageService.uploadFile(thumbObjectName, thumbPath, 'image/jpeg')
-      fs.unlinkSync(thumbPath)
-
-      // 3. HLS
+      const isImage = IMAGE_EXTS.has(path.extname(tmpPath).toLowerCase())
       const hlsOutputDir = config.storage.hlsOutputPath
-      const playlistPath = await transcodeToHLS(tmpPath, hlsOutputDir, mediaId)
-      const hlsDir = path.dirname(playlistPath)
+      const thumbDir = path.join(config.storage.transcodeOutputPath, 'thumbs')
 
-      // Upload de todos os segmentos HLS para MinIO
-      const hlsFiles = fs.readdirSync(hlsDir)
-      for (const file of hlsFiles) {
-        const filePath = path.join(hlsDir, file)
-        const mimeType = file.endsWith('.m3u8') ? 'application/x-mpegURL' : 'video/MP2T'
-        await storageService.uploadFile(`hls/${mediaId}/${file}`, filePath, mimeType)
+      let dbData: Record<string, any>
+
+      if (isImage) {
+        // ── Imagem estática: converte para vídeo loop de 30s ────────────────
+        console.log(`[Transcode] Imagem detectada — convertendo para HLS loop: ${tmpPath}`)
+        const { playlistPath, width, height } = await transcodeImageToHLS(tmpPath, hlsOutputDir, mediaId)
+        const hlsDir = path.dirname(playlistPath)
+
+        // Usa a própria imagem como thumbnail (copia para MinIO)
+        const thumbObjectName = `thumbs/${mediaId}.jpg`
+        await storageService.uploadFile(thumbObjectName, tmpPath, 'image/jpeg').catch(() => {})
+
+        // Upload HLS
+        for (const file of fs.readdirSync(hlsDir)) {
+          const mimeType = file.endsWith('.m3u8') ? 'application/x-mpegURL' : 'video/MP2T'
+          await storageService.uploadFile(`hls/${mediaId}/${file}`, path.join(hlsDir, file), mimeType)
+        }
+        fs.rmSync(hlsDir, { recursive: true })
+        fs.unlinkSync(tmpPath)
+
+        dbData = { ingestStatus: 'READY', duration: 30, width, height, thumbnail: thumbObjectName, hlsPath: `hls/${mediaId}/index.m3u8`, storagePath: `hls/${mediaId}` }
+      } else {
+        // ── Vídeo: pipeline padrão ──────────────────────────────────────────
+        const probe = await probeMedia(tmpPath)
+
+        const thumbPath = await generateThumbnail(tmpPath, thumbDir)
+        const thumbObjectName = `thumbs/${mediaId}.jpg`
+        await storageService.uploadFile(thumbObjectName, thumbPath, 'image/jpeg')
+        fs.unlinkSync(thumbPath)
+
+        const playlistPath = await transcodeToHLS(tmpPath, hlsOutputDir, mediaId)
+        const hlsDir = path.dirname(playlistPath)
+
+        for (const file of fs.readdirSync(hlsDir)) {
+          const mimeType = file.endsWith('.m3u8') ? 'application/x-mpegURL' : 'video/MP2T'
+          await storageService.uploadFile(`hls/${mediaId}/${file}`, path.join(hlsDir, file), mimeType)
+        }
+        fs.rmSync(hlsDir, { recursive: true })
+        fs.unlinkSync(tmpPath)
+
+        dbData = { ingestStatus: 'READY', duration: probe.duration, width: probe.width, height: probe.height, fps: probe.fps, bitrate: probe.bitrate, videoCodec: probe.videoCodec, audioCodec: probe.audioCodec, thumbnail: thumbObjectName, hlsPath: `hls/${mediaId}/index.m3u8`, storagePath: `hls/${mediaId}` }
       }
 
-      // Limpa arquivos locais
-      fs.rmSync(hlsDir, { recursive: true })
-      fs.unlinkSync(tmpPath)
-
-      // 4. Atualiza banco
-      await prisma.mediaFile.update({
-        where: { id: mediaId },
-        data: {
-          ingestStatus: 'READY',
-          duration: probe.duration,
-          width: probe.width,
-          height: probe.height,
-          fps: probe.fps,
-          bitrate: probe.bitrate,
-          videoCodec: probe.videoCodec,
-          audioCodec: probe.audioCodec,
-          thumbnail: thumbObjectName,
-          hlsPath: `hls/${mediaId}/index.m3u8`,
-          storagePath: `hls/${mediaId}`,
-        },
-      })
+      await prisma.mediaFile.update({ where: { id: mediaId }, data: dbData })
 
       return { success: true, mediaId }
     } catch (err: any) {
