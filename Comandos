@@ -19,5 +19,6 @@ docker logs tvplay_web -f
 git add -A && git commit -m "mensagem" && git push origin main
 
 #2 No servidor de produção via SSH
+# CACHE_BUST garante que o frontend é sempre recompilado com o BUILD_TIME atualizado
 
-cd /home/bolais/projects/tvplay-web && git pull origin main && docker compose up -d --build
+cd /home/bolais/projects/tvplay-web && git pull origin main && CACHE_BUST=$(date +%s) docker compose up -d --build

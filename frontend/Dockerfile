@@ -3,6 +3,8 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install
 COPY . .
+# ARG que muda a cada build — invalida o cache do Docker para garantir BUILD_TIME atualizado
+ARG CACHE_BUST=0
 RUN npm run build
 
 FROM nginx:alpine
