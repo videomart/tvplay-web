@@ -118,8 +118,6 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-      args:
-        CACHE_BUST: ${CACHE_BUST:-0}
     container_name: tvplay_web
     restart: unless-stopped
     ports:
