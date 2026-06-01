@@ -63,6 +63,13 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
   const [targetChannelId, setTargetChannelId] = useState(channels[0]?.id ?? '')
   const [selectedRoteiroId, setSelectedRoteiroId] = useState<string | null>(null)
   const [insertModal, setInsertModal] = useState<{ sourceId: string; name: string } | null>(null)
+  const [roteiroSort,    setRoteiroSort]    = useState<'name' | 'date' | 'items'>('date')
+  const [roteiroSortDir, setRoteiroSortDir] = useState<'asc' | 'desc'>('desc')
+
+  function toggleRoteiroSort(col: 'name' | 'date' | 'items') {
+    if (roteiroSort === col) setRoteiroSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setRoteiroSort(col); setRoteiroSortDir(col === 'date' ? 'desc' : 'asc') }
+  }
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   function handleSearchChange(v: string) {
@@ -250,6 +257,27 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
 
       {/* Lista de roteiros */}
       <div className="border-b border-gray-800/60">
+        {/* Cabeçalho de ordenação */}
+        {roteiros.length > 1 && (
+          <div className="flex items-center gap-0 px-3 py-1 border-b border-gray-800/40 bg-gray-900/40">
+            {(['name', 'date', 'items'] as const).map((col) => {
+              const labels = { name: 'Nome', date: 'Data', items: 'Itens' }
+              const active = roteiroSort === col
+              return (
+                <button
+                  key={col}
+                  onClick={() => toggleRoteiroSort(col)}
+                  className={clsx(
+                    'text-[9px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded transition-colors',
+                    active ? 'text-brand-300 bg-brand-900/30' : 'text-gray-600 hover:text-gray-400'
+                  )}
+                >
+                  {labels[col]}{active ? (roteiroSortDir === 'asc' ? ' ▲' : ' ▼') : ' ↕'}
+                </button>
+              )
+            })}
+          </div>
+        )}
         <div className="max-h-40 overflow-y-auto">
           {roteiros.length === 0 && !autoSavePlaylist ? (
             <div className="flex items-center gap-2 px-3 py-1.5">
@@ -316,7 +344,15 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
                 </div>
               )}
 
-              {roteiros.map((pl) => {
+              {[...roteiros].sort((a, b) => {
+                let av: any, bv: any
+                if (roteiroSort === 'name')  { av = a.name.toLowerCase(); bv = b.name.toLowerCase() }
+                else if (roteiroSort === 'date')  { av = a.date; bv = b.date }
+                else { av = a._count?.items ?? 0; bv = b._count?.items ?? 0 }
+                if (av < bv) return roteiroSortDir === 'asc' ? -1 : 1
+                if (av > bv) return roteiroSortDir === 'asc' ? 1 : -1
+                return 0
+              }).map((pl) => {
                 const isCurrent = pl.id === activePlaylistId
                 const isLocked = isCurrent && (playoutStatus === 'PLAYING' || playoutStatus === 'PAUSED')
                 return (
