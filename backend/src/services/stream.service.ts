@@ -534,6 +534,8 @@ function buildArgs(
   const isRtspInput = lowerInputUrl.startsWith('rtsp://')
   const isHttpInput = lowerInputUrl.startsWith('http://') || lowerInputUrl.startsWith('https://')
   const isSrtInput  = lowerInputUrl.startsWith('srt://')
+  // HLS ao vivo (YouTube live, manifests): não aplicar -re (o HLS já controla a taxa)
+  const isHlsLive   = isHttpInput && (lowerInputUrl.includes('.m3u8') || lowerInputUrl.includes('/api/manifest/hls'))
 
   // Se output.graphic (raw Prisma) tem templateId mas não templateElements, converte inline
   let resolvedGraphic = effectiveGraphic as any
@@ -566,8 +568,11 @@ function buildArgs(
     ...(isLive && isRtmpInput ? ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5'] : []),
     ...(isLive && isRtspInput ? ['-rtsp_transport', 'tcp', '-stimeout', '10000000'] : []),
     ...(isLive && isHttpInput ? ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '10', '-timeout', '30000000'] : []),
+    // HLS ao vivo (YouTube): reconnect para buscar novos segmentos automaticamente
+    ...(isHlsLive ? ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5', '-timeout', '30000000'] : []),
     ...(isSrtInput ? ['-timeout', '10000000'] : []),
-    ...(isLive ? [] : ['-re']),
+    // -re só para VOD local (FILE clips); HLS ao vivo controla sua própria taxa
+    ...(!isLive && !isHlsLive ? ['-re'] : []),
     ...(cueIn > 0 && !isLive ? ['-ss', String(Math.floor(cueIn))] : []),
     '-i', inputUrl,
     ...extraLogoInputs,
