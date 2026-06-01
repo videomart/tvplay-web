@@ -654,8 +654,8 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
                   ? <span className="text-[9px] font-mono text-gray-600 flex-shrink-0 w-9 text-right">{formatTime(clip.media.duration)}</span>
                   : <span className="w-9 flex-shrink-0" />}
 
-                {/* Ações */}
-                <div className="flex items-center gap-1 flex-shrink-0 w-20 justify-end">
+                {/* Ações — ml-1 separa do badge Mídia */}
+                <div className="flex items-center gap-1 flex-shrink-0 w-20 justify-end ml-1">
                   {clip.media?.hlsPath && clip.media.ingestStatus === 'READY' && (
                     <button onClick={() => setPreviewClip(clip)} title="Preview" className="p-1 rounded text-gray-700 hover:text-emerald-400 transition-colors opacity-0 group-hover:opacity-100">
                       <Play className="h-3.5 w-3.5" />
