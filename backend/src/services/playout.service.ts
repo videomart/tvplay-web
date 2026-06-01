@@ -197,6 +197,8 @@ async function computePlaylistMeta(playlistId: string): Promise<{ totalDuration:
   const totalDuration = (items as any[]).reduce((sum: number, item) => {
     if (item.isBreak) return sum + (item.maxDuration ?? 0)
     if (!item.clip) return sum
+    // maxDuration por item (ex: imagens/slides) tem precedência sobre cueIn/cueOut
+    if (item.maxDuration && item.maxDuration > 0) return sum + item.maxDuration
     const cueIn = item.overrideCueIn ?? item.clip.cueIn
     const cueOut = item.overrideCueOut ?? item.clip.cueOut ?? item.clip.media?.duration ?? null
     const dur = cueOut ? cueOut - cueIn : (item.clip.media?.duration ?? item.clip.duration ?? 30)
@@ -339,9 +341,12 @@ async function loadItem(playlistId: string, index: number): Promise<CurrentItem 
   const cueIn = item.overrideCueIn ?? clip.cueIn
   const urlClip = isUrlClip(clip.sourceType, clip.sourceUrl)
   const cueOut = item.overrideCueOut ?? clip.cueOut ?? clip.media?.duration ?? null
-  const duration = (urlClip && item.maxDuration)
+  // maxDuration pode ser usado em qualquer tipo (URL, FILE, imagens) para controlar duração por item
+  const duration = item.maxDuration && item.maxDuration > 0
     ? item.maxDuration
-    : cueOut ? cueOut - cueIn : (clip.media?.duration ?? clip.duration ?? (urlClip ? 3600 : 30))
+    : urlClip
+      ? Number.MAX_SAFE_INTEGER
+      : cueOut ? cueOut - cueIn : (clip.media?.duration ?? clip.duration ?? 30)
   return {
     playlistItemId: item.id,
     clipId: clip.id,

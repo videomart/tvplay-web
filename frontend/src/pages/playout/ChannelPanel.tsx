@@ -499,8 +499,9 @@ function PlaylistItemRow({
           {formatTime(liveElapsed)}
         </span>
       ) : (
-        <span className={clsx('text-[10px] font-mono flex-shrink-0 w-10 text-right', lightRow ? 'text-gray-900' : 'text-gray-600')}>
-          {item.sourceType === 'URL' && item.maxDuration
+        <span className={clsx('text-[10px] font-mono flex-shrink-0 w-10 text-right', lightRow ? 'text-gray-900' : 'text-gray-600',
+          item.maxDuration && item.sourceType !== 'URL' ? 'text-amber-400' : '')}>
+          {item.maxDuration
             ? formatTime(item.maxDuration)
             : item.sourceType === 'URL'
             ? '∞'
@@ -554,8 +555,8 @@ function PlaylistItemRow({
         )}
       </div>
 
-      {/* Timer — só para URL clips */}
-      {['URL', 'YOUTUBE'].includes(item.sourceType) && (
+      {/* Timer — URL clips e FILE clips (ex: slides de imagem) */}
+      {!item.isBreak && (
         timerEditId === item.id ? (
           <input
             autoFocus

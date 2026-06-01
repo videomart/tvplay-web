@@ -145,7 +145,7 @@ export default function Sidebar({ isOpen = true, onClose }: SidebarProps) {
 
       {/* Versão — acima do usuário */}
       <div className="px-4 py-1.5 text-center border-t border-gray-800/40">
-        <p className="text-[9px] font-mono text-gray-700 leading-tight">
+        <p className="text-[9px] font-mono text-gray-500 leading-tight">
           v{__APP_BUILD__} · {__BUILD_TIME__}
         </p>
       </div>
