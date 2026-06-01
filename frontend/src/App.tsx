@@ -6,7 +6,7 @@ import DashboardPage from './pages/Dashboard'
 import ChannelsPage from './pages/channels/ChannelsPage'
 import ClientsPage from './pages/clients/ClientsPage'
 import ClipTypesPage from './pages/clip-types/ClipTypesPage'
-import ClipsPage from './pages/clips/ClipsPage'
+
 import PlayoutPage from './pages/playout/PlayoutPage'
 import PlaylistsListPage from './pages/playlists/PlaylistsListPage'
 import PlaylistEditorPage from './pages/playlists/PlaylistEditorPage'
@@ -46,7 +46,7 @@ export default function App() {
           <Route path="channels"         element={<ChannelsPage />} />
           <Route path="clients"          element={<ClientsPage />} />
           <Route path="clip-types"       element={<ClipTypesPage />} />
-          <Route path="clips"            element={<ClipsPage />} />
+
           <Route path="stream-outputs"   element={<StreamOutputsPage />} />
           <Route path="input-sources"    element={<InputSourcesPage />} />
           <Route path="logs"             element={<LogsPage />} />
