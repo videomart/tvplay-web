@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Settings, Building2, Tv2, LayoutDashboard, Save, Upload, GitCommit } from 'lucide-react'
+import { Settings, Building2, Tv2, LayoutDashboard, Save, Upload, GitCommit, RefreshCw, CheckCircle, AlertTriangle } from 'lucide-react'
+import { api } from '../../api/client'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
 import { settingsApi } from '../../api/settings.api'
@@ -60,6 +61,34 @@ export default function SettingsPage() {
   const [defaultBreakDuration,  setDefaultBreakDuration]  = useState(300)
   const [defaultSlideDuration,  setDefaultSlideDuration]  = useState(15)
   const [defaultUrlDuration,    setDefaultUrlDuration]    = useState(0)
+  const [cookiesUploading,      setCookiesUploading]      = useState(false)
+  const cookiesFileRef = useRef<HTMLInputElement>(null)
+
+  const { data: cookiesStatus, refetch: refetchCookies } = useQuery({
+    queryKey: ['youtube-cookies-status'],
+    queryFn: () => api.get('/settings/youtube-cookies-status').then(r => r.data as { exists: boolean; lines: number; updatedAt: string | null }),
+    staleTime: 30_000,
+  })
+
+  async function handleCookiesUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setCookiesUploading(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await api.post<{ ok: boolean; cookies: number }>('/settings/upload-youtube-cookies', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      toast.success(`Cookies atualizadas — ${res.data.cookies} entradas`)
+      refetchCookies()
+    } catch (err: any) {
+      toast.error(err.response?.data?.error ?? 'Erro ao enviar cookies')
+    } finally {
+      setCookiesUploading(false)
+      if (cookiesFileRef.current) cookiesFileRef.current.value = ''
+    }
+  }
   const [channelNames, setChannelNames] = useState<Record<string, { name: string; description: string }>>({})
 
   useEffect(() => {
@@ -413,6 +442,43 @@ export default function SettingsPage() {
                 {defaultUrlDuration === 0 ? 'sem limite' : `${Math.floor(defaultUrlDuration / 60)}:${String(defaultUrlDuration % 60).padStart(2, '0')} min`}
               </span>
             </div>
+          </div>
+
+          {/* Cookies do YouTube */}
+          <div className="border-t border-gray-800 pt-4 space-y-3">
+            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+              <RefreshCw className="h-4 w-4 text-red-400" />
+              Cookies do YouTube
+            </h3>
+            <p className="text-xs text-gray-500">
+              Necessário para transmissão de conteúdo YouTube em IPs de datacenter.
+              Exporte as cookies do seu browser logado no YouTube usando a extensão
+              <strong className="text-gray-400"> "Get cookies.txt LOCALLY"</strong> e faça upload aqui.
+            </p>
+
+            {cookiesStatus && (
+              <div className={clsx('flex items-center gap-2 text-xs px-3 py-2 rounded-lg border',
+                cookiesStatus.exists && cookiesStatus.lines > 10
+                  ? 'bg-emerald-900/20 border-emerald-700/40 text-emerald-400'
+                  : 'bg-red-900/20 border-red-700/40 text-red-400')}>
+                {cookiesStatus.exists && cookiesStatus.lines > 10
+                  ? <CheckCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                  : <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />}
+                {cookiesStatus.exists
+                  ? `${cookiesStatus.lines} cookies carregadas · atualizado ${cookiesStatus.updatedAt ? new Date(cookiesStatus.updatedAt).toLocaleString('pt-BR') : '—'}`
+                  : 'Nenhuma cookie configurada — YouTube pode falhar'}
+              </div>
+            )}
+
+            <input ref={cookiesFileRef} type="file" accept=".txt" className="hidden" onChange={handleCookiesUpload} />
+            <Button
+              variant="secondary"
+              loading={cookiesUploading}
+              icon={<Upload className="h-4 w-4 text-red-400" />}
+              onClick={() => cookiesFileRef.current?.click()}
+            >
+              {cookiesUploading ? 'Enviando...' : 'Upload cookies.txt do YouTube'}
+            </Button>
           </div>
 
           <div className="flex justify-end pt-2">
