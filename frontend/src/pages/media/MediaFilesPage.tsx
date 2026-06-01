@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   HardDrive, Trash2, AlertTriangle, CheckCircle, Clock, XCircle,
-  Filter, Upload, ChevronUp, ChevronDown, Copy, Play, ExternalLink, Loader2,
+  Filter, Upload, ChevronUp, ChevronDown, Copy, Play, ExternalLink, Loader2, Plus, Film,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
@@ -42,6 +43,7 @@ const STATUS_BADGE: Record<string, { label: string; cls: string; icon: JSX.Eleme
 
 export default function MediaFilesPage() {
   const qc = useQueryClient()
+  const navigate = useNavigate()
   const fileRef = useRef<HTMLInputElement>(null)
 
   const [filterOrphan,  setFilterOrphan]  = useState(false)
@@ -130,29 +132,17 @@ export default function MediaFilesPage() {
     <div className="p-6 space-y-4">
       <input ref={fileRef} type="file" multiple accept="video/*,image/*,.mxf,.mts,.m2ts" className="hidden" onChange={handleUpload} />
 
-      {/* ── Cabeçalho ──────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-2 flex-wrap">
-        {/* Esquerda: título + Upload */}
+      {/* ── Cabeçalho — título + stats apenas ─────────────────────────────── */}
+      <div className="flex items-center gap-3">
         <HardDrive className="h-6 w-6 text-brand-400 flex-shrink-0" />
-        <span className="text-xl font-bold text-white flex-shrink-0">Mídias</span>
-        <span className="text-gray-500 text-sm flex-shrink-0">
+        <span className="text-xl font-bold text-white">Mídias</span>
+        <span className="text-gray-500 text-sm">
           {files.length} arquivo(s) · {formatSize(String(totalSize))}
           {orphanCount > 0 && <span className="ml-2 text-orange-400">· {orphanCount} órfã(s)</span>}
         </span>
-        <div className="flex-1" />
-        {uploadLoading && (
-          <span className="text-xs text-gray-400 flex items-center gap-1">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            {uploadCount.done}/{uploadCount.total} · {uploadProgress}%
-          </span>
-        )}
-        <Button variant="secondary" loading={uploadLoading} onClick={() => fileRef.current?.click()} icon={<Upload className="h-4 w-4 text-purple-400" />}>
-          Upload de Mídia
-        </Button>
-
       </div>
 
-      {/* ── Filtros + botões contextuais ────────────────────────────────────── */}
+      {/* ── Filtros + Novo + Upload + contexto ──────────────────────────────── */}
       <div className="flex items-center gap-2 flex-wrap">
         <Filter className="h-4 w-4 text-gray-500 flex-shrink-0" />
         <button onClick={() => setFilterOrphan(v => !v)}
@@ -167,6 +157,25 @@ export default function MediaFilesPage() {
             {s || 'Todos'}
           </button>
         ))}
+
+        {/* Separador + Novo + Upload — fixos à direita dos filtros */}
+        <div className={selected ? undefined : 'flex-1'} />
+        {uploadLoading && (
+          <span className="text-xs text-gray-400 flex items-center gap-1 flex-shrink-0">
+            <Loader2 className="h-3 w-3 animate-spin" />{uploadCount.done}/{uploadCount.total} · {uploadProgress}%
+          </span>
+        )}
+        <Button size="sm" variant="secondary" loading={uploadLoading}
+          onClick={() => fileRef.current?.click()}
+          icon={<Film className="h-3.5 w-3.5 text-purple-400" />}
+          title="Upload em lote de mídia">
+          {uploadLoading ? 'Enviando...' : 'Upload'}
+        </Button>
+        <Button size="sm" icon={<Plus className="h-3.5 w-3.5" />}
+          onClick={() => navigate('/playout')}
+          title="Criar novo clipe no módulo Mídias do Playout">
+          Novo
+        </Button>
 
         {/* Contexto da mídia selecionada — canto direito */}
         {selected && (
