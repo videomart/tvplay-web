@@ -529,7 +529,12 @@ function buildArgs(
   // Resolve URL do logo: relativa → http://localhost:PORT/... (acessível dentro do container)
   const logoUrl = (!isLive && effectiveGraphic?.logoUrl) ? resolveLogoUrl(effectiveGraphic.logoUrl) : null
 
-  const lowerInputUrl = inputUrl.toLowerCase()
+  // DASH: yt-dlp retornou video+audio separados (separados por \n)
+  const dashUrls = inputUrl.includes('\n') ? inputUrl.split('\n').filter(u => u.startsWith('http')) : null
+  const primaryUrl = dashUrls ? dashUrls[0] : inputUrl
+  const audioUrl   = dashUrls ? dashUrls[1] : null
+
+  const lowerInputUrl = primaryUrl.toLowerCase()
   const isRtmpInput = lowerInputUrl.startsWith('rtmp://')
   const isRtspInput = lowerInputUrl.startsWith('rtsp://')
   const isHttpInput = lowerInputUrl.startsWith('http://') || lowerInputUrl.startsWith('https://')
@@ -574,7 +579,9 @@ function buildArgs(
     // -re só para VOD local (FILE clips); HLS ao vivo controla sua própria taxa
     ...(!isLive && !isHlsLive ? ['-re'] : []),
     ...(cueIn > 0 && !isLive ? ['-ss', String(Math.floor(cueIn))] : []),
-    '-i', inputUrl,
+    '-i', primaryUrl,
+    // DASH: segundo input de áudio separado
+    ...(audioUrl ? ['-i', audioUrl] : []),
     ...extraLogoInputs,
   ]
 
@@ -600,13 +607,15 @@ function buildArgs(
   } else {
     // Sistema legado: Graphic simples
     const { filterArgs, mapArgs } = buildVideoFilter(output.videoResolution, resolvedGraphic, !!legacyLogoUrl)
+    // DASH (video+audio separados): mapa explícito 0:v + 1:a
+    const dashMap = audioUrl ? ['-map', '0:v:0', '-map', '1:a:0'] : mapArgs
     videoCodec = [
       ...filterArgs,
       '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
       ...videoBitrateArgs,
       '-g', '60', '-keyint_min', '60', '-sc_threshold', '0',
       '-c:a', 'aac', '-ar', '44100', '-b:a', `${aBitrate}k`,
-      ...mapArgs,
+      ...dashMap,
     ]
   }
 

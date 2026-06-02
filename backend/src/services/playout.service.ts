@@ -70,7 +70,15 @@ async function resolveViaYtDlp(rawUrl: string): Promise<string | null> {
   for (const client of YT_CLIENTS) {
     try {
       const { stdout } = await execFileAsync('yt-dlp', [...base, '-f', fmt, ...cookies, ...ytClientArgs(client), rawUrl], { timeout: 60000 })
-      const url = stdout.trim().split('\n')[0]
+      const lines = stdout.trim().split('\n').filter(l => l.startsWith('http'))
+      if (lines.length === 0) continue
+      if (lines.length === 2) {
+        // DASH: video e audio separados — combina com separador para buildArgs tratar
+        const combined = `${lines[0]}\n${lines[1]}`
+        console.log(`[yt-dlp] DASH URL resolvida OK (client=${client || 'default'}): video+audio separados`)
+        return combined
+      }
+      const url = lines[0]
       if (url) {
         console.log(`[yt-dlp] URL resolvida OK (client=${client || 'default'}): ${url.slice(0, 80)}`)
         return url
