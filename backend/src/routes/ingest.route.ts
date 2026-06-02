@@ -104,7 +104,14 @@ export default async function ingestRoutes(app: FastifyInstance) {
         errorMsg: true,
         createdAt: true,
         _count: { select: { clips: true } },
-        clips: { select: { id: true, title: true, code: true }, take: 3 },
+        clips: {
+          select: {
+            id: true, title: true, code: true,
+            sourceType: true, duration: true,
+            type: { select: { id: true, code: true, name: true, fontColor: true, fontBackColor: true } },
+          },
+          take: 3,
+        },
       },
     })
     // BigInt não serializa em JSON — converter para string

@@ -23,7 +23,7 @@ export interface MediaFile {
   errorMsg?: string | null
   createdAt: string
   _count: { clips: number }
-  clips: { id: string; title: string; code: string }[]
+  clips: { id: string; title: string; code: string; sourceType?: string; duration?: number | null; type?: { id: string; code: string; name: string; fontColor: string; fontBackColor: string } | null }[]
 }
 
 export type ClipModality = 'BK' | 'AR' | 'PT' | 'VH' | 'CP' | 'CA' | 'LV' | 'ID' | 'MT'

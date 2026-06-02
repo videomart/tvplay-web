@@ -429,11 +429,9 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
       <input ref={fileRef}       type="file" accept="video/*,image/*,.mxf,.mts,.m2ts" className="hidden" onChange={handleFileUpload} />
       <input ref={fileRefDirect} type="file" accept="video/*,image/*,.mxf,.mts,.m2ts" multiple className="hidden" onChange={handleDirectUpload} />
 
-      {/* ── Cabeçalho único: label + botões fixos + contexto do clipe selecionado ── */}
-      <div className="px-3 py-2 flex items-center gap-1.5 border-b border-gray-800 flex-shrink-0 min-h-0">
-        {/* Esquerda: label + Upload + Novo */}
-        <Library className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
-        <span className="text-[10px] font-bold text-gray-300 bg-gray-800 border border-gray-700 px-2 py-0.5 rounded flex-shrink-0">Mídias</span>
+      {/* ── Cabeçalho: Upload + Novo + contexto do clipe selecionado ── */}
+      <div className="px-2 py-1.5 flex items-center gap-1 bg-gray-900/60 border-b border-gray-800 flex-shrink-0 min-h-0">
+        {/* Esquerda: Upload + Novo */}
         <Button size="sm" variant="secondary" loading={uploadDirectLoading}
           onClick={() => fileRefDirect.current?.click()}
           icon={<Film className="h-3 w-3 text-purple-400" />}
@@ -490,13 +488,13 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
         )}
       </div>
 
-      {/* ── Seletor de canal ─────────────────────────────────────────────── */}
+      {/* ── Seletor de canal — sem margens laterais ──────────────────────── */}
       {channels.length > 1 && (
-        <div className="px-3 py-1.5 border-b border-gray-800 flex-shrink-0">
+        <div className="py-1 border-b border-gray-800 flex-shrink-0 bg-gray-900/60">
           <select
             value={targetChannelId}
             onChange={(e) => setTargetChannelId(e.target.value)}
-            className="w-full bg-gray-800 border border-gray-700 rounded text-xs text-gray-200 px-2 py-1 focus:outline-none focus:border-brand-500"
+            className="w-full bg-gray-800/80 border-0 border-b border-gray-700 text-xs text-gray-200 px-2 py-1 focus:outline-none focus:border-brand-500"
           >
             {channels.map((ch) => <option key={ch.id} value={ch.id}>Canal {ch.number} — {ch.name}</option>)}
           </select>
@@ -597,27 +595,35 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
                 )
               })}
 
-              <div className="flex items-center gap-2 px-3 py-1.5 border-t border-gray-800/30 hover:bg-gray-800/20 transition-colors">
-                <span className="h-1.5 w-1.5 flex-shrink-0" />
-                <p className="flex-1 text-[11px] text-gray-600">Criar novo roteiro</p>
-                <button onClick={() => newPlaylistMut.mutate()} disabled={newPlaylistMut.isPending} className="p-1 rounded text-gray-600 hover:text-brand-400 disabled:opacity-40 transition-colors">
+              {/* Criar roteiro + busca na mesma linha */}
+              <div className="flex items-center gap-1 px-2 py-1 border-t border-gray-800/30 bg-gray-900/40">
+                <button onClick={() => newPlaylistMut.mutate()} disabled={newPlaylistMut.isPending}
+                  title="Criar novo roteiro"
+                  className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-gray-600 hover:text-brand-400 disabled:opacity-40 transition-colors flex-shrink-0">
                   {newPlaylistMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+                  <span>Novo</span>
                 </button>
+                <div className="relative flex-1 min-w-0">
+                  <Search className="absolute left-1.5 top-1/2 -translate-y-1/2 h-3 w-3 text-gray-600 pointer-events-none" />
+                  <input value={search}
+                    onChange={(e) => handleSearchChange(e.target.value)}
+                    onClick={() => { if (search) { setSearch(''); setDebouncedSearch('') } }}
+                    placeholder="Buscar clipe..."
+                    title={search ? 'Clique para limpar' : 'Buscar clipe'}
+                    className="w-full bg-gray-800/60 border border-gray-700/50 rounded pl-5 pr-2 py-0.5 text-[11px] text-gray-200 placeholder-gray-600 focus:outline-none focus:border-brand-500 cursor-text"
+                    readOnly={false}
+                  />
+                  {search && <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] text-gray-600">✕</span>}
+                </div>
               </div>
             </>
           )}
         </div>
       </div>
 
-      {/* ── Busca + filtros ───────────────────────────────────────────────── */}
-      <div className="px-3 pt-2 flex-shrink-0 space-y-1.5">
-        <div className="relative">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-500 pointer-events-none" />
-          <input value={search} onChange={(e) => handleSearchChange(e.target.value)} placeholder="Buscar clipe..."
-            className="w-full bg-gray-800 border border-gray-700 rounded pl-7 pr-3 py-1.5 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-brand-500" />
-        </div>
-
-        <div className="flex items-center gap-1 flex-wrap">
+      {/* ── Filtros ───────────────────────────────────────────────────────── */}
+      <div className="px-2 pt-1 flex-shrink-0 bg-gray-900/60">
+        <div className="flex items-center gap-1 flex-wrap pb-1">
           {/* Filtros por tipo */}
           <button onClick={() => setTypeId('')}
             className={clsx('text-[10px] px-2 py-0.5 rounded transition-colors', !typeId ? 'bg-brand-600/30 text-brand-300 ring-1 ring-brand-500/30' : 'bg-gray-800 text-gray-500 hover:bg-gray-700')}>
@@ -638,6 +644,7 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
           </button>
         </div>
       </div>
+
 
       {/* ── Cabeçalho colunas ─────────────────────────────────────────────── */}
       <div className="flex items-center gap-1 px-3 py-1 border-y border-gray-800 bg-gray-900/90 sticky top-0 z-10 flex-shrink-0">
