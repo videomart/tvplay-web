@@ -65,11 +65,18 @@ export default function PlayoutPage() {
             Playout
             <span className="text-sm font-normal text-gray-500">Controle em tempo real dos canais</span>
           </h1>
-          <div className="flex items-center gap-3">
-            <span className="text-[10px] font-bold text-gray-300 bg-gray-800 border border-gray-700 px-2 py-0.5 rounded">Mídias</span>
-            <span className="text-sm text-gray-500 flex items-center gap-1.5"><Tv2 className="h-4 w-4" />{active.length} canal(is)</span>
-          </div>
+          <span className="text-sm text-gray-500 flex items-center gap-1.5"><Tv2 className="h-4 w-4" />{active.length} canal(is)</span>
         </div>
+
+        {/* Subtítulos das colunas — Canal | Mídias | Canal */}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 flex-shrink-0 -mb-2">
+          <div className="text-[10px] font-semibold text-gray-600 uppercase tracking-widest px-1">Playout</div>
+          <div className="text-[10px] font-semibold text-brand-400 uppercase tracking-widest px-1 flex items-center gap-1.5">
+            <Library className="h-3 w-3" />Mídias
+          </div>
+          {active.length > 1 && <div className="text-[10px] font-semibold text-gray-600 uppercase tracking-widest px-1">Playout 2</div>}
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 flex-1 min-h-0 auto-rows-fr">
           {buildGrid()}
         </div>
