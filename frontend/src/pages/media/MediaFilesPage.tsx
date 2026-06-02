@@ -182,23 +182,35 @@ export default function MediaFilesPage() {
       <div className="flex items-center gap-1.5 flex-wrap">
         <Filter className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
 
-        {/* Filtro órfãos */}
+        {/* Todos — limpa todos os filtros */}
+        {(() => {
+          const allClear = !filterOrphan && !filterStatus && !filterTypeId
+          return (
+            <button onClick={() => { setFilterOrphan(false); setFilterStatus(''); setFilterTypeId('') }}
+              className={clsx('px-2 py-1 rounded text-xs font-medium transition-colors',
+                allClear ? 'bg-brand-600/30 text-brand-300 ring-1 ring-brand-500/40' : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>
+              Todos
+            </button>
+          )
+        })()}
+
+        {/* Órfãos */}
         <button onClick={() => setFilterOrphan(v => !v)}
           className={clsx('flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors',
             filterOrphan ? 'bg-orange-600/30 text-orange-300 ring-1 ring-orange-500/40' : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>
           <AlertTriangle className="h-3 w-3" />Órfãos
         </button>
 
-        {/* Filtro status */}
-        {['', 'READY', 'ERROR', 'PENDING', 'PROCESSING'].map(s => (
-          <button key={s} onClick={() => setFilterStatus(s)}
+        {/* Status do storage */}
+        {['READY', 'ERROR', 'PENDING', 'PROCESSING'].map(s => (
+          <button key={s} onClick={() => setFilterStatus(filterStatus === s ? '' : s)}
             className={clsx('px-2 py-1 rounded text-xs font-medium transition-colors',
               filterStatus === s ? 'bg-brand-600/30 text-brand-300 ring-1 ring-brand-500/40' : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>
-            {s || 'Todos'}
+            {s}
           </button>
         ))}
 
-        {/* Filtro por tipo de clipe */}
+        {/* Modalidade do conteúdo */}
         {activeTypes.map(t => (
           <button key={t.id} onClick={() => setFilterTypeId(filterTypeId === t.id ? '' : t.id)}
             className={clsx('px-2 py-1 rounded text-xs font-medium transition-colors', filterTypeId === t.id ? 'ring-1 ring-white/20' : 'bg-gray-800 text-gray-500 hover:bg-gray-700')}
@@ -210,7 +222,7 @@ export default function MediaFilesPage() {
         {/* Separador */}
         <div className="w-px h-4 bg-gray-700 mx-0.5 flex-shrink-0" />
 
-        {/* Botões de ação — compactos, na mesma linha */}
+        {/* Upload + Novo */}
         {uploadLoading && (
           <span className="text-[11px] text-gray-400 flex items-center gap-1">
             <Loader2 className="h-3 w-3 animate-spin" />{uploadCount.done}/{uploadCount.total} · {uploadProgress}%
@@ -220,14 +232,17 @@ export default function MediaFilesPage() {
           className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-gray-800 text-purple-400 hover:bg-gray-700 transition-colors disabled:opacity-50 border border-gray-700">
           <Upload className="h-3 w-3" />Upload
         </button>
+        <button onClick={() => navigate('/playout')}
+          className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-brand-600/30 text-brand-300 hover:bg-brand-600/50 transition-colors border border-brand-700/40">
+          <Plus className="h-3 w-3" />Novo
+        </button>
+
+        {/* Cookies YT — sempre no canto direito */}
+        <div className="flex-1" />
         <button onClick={() => cookiesFileRef.current?.click()} disabled={cookiesUploading}
           title="Renovar cookies YouTube"
           className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-gray-800 text-red-400 hover:bg-gray-700 transition-colors disabled:opacity-50 border border-gray-700">
           <Film className="h-3 w-3" />Cookies YT
-        </button>
-        <button onClick={() => navigate('/playout')}
-          className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-brand-600/30 text-brand-300 hover:bg-brand-600/50 transition-colors border border-brand-700/40">
-          <Plus className="h-3 w-3" />Novo
         </button>
 
         {/* Contexto selecionado */}
