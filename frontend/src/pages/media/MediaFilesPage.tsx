@@ -70,6 +70,7 @@ export default function MediaFilesPage() {
   const [scanLoading,       setScanLoading]       = useState(false)
   const [thumbGenId,        setThumbGenId]        = useState<string | null>(null)
   const [thumbVersion,      setThumbVersion]      = useState<Record<string, number>>({})
+  const [thumbRegenAll,     setThumbRegenAll]     = useState(false)
 
   function toggleSort(col: string) {
     if (sortBy === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -143,6 +144,23 @@ export default function MediaFilesPage() {
     errors === 0 ? toast.success(`${fs.length} arquivo(s) enviado(s).`) : toast.error(`${errors} arquivo(s) falharam.`)
     setUploadLoading(false); setUploadCount({ done: 0, total: 0 })
     if (fileRef.current) fileRef.current.value = ''
+    refetch()
+  }
+
+  async function handleRegenAllThumbnails() {
+    const readyFiles = sorted.filter(f => f.ingestStatus === 'READY' && f.hlsPath)
+    if (!readyFiles.length) return
+    setThumbRegenAll(true)
+    let done = 0
+    for (const f of readyFiles) {
+      try {
+        await api.post(`/media/${f.id}/generate-thumbnail`)
+        setThumbVersion(v => ({ ...v, [f.id]: Date.now() }))
+        done++
+      } catch {}
+    }
+    toast.success(`${done} thumbnail(s) regenerado(s)`)
+    setThumbRegenAll(false)
     refetch()
   }
 
@@ -333,7 +351,13 @@ export default function MediaFilesPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-800">
-                <th className="w-14 px-2 py-3"></th>
+                <th className="w-14 px-2 py-3">
+                  <button onClick={handleRegenAllThumbnails} disabled={thumbRegenAll}
+                    title="Regenerar todas as thumbnails"
+                    className="flex items-center justify-center w-full disabled:opacity-50">
+                    {thumbRegenAll ? <Loader2 className="h-3 w-3 text-gray-400 animate-spin" /> : <ImagePlus className="h-3 w-3 text-gray-600 hover:text-yellow-400 transition-colors" />}
+                  </button>
+                </th>
                 <th onClick={() => toggleSort('code')} className="text-left px-4 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wide cursor-pointer hover:text-gray-300 select-none w-24">Código{si('code')}</th>
                 <th onClick={() => toggleSort('title')} className="text-left px-4 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wide cursor-pointer hover:text-gray-300 select-none">Título{si('title')}</th>
                 <th onClick={() => toggleSort('type')} className="text-left px-4 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wide cursor-pointer hover:text-gray-300 select-none w-20">Tipo{si('type')}</th>
