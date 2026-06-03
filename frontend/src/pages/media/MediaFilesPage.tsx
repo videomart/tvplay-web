@@ -348,11 +348,12 @@ export default function MediaFilesPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-800">
-                <th className="w-14 px-2 py-3">
+                <th className="px-2 py-3 w-20">
                   <button onClick={handleRegenAllThumbnails} disabled={thumbRegenAll}
                     title="Regenerar todas as thumbnails"
-                    className="flex items-center justify-center w-full disabled:opacity-50">
-                    {thumbRegenAll ? <Loader2 className="h-3 w-3 text-gray-400 animate-spin" /> : <ImagePlus className="h-3 w-3 text-gray-600 hover:text-yellow-400 transition-colors" />}
+                    className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 border border-yellow-600/40 transition-colors disabled:opacity-50 whitespace-nowrap">
+                    {thumbRegenAll ? <Loader2 className="h-3 w-3 animate-spin" /> : <ImagePlus className="h-3 w-3" />}
+                    {thumbRegenAll ? 'Gerando...' : 'Regerar'}
                   </button>
                 </th>
                 <th onClick={() => toggleSort('code')} className="text-left px-4 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wide cursor-pointer hover:text-gray-300 select-none w-24">Código{si('code')}</th>
