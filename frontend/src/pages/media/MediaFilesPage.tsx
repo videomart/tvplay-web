@@ -69,6 +69,7 @@ export default function MediaFilesPage() {
   const [cookiesUploading, setCookiesUploading] = useState(false)
   const [scanLoading,       setScanLoading]       = useState(false)
   const [thumbGenId,        setThumbGenId]        = useState<string | null>(null)
+  const [thumbVersion,      setThumbVersion]      = useState<Record<string, number>>({})
 
   function toggleSort(col: string) {
     if (sortBy === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -151,6 +152,7 @@ export default function MediaFilesPage() {
     try {
       await api.post(`/media/${fileId}/generate-thumbnail`)
       toast.success('Thumbnail gerado')
+      setThumbVersion(v => ({ ...v, [fileId]: Date.now() }))
       refetch()
     } catch (err: any) {
       toast.error(err.response?.data?.error ?? 'Erro ao gerar thumbnail')
@@ -358,7 +360,7 @@ export default function MediaFilesPage() {
                     <td className="px-2 py-1.5 w-14" onClick={(e) => { if (file.thumbnail && file.ingestStatus === 'READY' && file.hlsPath) { e.stopPropagation(); setPreviewFile(file) } }}>
                       {file.thumbnail ? (
                         <div className={clsx('relative w-10 h-7 rounded overflow-hidden bg-gray-800 flex-shrink-0', file.ingestStatus === 'READY' && file.hlsPath && 'cursor-pointer group')}>
-                          <img src={`/api/media/${file.id}/thumbnail`} alt="" className="w-full h-full object-cover" loading="lazy" />
+                          <img src={`/api/media/${file.id}/thumbnail${thumbVersion[file.id] ? `?v=${thumbVersion[file.id]}` : ''}`} alt="" className="w-full h-full object-cover" loading="lazy" />
                           {file.ingestStatus === 'READY' && file.hlsPath && (
                             <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                               <Play className="h-3 w-3 text-white" />
