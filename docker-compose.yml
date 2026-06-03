@@ -123,9 +123,9 @@ services:
     ports:
       - '3000:80'   # acesso direto local (sem SSL)
     environment:
-      VIRTUAL_HOST: vps.avideomart.com.br
+      VIRTUAL_HOST: vps.avideomart.com.br,tvplay.tvtupi.com.br,vps1.tvtupi.com.br,vps2.tvtupi.com.br
       VIRTUAL_PORT: '80'
-      LETSENCRYPT_HOST: vps.avideomart.com.br
+      LETSENCRYPT_HOST: vps.avideomart.com.br,tvplay.tvtupi.com.br,vps1.tvtupi.com.br,vps2.tvtupi.com.br
       LETSENCRYPT_EMAIL: bolais@videomart.com.br
     depends_on:
       - api
