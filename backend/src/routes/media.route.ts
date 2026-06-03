@@ -54,7 +54,7 @@ export default async function mediaRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'Mídia não está pronta para gerar thumbnail' })
 
     const thumbOffset = media.duration && media.duration > 0 ? media.duration / 2 : 2
-    const hlsUrl = await storageService.getSignedUrl(media.hlsPath, 120)
+    const hlsUrl = `http://localhost:${config.port}/api/media/stream/${media.id}/index.m3u8`
     const thumbDir = path.join(config.storage.transcodeOutputPath, 'thumbs')
     const thumbPath = await generateThumbnail(hlsUrl, thumbDir, thumbOffset)
 
