@@ -53,7 +53,7 @@ export default async function clipRoutes(app: FastifyInstance) {
     const [items, total] = await prisma.$transaction([
       prisma.clip.findMany({
         where,
-        include: { client: true, type: true, media: { select: { duration: true, hlsPath: true, ingestStatus: true } }, graphic: { select: { id: true, name: true, logoUrl: true, logoPosition: true, showClock: true, lowerText: true } } },
+        include: { client: true, type: true, media: { select: { id: true, duration: true, hlsPath: true, ingestStatus: true, thumbnail: true } }, graphic: { select: { id: true, name: true, logoUrl: true, logoPosition: true, showClock: true, lowerText: true } } },
         orderBy,
         skip,
         take,
@@ -94,7 +94,7 @@ export default async function clipRoutes(app: FastifyInstance) {
   app.get('/:id', auth, async (request: any, reply) => {
     const clip = await prisma.clip.findUnique({
       where: { id: request.params.id },
-      include: { client: true, type: true, media: { select: { id: true, hlsPath: true, duration: true, ingestStatus: true } }, graphic: { select: { id: true, name: true, logoUrl: true, logoPosition: true, showClock: true, lowerText: true } } },
+      include: { client: true, type: true, media: { select: { id: true, hlsPath: true, duration: true, ingestStatus: true, thumbnail: true } }, graphic: { select: { id: true, name: true, logoUrl: true, logoPosition: true, showClock: true, lowerText: true } } },
     })
     if (!clip) return reply.status(404).send({ error: 'Clipe não encontrado' })
     return clip
@@ -112,7 +112,7 @@ export default async function clipRoutes(app: FastifyInstance) {
         ...body.data,
         validUntil: body.data.validUntil ? new Date(body.data.validUntil) : undefined,
       },
-      include: { client: true, type: true, media: { select: { id: true, hlsPath: true, duration: true, ingestStatus: true } } },
+      include: { client: true, type: true, media: { select: { id: true, hlsPath: true, duration: true, ingestStatus: true, thumbnail: true } } },
     })
     return reply.status(201).send(clip)
   })
@@ -130,7 +130,7 @@ export default async function clipRoutes(app: FastifyInstance) {
             ? (body.data.validUntil ? new Date(body.data.validUntil) : null)
             : undefined,
         },
-        include: { client: true, type: true, media: { select: { id: true, hlsPath: true, duration: true, ingestStatus: true } } },
+        include: { client: true, type: true, media: { select: { id: true, hlsPath: true, duration: true, ingestStatus: true, thumbnail: true } } },
       })
       return clip
     } catch (err) {

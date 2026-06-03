@@ -454,6 +454,12 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
         {selectedLibraryClip ? (
           <>
             <div className="w-px h-4 bg-gray-700 flex-shrink-0 mx-0.5" />
+            {selectedLibraryClip.media?.thumbnail && selectedLibraryClip.media?.id && (
+              <img src={`/api/media/${selectedLibraryClip.media.id}/thumbnail`} alt=""
+                className="h-7 w-10 object-cover rounded flex-shrink-0 cursor-pointer"
+                onClick={() => selectedLibraryClip.media?.hlsPath && setPreviewClip(selectedLibraryClip)}
+              />
+            )}
             <span className="text-[9px] text-brand-400 font-mono font-bold truncate flex-1 min-w-0" title={selectedLibraryClip.title}>
               {selectedLibraryClip.code}
             </span>

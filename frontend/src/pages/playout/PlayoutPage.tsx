@@ -70,11 +70,17 @@ export default function PlayoutPage() {
 
         {/* Subtítulos das colunas — Canal | Mídias | Canal */}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 flex-shrink-0 -mb-2">
-          <div className="text-[10px] font-semibold text-gray-600 uppercase tracking-widest px-1">Playout</div>
-          <div className="text-[10px] font-semibold text-brand-400 uppercase tracking-widest px-1 flex items-center gap-1.5">
-            <Library className="h-3 w-3" />Mídias
+          <div className="text-[11px] font-semibold text-brand-400 uppercase tracking-widest px-1 flex items-center gap-1.5">
+            <Tv2 className="h-3.5 w-3.5" />Playout 1
           </div>
-          {active.length > 1 && <div className="text-[10px] font-semibold text-gray-600 uppercase tracking-widest px-1">Playout 2</div>}
+          <div className="text-[11px] font-semibold text-brand-400 uppercase tracking-widest px-1 flex items-center gap-1.5">
+            <Library className="h-3.5 w-3.5" />Mídias
+          </div>
+          {active.length > 1 && (
+            <div className="text-[11px] font-semibold text-brand-400 uppercase tracking-widest px-1 flex items-center gap-1.5">
+              <Tv2 className="h-3.5 w-3.5" />Playout 2
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 flex-1 min-h-0 auto-rows-fr">
