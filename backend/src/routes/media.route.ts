@@ -47,15 +47,16 @@ export default async function mediaRoutes(app: FastifyInstance) {
   app.post('/:mediaId/generate-thumbnail', auth, async (request: any, reply) => {
     const media = await prisma.mediaFile.findUnique({
       where: { id: request.params.mediaId },
-      select: { id: true, hlsPath: true, ingestStatus: true },
+      select: { id: true, hlsPath: true, ingestStatus: true, duration: true },
     })
     if (!media) return reply.status(404).send({ error: 'Mídia não encontrada' })
     if (media.ingestStatus !== 'READY' || !media.hlsPath)
       return reply.status(400).send({ error: 'Mídia não está pronta para gerar thumbnail' })
 
+    const thumbOffset = media.duration && media.duration > 0 ? media.duration / 2 : 2
     const hlsUrl = await storageService.getSignedUrl(media.hlsPath, 120)
     const thumbDir = path.join(config.storage.transcodeOutputPath, 'thumbs')
-    const thumbPath = await generateThumbnail(hlsUrl, thumbDir)
+    const thumbPath = await generateThumbnail(hlsUrl, thumbDir, thumbOffset)
 
     const thumbObjectName = `thumbs/${media.id}.jpg`
     await storageService.uploadBuffer(thumbObjectName, fs.readFileSync(thumbPath), 'image/jpeg')

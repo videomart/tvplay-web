@@ -60,7 +60,8 @@ const worker = new Worker(
         // ── Vídeo: pipeline padrão ──────────────────────────────────────────
         const probe = await probeMedia(tmpPath)
 
-        const thumbPath = await generateThumbnail(tmpPath, thumbDir)
+        const thumbOffset = probe.duration > 0 ? probe.duration / 2 : 2
+        const thumbPath = await generateThumbnail(tmpPath, thumbDir, thumbOffset)
         const thumbObjectName = `thumbs/${mediaId}.jpg`
         await storageService.uploadFile(thumbObjectName, thumbPath, 'image/jpeg')
         fs.unlinkSync(thumbPath)
