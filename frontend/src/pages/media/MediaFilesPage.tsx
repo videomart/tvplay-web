@@ -355,7 +355,7 @@ export default function MediaFilesPage() {
                                    'hover:bg-gray-800/30')}>
 
                     {/* Thumbnail */}
-                    <td className="px-2 py-1.5 w-14" onClick={(e) => { if (file.ingestStatus === 'READY' && file.hlsPath) { e.stopPropagation(); setPreviewFile(file) } }}>
+                    <td className="px-2 py-1.5 w-14" onClick={(e) => { if (file.thumbnail && file.ingestStatus === 'READY' && file.hlsPath) { e.stopPropagation(); setPreviewFile(file) } }}>
                       {file.thumbnail ? (
                         <div className={clsx('relative w-10 h-7 rounded overflow-hidden bg-gray-800 flex-shrink-0', file.ingestStatus === 'READY' && file.hlsPath && 'cursor-pointer group')}>
                           <img src={`/api/media/${file.id}/thumbnail`} alt="" className="w-full h-full object-cover" loading="lazy" />
