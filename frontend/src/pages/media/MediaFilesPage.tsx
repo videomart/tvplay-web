@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   HardDrive, Trash2, AlertTriangle, CheckCircle, Clock, XCircle,
-  Filter, Upload, ChevronUp, ChevronDown, Copy, Play, ExternalLink, Loader2, Plus, Film, ScanSearch,
+  Filter, Upload, ChevronUp, ChevronDown, Copy, Play, ExternalLink, Loader2, Plus, Film, ScanSearch, ImagePlus,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
@@ -67,7 +67,8 @@ export default function MediaFilesPage() {
   const [selected,       setSelected]       = useState<any | null>(null)
   const [previewFile,    setPreviewFile]    = useState<any | null>(null)
   const [cookiesUploading, setCookiesUploading] = useState(false)
-  const [scanLoading,     setScanLoading]     = useState(false)
+  const [scanLoading,       setScanLoading]       = useState(false)
+  const [thumbGenId,        setThumbGenId]        = useState<string | null>(null)
 
   function toggleSort(col: string) {
     if (sortBy === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -142,6 +143,20 @@ export default function MediaFilesPage() {
     setUploadLoading(false); setUploadCount({ done: 0, total: 0 })
     if (fileRef.current) fileRef.current.value = ''
     refetch()
+  }
+
+  async function handleGenerateThumbnail(e: React.MouseEvent, fileId: string) {
+    e.stopPropagation()
+    setThumbGenId(fileId)
+    try {
+      await api.post(`/media/${fileId}/generate-thumbnail`)
+      toast.success('Thumbnail gerado')
+      refetch()
+    } catch (err: any) {
+      toast.error(err.response?.data?.error ?? 'Erro ao gerar thumbnail')
+    } finally {
+      setThumbGenId(null)
+    }
   }
 
   async function handleScanMinio() {
@@ -350,6 +365,15 @@ export default function MediaFilesPage() {
                             </div>
                           )}
                         </div>
+                      ) : file.ingestStatus === 'READY' && file.hlsPath ? (
+                        <button onClick={(e) => handleGenerateThumbnail(e, file.id)}
+                          disabled={thumbGenId === file.id}
+                          title="Gerar thumbnail"
+                          className="w-10 h-7 rounded bg-gray-800 hover:bg-gray-700 flex items-center justify-center transition-colors disabled:opacity-50">
+                          {thumbGenId === file.id
+                            ? <Loader2 className="h-3 w-3 text-gray-400 animate-spin" />
+                            : <ImagePlus className="h-3 w-3 text-gray-500" />}
+                        </button>
                       ) : (
                         <div className="w-10 h-7 rounded bg-gray-800 flex items-center justify-center">
                           <Film className="h-3 w-3 text-gray-600" />
