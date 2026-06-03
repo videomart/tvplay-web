@@ -19,11 +19,12 @@ export default async function settingsRoutes(app: FastifyInstance) {
 
   app.put('/', auth, async (request: any) => {
     const {
-      companyName, logoUrl, email,
+      appTitle, companyName, logoUrl, email,
       defaultMonitorOpen, defaultFallbackOpen,
       defaultOutputsOpen, defaultPlaylistOpen,
       clockOffsetHours, defaultBreakDuration, defaultSlideDuration, defaultUrlDuration,
     } = request.body as {
+      appTitle?: string
       companyName?: string
       logoUrl?: string | null
       email?: string | null
@@ -41,7 +42,8 @@ export default async function settingsRoutes(app: FastifyInstance) {
       where: { id: 'singleton' },
       create: {
         id: 'singleton',
-        companyName: companyName ?? 'TVPlay',
+        appTitle:     appTitle     ?? 'TVPlay Web',
+        companyName:  companyName  ?? 'TVPlay',
         logoUrl: logoUrl ?? null,
         email: email ?? null,
         defaultMonitorOpen:   defaultMonitorOpen   ?? true,
@@ -54,6 +56,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
         defaultUrlDuration:   defaultUrlDuration   ?? 0,
       },
       update: {
+        ...(appTitle              !== undefined && { appTitle }),
         ...(companyName           !== undefined && { companyName }),
         ...(logoUrl               !== undefined && { logoUrl }),
         ...(email                 !== undefined && { email }),

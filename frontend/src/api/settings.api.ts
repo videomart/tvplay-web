@@ -2,6 +2,7 @@ import { api } from './client'
 
 export interface SystemSettings {
   id: string
+  appTitle: string
   companyName: string
   logoUrl: string | null
   email: string | null

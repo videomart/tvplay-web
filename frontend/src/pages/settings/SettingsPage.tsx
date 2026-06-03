@@ -48,7 +48,7 @@ export default function SettingsPage() {
 
   // ─── Estado local dos formulários ──────────────────────────────────────────
 
-  const [empresa, setEmpresa] = useState({ companyName: '', logoUrl: '', email: '' })
+  const [empresa, setEmpresa] = useState({ appTitle: 'TVPlay Web', companyName: '', logoUrl: '', email: '' })
   const [logoUploading, setLogoUploading] = useState(false)
   const logoInputRef = useRef<HTMLInputElement>(null)
   const [playoutDefaults, setPlayoutDefaults] = useState({
@@ -94,6 +94,7 @@ export default function SettingsPage() {
   useEffect(() => {
     if (settings) {
       setEmpresa({
+        appTitle: settings.appTitle ?? 'TVPlay Web',
         companyName: settings.companyName,
         logoUrl: settings.logoUrl ?? '',
         email: settings.email ?? '',
@@ -176,6 +177,13 @@ export default function SettingsPage() {
           <h2 className="text-sm font-semibold text-white">Dados da Empresa</h2>
 
           <Input
+            label="Título da página (HTML title)"
+            value={empresa.appTitle}
+            onChange={(e) => setEmpresa((s) => ({ ...s, appTitle: e.target.value }))}
+            placeholder="TVPlay Web"
+          />
+
+          <Input
             label="Nome da empresa / emissora"
             value={empresa.companyName}
             onChange={(e) => setEmpresa((s) => ({ ...s, companyName: e.target.value }))}
@@ -249,6 +257,7 @@ export default function SettingsPage() {
               icon={<Save className="h-4 w-4" />}
               loading={saveMut.isPending}
               onClick={() => saveMut.mutate({
+                appTitle: empresa.appTitle || 'TVPlay Web',
                 companyName: empresa.companyName || 'TVPlay',
                 logoUrl: empresa.logoUrl || null,
                 email: empresa.email || null,

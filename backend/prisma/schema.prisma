@@ -440,6 +440,7 @@ model InputSource {
 
 model SystemSettings {
   id          String  @id @default("singleton")
+  appTitle    String  @default("TVPlay Web")
   companyName String  @default("TVPlay")
   logoUrl     String?
   email       String?

@@ -1,10 +1,17 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Outlet } from 'react-router-dom'
 import { Menu } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { settingsApi } from '../../api/settings.api'
 import Sidebar from './Sidebar'
 
 export default function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: settingsApi.get, staleTime: 60_000 })
+
+  useEffect(() => {
+    document.title = settings?.appTitle || 'TVPlay Web'
+  }, [settings?.appTitle])
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-950">
