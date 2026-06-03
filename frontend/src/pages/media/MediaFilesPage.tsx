@@ -291,9 +291,6 @@ export default function MediaFilesPage() {
           className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-brand-600/30 text-brand-300 hover:bg-brand-600/50 transition-colors border border-brand-700/40">
           <Plus className="h-3 w-3" />Novo
         </button>
-
-        {/* Cookies YT — sempre no canto direito */}
-        <div className="flex-1" />
         <button onClick={() => cookiesFileRef.current?.click()} disabled={cookiesUploading}
           title="Renovar cookies YouTube"
           className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-gray-800 text-red-400 hover:bg-gray-700 transition-colors disabled:opacity-50 border border-gray-700">
