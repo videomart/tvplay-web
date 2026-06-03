@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Library, Loader2, Plus, Search, Trash2, Copy, Play, ListPlus,
@@ -156,6 +156,15 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
   const fileRefDirect = useRef<HTMLInputElement>(null)
   const fileRefModal  = useRef<HTMLInputElement>(null)
   const uploadClipIdRef = useRef<string | null>(null)
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  useEffect(() => {
+    if (searchParams.get('newClip') === '1') {
+      openNew()
+      setSearchParams({}, { replace: true })
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // ── Debounce busca ────────────────────────────────────────────────────────
   function handleSearchChange(v: string) {

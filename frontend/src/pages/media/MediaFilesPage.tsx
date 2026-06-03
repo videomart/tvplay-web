@@ -232,7 +232,7 @@ export default function MediaFilesPage() {
           className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-gray-800 text-purple-400 hover:bg-gray-700 transition-colors disabled:opacity-50 border border-gray-700">
           <Upload className="h-3 w-3" />Upload
         </button>
-        <button onClick={() => navigate('/playout')}
+        <button onClick={() => navigate('/playout?newClip=1')}
           className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-brand-600/30 text-brand-300 hover:bg-brand-600/50 transition-colors border border-brand-700/40">
           <Plus className="h-3 w-3" />Novo
         </button>
