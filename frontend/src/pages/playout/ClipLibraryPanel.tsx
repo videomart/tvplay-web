@@ -454,27 +454,25 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
         {selectedLibraryClip ? (
           <>
             <div className="w-px h-4 bg-gray-700 flex-shrink-0 mx-0.5" />
-            {selectedLibraryClip.media?.thumbnail && selectedLibraryClip.media?.id && (
-              <img src={`/api/media/${selectedLibraryClip.media.id}/thumbnail`} alt=""
-                className="h-7 w-10 object-cover rounded flex-shrink-0 cursor-pointer"
-                onClick={() => selectedLibraryClip.media?.hlsPath && setPreviewClip(selectedLibraryClip)}
-              />
-            )}
-            <span className="text-[9px] text-brand-400 font-mono font-bold truncate flex-1 min-w-0" title={selectedLibraryClip.title}>
-              {selectedLibraryClip.code}
-            </span>
-            {selectedLibraryClip.media?.hlsPath && selectedLibraryClip.media?.ingestStatus === 'READY' && (
-              <button onClick={() => setPreviewClip(selectedLibraryClip)} title="Preview"
-                className="p-1 rounded text-gray-500 hover:text-emerald-400 transition-colors flex-shrink-0">
+            {/* Thumbnail unificado: imagem para FILE, badge Play para URL */}
+            {selectedLibraryClip.media?.thumbnail && selectedLibraryClip.media?.id ? (
+              <div className="relative h-7 w-10 flex-shrink-0 rounded overflow-hidden cursor-pointer group"
+                onClick={() => setPreviewClip(selectedLibraryClip)}>
+                <img src={`/api/media/${selectedLibraryClip.media.id}/thumbnail`} alt=""
+                  className="h-full w-full object-cover" />
+                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <Play className="h-3 w-3 text-white" />
+                </div>
+              </div>
+            ) : selectedLibraryClip.sourceType === 'URL' && selectedLibraryClip.sourceUrl ? (
+              <button onClick={() => setUrlPreviewClip(selectedLibraryClip)} title="Preview URL"
+                className="flex items-center justify-center h-7 w-10 rounded bg-sky-900/40 border border-sky-700/40 text-sky-400 hover:bg-sky-900/70 transition-colors flex-shrink-0">
                 <Play className="h-3.5 w-3.5" />
               </button>
-            )}
-            {selectedLibraryClip.sourceType === 'URL' && selectedLibraryClip.sourceUrl && (
-              <button onClick={() => setUrlPreviewClip(selectedLibraryClip)} title="Preview URL"
-                className="p-1 rounded text-gray-500 hover:text-sky-400 transition-colors flex-shrink-0">
-                <Link className="h-3.5 w-3.5" />
-              </button>
-            )}
+            ) : null}
+            <span className="text-[9px] text-brand-400 font-mono font-bold truncate flex-1 min-w-0 ml-1.5" title={selectedLibraryClip.title}>
+              {selectedLibraryClip.code}
+            </span>
             {selectedLibraryClip.sourceType !== 'URL' && (
               <button onClick={() => { if (selectedLibraryClip.media?.ingestStatus === 'READY' && !window.confirm('Substituir arquivo?')) return; startUpload(selectedLibraryClip.id) }}
                 disabled={uploadingClipId !== null && uploadingClipId !== selectedLibraryClip.id}
