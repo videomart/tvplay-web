@@ -21,18 +21,22 @@ echo ""
 echo "▶ 1/4  Atualizando código (git pull)..."
 git pull origin main
 
-# 2. Copiar cookies do YouTube (se existir localmente)
+# 2. Verificar cookies do YouTube (pasta ./cookies/ — ignorada pelo git, persiste entre rebuilds)
 if [ "$SKIP_COOKIES" = false ]; then
-  if [ -f "./youtube-cookies.txt" ] && [ -s "./youtube-cookies.txt" ]; then
-    echo "▶ 2/4  Cookies do YouTube encontrados — OK"
+  mkdir -p ./cookies
+  if [ -f "./cookies/youtube-cookies.txt" ] && [ -s "./cookies/youtube-cookies.txt" ]; then
+    echo "▶ 2/4  Cookies encontrados em ./cookies/youtube-cookies.txt — OK"
+  elif [ -f "./youtube-cookies.txt" ] && [ -s "./youtube-cookies.txt" ]; then
+    cp ./youtube-cookies.txt ./cookies/youtube-cookies.txt
+    echo "▶ 2/4  Cookies migrados: ./youtube-cookies.txt → ./cookies/youtube-cookies.txt"
   else
-    echo "⚠  2/4  youtube-cookies.txt não encontrado ou vazio."
-    echo "        Execute novamente após copiar o arquivo de cookies."
-    echo "        Ou use --skip-cookies se o arquivo já existe no servidor."
+    echo "⚠  2/4  Cookies não encontrados em ./cookies/youtube-cookies.txt"
+    echo "        Coloque o arquivo em ./cookies/youtube-cookies.txt e tente novamente."
+    echo "        Ou use --skip-cookies se os cookies já estão na pasta."
     exit 1
   fi
 else
-  echo "▶ 2/4  --skip-cookies: usando cookies já existentes no servidor"
+  echo "▶ 2/4  --skip-cookies: usando cookies em ./cookies/ (já existentes)"
 fi
 
 # 3. Rebuild dos containers (backend + frontend)

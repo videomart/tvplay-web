@@ -7,6 +7,7 @@ import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { prisma } from '../lib/prisma'
 import * as previewService from '../services/preview.service'
+import * as activeInputsService from '../services/active-inputs.service'
 
 const execFileAsync = promisify(execFile)
 
@@ -220,13 +221,28 @@ export default async function inputSourceRoutes(app: FastifyInstance) {
       include,
     }).catch(() => null)
     if (!source) return reply.status(404).send({ error: 'Fonte não encontrada' })
+    // Gerencia relay ativo ao mudar campo active
+    if (body.data.active === true)  activeInputsService.activateInput(source).catch(() => {})
+    if (body.data.active === false) activeInputsService.deactivateInput(source.id)
     return source
   })
 
   app.delete('/:id', auth, async (request: any, reply) => {
     previewService.stopPreview(request.params.id)
+    activeInputsService.deactivateInput(request.params.id)
     await prisma.inputSource.delete({ where: { id: request.params.id } }).catch(() => null)
     return reply.status(204).send()
+  })
+
+  // ─── Relay ativo: serve segmentos HLS do active-inputs.service ───────────────
+  app.get('/:id/active-stream/*', async (request: any, reply) => {
+    const dir = activeInputsService.getHlsDir(request.params.id)
+    if (!dir) return reply.status(404).send({ error: 'Entrada não ativa' })
+    const filePath = path.join(dir, request.params['*'])
+    if (!fs.existsSync(filePath)) return reply.status(404).send({ error: 'Segmento não encontrado' })
+    const ct = filePath.endsWith('.m3u8') ? 'application/vnd.apple.mpegurl' : 'video/MP2T'
+    reply.header('Content-Type', ct).header('Cache-Control', 'no-cache')
+    return reply.send(fs.createReadStream(filePath))
   })
 
   // ─── Preview ao vivo (SRT / RTSP / RTMP / UDP) via FFmpeg → HLS temp ─────────
@@ -238,6 +254,11 @@ export default async function inputSourceRoutes(app: FastifyInstance) {
       include: { clip: { include: { media: { select: { hlsPath: true, ingestStatus: true } } } } },
     })
     if (!source) return reply.status(404).send({ error: 'Fonte não encontrada' })
+
+    // Caminho rápido: relay ativo já tem HLS pronto — sem yt-dlp, sem espera
+    if (activeInputsService.isReady(source.id)) {
+      return reply.send({ hlsUrl: `/api/input-sources/${source.id}/active-stream/index.m3u8` })
+    }
 
     // Tipo CLIP: resolve a URL a partir do clipe cadastrado
     if ((source as any).type === 'CLIP') {
@@ -363,9 +384,9 @@ export default async function inputSourceRoutes(app: FastifyInstance) {
     return reply.status(204).send()
   })
 
-  // Status da sessão de preview
+  // Status da sessão de preview — inclui relay ativo como "running"
   app.get('/:id/preview/status', auth, async (request: any) => ({
-    running: previewService.isPreviewRunning(request.params.id),
+    running: previewService.isPreviewRunning(request.params.id) || activeInputsService.isReady(request.params.id),
   }))
 
   // Serve os segmentos HLS gerados pelo FFmpeg

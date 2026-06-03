@@ -16,3 +16,6 @@ youtube-cookies.txt
 
 # Credenciais de deploy
 .deploy-config
+
+# Pasta de cookies (contém credenciais — nunca commitar)
+cookies/

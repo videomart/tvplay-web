@@ -791,10 +791,11 @@ export function stopStreaming(channelId: string) {
 // Also stops active camera so two FFmpeg processes never write to the same output.
 export function stopAllStreaming(channelId: string) {
   _stopCameraHook?.(channelId)
+  // Captura outputIds antes de stopStreaming deletar o mapa
+  const outputIds = [...(channelProcs.get(channelId)?.keys() ?? [])]
   stopStreaming(channelId)
   stopRelays(channelId)
-  // Para todos os proxies SCTE-35 do canal
-  for (const [outputId] of (channelProcs.get(channelId) ?? [])) {
+  for (const outputId of outputIds) {
     tsProxy.stopProxy(proxyKey(channelId, outputId))
   }
 }

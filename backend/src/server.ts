@@ -5,8 +5,9 @@ import { config } from './config'
 import authPlugin from './plugins/auth.plugin'
 import corsPlugin from './plugins/cors.plugin'
 import { registerRoutes } from './routes'
-import { initFromDb, handleStreamFailure } from './services/playout.service'
+import { initFromDb, handleStreamFailure, resolveSourceUrl } from './services/playout.service'
 import { setStreamFailureCallback, setClockOffsetHours } from './services/stream.service'
+import { setUrlResolver, initActiveInputs } from './services/active-inputs.service'
 import { startScheduler } from './services/scheduler.service'
 import { prisma } from './lib/prisma'
 
@@ -41,7 +42,11 @@ async function bootstrap() {
   const sysSettings = await prisma.systemSettings.findUnique({ where: { id: 'singleton' } })
   if (sysSettings?.clockOffsetHours) setClockOffsetHours(sysSettings.clockOffsetHours)
 
+  // Injeta resolver de URL no serviço de entradas ativas (quebra dep. circular)
+  setUrlResolver(resolveSourceUrl)
+
   await initFromDb()
+  await initActiveInputs()
   startScheduler()
 }
 

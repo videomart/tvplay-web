@@ -5,7 +5,92 @@ import { config } from '../config'
 import * as streamService from './stream.service'
 import type { GraphicConfig } from './stream.service'
 import * as tickerService from './ticker.service'
+import * as previewService from './preview.service'
+import * as activeInputs from './active-inputs.service'
 
+// ─── Cache de URLs resolvidas para fallback INPUT_SOURCE ──────────────────────
+// Pré-resolve via yt-dlp em background para que a entrada esteja pronta
+// imediatamente quando o fallback for ativado (stop, break, fim de playlist).
+// URLs do YouTube duram ~6h; refresh a cada 90 min garante que nunca expiram.
+
+interface FallbackCacheEntry { url: string; ts: number }
+const fallbackUrlCache = new Map<string, FallbackCacheEntry>()   // sourceId → entry
+const FALLBACK_CACHE_TTL_MS = 90 * 60 * 1000                    // 90 min
+
+function cacheFallbackUrl(sourceId: string, url: string) {
+  fallbackUrlCache.set(sourceId, { url, ts: Date.now() })
+}
+
+function getCachedFallbackUrl(sourceId: string): string | null {
+  const e = fallbackUrlCache.get(sourceId)
+  if (!e) return null
+  if (Date.now() - e.ts > FALLBACK_CACHE_TTL_MS) { fallbackUrlCache.delete(sourceId); return null }
+  return e.url
+}
+
+// Resolve com cache — usa entrada em cache se disponível e fresca
+async function resolveFallbackUrl(
+  source: { id: string; type: string; url: string | null; device: string | null },
+): Promise<string | null> {
+  const cached = getCachedFallbackUrl(source.id)
+  if (cached) {
+    console.log(`[playout] fallback cache hit: ${source.id}`)
+    return cached
+  }
+  const url = await resolveInputUrl(source)
+  if (url) cacheFallbackUrl(source.id, url)
+  return url
+}
+
+// Pré-resolve em background sem bloquear (chama logo após configurar o fallback)
+function preFetchFallbackUrl(
+  source: { id: string; type: string; url: string | null; device: string | null },
+) {
+  resolveInputUrl(source)
+    .then(url => { if (url) { cacheFallbackUrl(source.id, url); console.log(`[playout] fallback pré-resolvido: ${source.id}`) } })
+    .catch(() => {})
+}
+
+// Refresh periódico para manter URLs frescas (YouTube expira ~6h; refresh a cada 90 min)
+setInterval(async () => {
+  if (fallbackUrlCache.size === 0) return
+  const channels = await prisma.channel.findMany({
+    where: { fallbackType: 'INPUT_SOURCE', fallbackSourceId: { not: null } },
+    include: { fallbackSource: true },
+  }).catch(() => [] as any[])
+  for (const ch of channels) {
+    if (ch.fallbackSource) preFetchFallbackUrl(ch.fallbackSource)
+  }
+}, FALLBACK_CACHE_TTL_MS)
+
+// Exportado para injeção no active-inputs.service (evita dependência circular)
+export async function resolveSourceUrl(
+  src: { id: string; type: string; url: string | null; device: string | null },
+): Promise<string | null> {
+  return resolveInputUrl(src)
+}
+
+// Helper: ativa streaming de uma InputSource como fallback.
+// Usa HLS relay pré-existente se disponível (instantâneo), senão resolve on-demand.
+async function activateFallbackSource(
+  channelId: string,
+  source: { id: string; type: string; url: string | null; device: string | null },
+  graphic: GraphicConfig | null,
+): Promise<void> {
+  previewService.stopPreview(source.id)
+
+  if (activeInputs.isReady(source.id)) {
+    const hlsUrl = `http://localhost:${config.port}/api/input-sources/${source.id}/active-stream/index.m3u8`
+    console.log(`[playout] Fallback ch=${channelId} — relay ativo disponível: ${source.id}`)
+    streamService.startStreamingFromUrl(channelId, hlsUrl, graphic).catch(() => {})
+    return
+  }
+
+  const url = await resolveFallbackUrl(source).catch(() => null)
+  if (url) streamService.startStreamingFromUrl(channelId, url, graphic).catch(() => {})
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 const execFileAsync = promisify(execFile)
 
@@ -719,8 +804,7 @@ function startTimer(channelId: string) {
               prisma.channel.findUnique({ where: { id: channelId }, include: { fallbackSource: true } })
                 .then(async (ch) => {
                   if (ch?.fallbackType === 'INPUT_SOURCE' && ch.fallbackSource) {
-                    const url = await resolveInputUrl(ch.fallbackSource).catch(() => null)
-                    if (url) streamService.startStreamingFromUrl(channelId, url, newGraphic).catch(() => {})
+                    activateFallbackSource(channelId, ch.fallbackSource, newGraphic).catch(() => {})
                   } else {
                     streamService.startStreamingFromFallback(channelId, ch?.fallbackType ?? 'BLACK').catch(() => {})
                   }
@@ -785,11 +869,9 @@ function startTimer(channelId: string) {
             }).catch(() => null)
 
             if (channel?.fallbackType === 'INPUT_SOURCE' && channel.fallbackSource) {
-              resolveInputUrl(channel.fallbackSource).then(async (url) => {
-                if (!url) return
-                const fbGraphic = await resolveGraphic(null, null, channelId).catch(() => null)
-                streamService.startStreamingFromUrl(channelId, url, fbGraphic).catch(() => {})
-              }).catch(() => {})
+              resolveGraphic(null, null, channelId).catch(() => null).then(fbGraphic => {
+                activateFallbackSource(channelId, channel.fallbackSource!, fbGraphic).catch(() => {})
+              })
             } else {
               streamService.startStreamingFromFallback(channelId, channel?.fallbackType ?? 'BLACK').catch(() => {})
             }
@@ -934,12 +1016,9 @@ export async function stop(channelId: string): Promise<PlayoutState> {
     include: { fallbackSource: true },
   }).catch(() => null)
   if (channel?.fallbackType === 'INPUT_SOURCE' && channel.fallbackSource) {
-    resolveInputUrl(channel.fallbackSource).then(async (url) => {
-      if (!url) return
-      // Resolve gráfico padrão do canal (cascata de saídas) para aplicar no fallback
-      const fallbackGraphic = await resolveGraphic(null, null, channelId).catch(() => null)
-      streamService.startStreamingFromUrl(channelId, url, fallbackGraphic).catch(() => {})
-    }).catch(() => {})
+    resolveGraphic(null, null, channelId).catch(() => null).then(fallbackGraphic => {
+      activateFallbackSource(channelId, channel!.fallbackSource!, fallbackGraphic).catch(() => {})
+    })
   } else {
     streamService.startStreamingFromFallback(channelId, channel?.fallbackType ?? 'BLACK').catch(() => {})
   }
@@ -1050,11 +1129,9 @@ export async function cutToInput(channelId: string, sourceId: string): Promise<P
   }).catch(() => {})
 
   // Inicia streaming da entrada com gráfico ativo do canal (cascata de saídas)
-  resolveInputUrl(source, channelId).then(async (url) => {
-    if (!url) return
-    const cutGraphic = await resolveGraphic(null, null, channelId).catch(() => null)
-    streamService.startStreamingFromUrl(channelId, url, cutGraphic).catch(() => {})
-  }).catch(() => {})
+  resolveGraphic(null, null, channelId).catch(() => null).then(cutGraphic => {
+    activateFallbackSource(channelId, source, cutGraphic).catch(() => {})
+  })
 
   broadcast(channelId, state)
   return state
@@ -1106,11 +1183,9 @@ export async function resumeAfterCamera(channelId: string): Promise<void> {
       include: { fallbackSource: true },
     }).catch(() => null)
     if (channel?.fallbackType === 'INPUT_SOURCE' && channel.fallbackSource) {
-      resolveInputUrl(channel.fallbackSource).then(async (url) => {
-        if (!url) return
-        const fbGraphic = await resolveGraphic(null, null, channelId).catch(() => null)
-        streamService.startStreamingFromUrl(channelId, url, fbGraphic).catch(() => {})
-      }).catch(() => {})
+      resolveGraphic(null, null, channelId).catch(() => null).then(fbGraphic => {
+        activateFallbackSource(channelId, channel!.fallbackSource!, fbGraphic).catch(() => {})
+      })
     } else {
       streamService.startStreamingFromFallback(channelId, channel?.fallbackType ?? 'BLACK').catch(() => {})
     }
@@ -1296,18 +1371,21 @@ export async function setFallback(
     data: { fallbackType, fallbackSourceId: fallbackSourceId ?? null },
   })
 
+  // Pré-resolve URL sempre que INPUT_SOURCE é configurado — mesmo com canal PLAYING
+  // para que a entrada esteja pronta quando for ativada (sem atraso de yt-dlp)
+  let source: Awaited<ReturnType<typeof prisma.inputSource.findUnique>> = null
+  if (fallbackType === 'INPUT_SOURCE' && fallbackSourceId) {
+    source = await prisma.inputSource.findUnique({ where: { id: fallbackSourceId } })
+    if (source) preFetchFallbackUrl(source)
+  }
+
   const state = states.get(channelId) ?? defaultState(channelId)
   if (state.status === 'PLAYING' || state.status === 'PAUSED') return // apenas salva para depois
 
-  if (fallbackType === 'INPUT_SOURCE' && fallbackSourceId) {
-    const source = await prisma.inputSource.findUnique({ where: { id: fallbackSourceId } })
-    if (source) {
-      resolveInputUrl(source).then(async (url) => {
-        if (!url) return
-        const fbGraphic = await resolveGraphic(null, null, channelId).catch(() => null)
-        streamService.startStreamingFromUrl(channelId, url, fbGraphic).catch(() => {})
-      }).catch(() => {})
-    }
+  if (source) {
+    resolveGraphic(null, null, channelId).catch(() => null).then(fbGraphic => {
+      activateFallbackSource(channelId, source!, fbGraphic).catch(() => {})
+    })
   } else {
     streamService.startStreamingFromFallback(channelId, fallbackType).catch(() => {})
   }
@@ -1380,5 +1458,14 @@ export async function initFromDb(): Promise<void> {
     }
 
     console.log(`[playout] Canal ${ch.id} restaurado: status=${ch.status} playlist=${playlist.name} idx=${ch.playlistIndex}`)
+  }
+
+  // Pré-resolve URLs de fallback de todos os canais (garante prontidão ao reiniciar o servidor)
+  const fallbackChannels = await prisma.channel.findMany({
+    where: { fallbackType: 'INPUT_SOURCE', fallbackSourceId: { not: null } },
+    include: { fallbackSource: true },
+  }).catch(() => [] as any[])
+  for (const ch of fallbackChannels) {
+    if (ch.fallbackSource) preFetchFallbackUrl(ch.fallbackSource)
   }
 }
