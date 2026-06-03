@@ -179,12 +179,19 @@ export default async function ingestRoutes(app: FastifyInstance) {
     for (const obj of rawFiles) {
       if (existingPaths.has(obj.name)) continue
 
+      const ext = path.extname(obj.name).toLowerCase()
+      const mimeType = ext === '.mp4' ? 'video/mp4' : ext === '.mov' ? 'video/quicktime'
+        : ext === '.mkv' ? 'video/x-matroska' : ext === '.avi' ? 'video/x-msvideo'
+        : ext === '.webm' ? 'video/webm' : ext.match(/\.(png|jpg|jpeg|gif|webp|bmp|tiff?)$/) ? `image/${ext.slice(1)}`
+        : 'video/mp4'
+
       const media = await prisma.mediaFile.create({
         data: {
           originalName: path.basename(obj.name),
           ingestStatus: 'PENDING',
           sizeBytes: obj.size,
           storagePath: obj.name,
+          mimeType,
         },
       })
 
