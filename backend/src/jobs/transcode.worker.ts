@@ -15,11 +15,22 @@ export const transcodeQueue = new Queue('transcode', { connection })
 const worker = new Worker(
   'transcode',
   async (job) => {
-    const { mediaId, tmpPath } = job.data
+    const { mediaId, tmpPath: jobTmpPath, minioObjectName } = job.data
 
     await prisma.mediaFile.update({ where: { id: mediaId }, data: { ingestStatus: 'PROCESSING' } })
 
+    let tmpPath = jobTmpPath
+    let downloadedFromMinio = false
+
     try {
+      // Se o arquivo veio direto do MinIO (sem tmpPath local), baixa primeiro
+      if (!tmpPath && minioObjectName) {
+        const ext = path.extname(minioObjectName) || '.bin'
+        tmpPath = path.join(config.storage.transcodeOutputPath, `minio-${mediaId}${ext}`)
+        await storageService.downloadFile(minioObjectName, tmpPath)
+        downloadedFromMinio = true
+      }
+
       const isImage = IMAGE_EXTS.has(path.extname(tmpPath).toLowerCase())
       const hlsOutputDir = config.storage.hlsOutputPath
       const thumbDir = path.join(config.storage.transcodeOutputPath, 'thumbs')
@@ -68,6 +79,10 @@ const worker = new Worker(
       }
 
       await prisma.mediaFile.update({ where: { id: mediaId }, data: dbData })
+
+      if (downloadedFromMinio && minioObjectName) {
+        await storageService.deleteFile(minioObjectName).catch(() => {})
+      }
 
       return { success: true, mediaId }
     } catch (err: any) {

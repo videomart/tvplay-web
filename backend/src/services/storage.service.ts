@@ -78,6 +78,21 @@ class StorageService {
     return this.client.statObject(config.minio.bucket, objectName)
   }
 
+  async listObjects(prefix = ''): Promise<{ name: string; size: number }[]> {
+    const objects: { name: string; size: number }[] = []
+    await new Promise<void>((resolve, reject) => {
+      const stream = this.client.listObjects(config.minio.bucket, prefix, true)
+      stream.on('data', (obj) => { if (obj.name) objects.push({ name: obj.name, size: obj.size ?? 0 }) })
+      stream.on('end', resolve)
+      stream.on('error', reject)
+    })
+    return objects
+  }
+
+  async downloadFile(objectName: string, destPath: string): Promise<void> {
+    await this.client.fGetObject(config.minio.bucket, objectName, destPath)
+  }
+
   async setBucketPublic() {
     const policy = JSON.stringify({
       Version: '2012-10-17',

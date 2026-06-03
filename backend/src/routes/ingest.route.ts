@@ -157,4 +157,41 @@ export default async function ingestRoutes(app: FastifyInstance) {
 
     return { ok: true, deletedObjects }
   })
+
+  // Escaneia o MinIO em busca de arquivos não registrados e enfileira transcodificação
+  const VIDEO_EXTS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.mxf', '.ts', '.m2ts', '.flv', '.wmv',
+    '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tiff', '.tif'])
+
+  app.post('/scan-minio', auth, async (_request, reply) => {
+    const allObjects = await storageService.listObjects()
+
+    // Ignora prefixos internos do sistema
+    const rawFiles = allObjects.filter(
+      (o) => !o.name.startsWith('hls/') && !o.name.startsWith('thumbs/') &&
+              VIDEO_EXTS.has(path.extname(o.name).toLowerCase())
+    )
+
+    // Busca storagePaths já registrados para evitar duplicatas
+    const existing = await prisma.mediaFile.findMany({ select: { storagePath: true } })
+    const existingPaths = new Set(existing.map((m) => m.storagePath))
+
+    const queued: string[] = []
+    for (const obj of rawFiles) {
+      if (existingPaths.has(obj.name)) continue
+
+      const media = await prisma.mediaFile.create({
+        data: {
+          originalName: path.basename(obj.name),
+          ingestStatus: 'PENDING',
+          sizeBytes: obj.size,
+          storagePath: obj.name,
+        },
+      })
+
+      await transcodeQueue.add('transcode', { mediaId: media.id, minioObjectName: obj.name })
+      queued.push(obj.name)
+    }
+
+    return { scanned: rawFiles.length, queued: queued.length, files: queued }
+  })
 }

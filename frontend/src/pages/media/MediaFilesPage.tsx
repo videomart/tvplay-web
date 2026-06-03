@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   HardDrive, Trash2, AlertTriangle, CheckCircle, Clock, XCircle,
-  Filter, Upload, ChevronUp, ChevronDown, Copy, Play, ExternalLink, Loader2, Plus, Film,
+  Filter, Upload, ChevronUp, ChevronDown, Copy, Play, ExternalLink, Loader2, Plus, Film, ScanSearch,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
@@ -67,6 +67,7 @@ export default function MediaFilesPage() {
   const [selected,       setSelected]       = useState<any | null>(null)
   const [previewFile,    setPreviewFile]    = useState<any | null>(null)
   const [cookiesUploading, setCookiesUploading] = useState(false)
+  const [scanLoading,     setScanLoading]     = useState(false)
 
   function toggleSort(col: string) {
     if (sortBy === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -141,6 +142,20 @@ export default function MediaFilesPage() {
     setUploadLoading(false); setUploadCount({ done: 0, total: 0 })
     if (fileRef.current) fileRef.current.value = ''
     refetch()
+  }
+
+  async function handleScanMinio() {
+    setScanLoading(true)
+    try {
+      const res = await clipsApi.scanMinio()
+      if (res.queued === 0) toast.success(`Scan concluído — nenhum arquivo novo encontrado (${res.scanned} verificados)`)
+      else toast.success(`${res.queued} arquivo(s) enfileirado(s) para transcodificação`)
+      refetch()
+    } catch (err: any) {
+      toast.error(err.response?.data?.error ?? 'Erro ao escanear MinIO')
+    } finally {
+      setScanLoading(false)
+    }
   }
 
   async function handleCookiesUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -231,6 +246,11 @@ export default function MediaFilesPage() {
         <button onClick={() => fileRef.current?.click()} disabled={uploadLoading}
           className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-gray-800 text-purple-400 hover:bg-gray-700 transition-colors disabled:opacity-50 border border-gray-700">
           <Upload className="h-3 w-3" />Upload
+        </button>
+        <button onClick={handleScanMinio} disabled={scanLoading}
+          title="Importar arquivos enviados diretamente ao MinIO"
+          className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-gray-800 text-yellow-400 hover:bg-gray-700 transition-colors disabled:opacity-50 border border-gray-700">
+          {scanLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <ScanSearch className="h-3 w-3" />}Scan MinIO
         </button>
         <button onClick={() => navigate('/playout?newClip=1')}
           className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-brand-600/30 text-brand-300 hover:bg-brand-600/50 transition-colors border border-brand-700/40">
