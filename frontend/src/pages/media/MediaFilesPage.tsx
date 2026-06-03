@@ -316,6 +316,7 @@ export default function MediaFilesPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-800">
+                <th className="w-14 px-2 py-3"></th>
                 <th onClick={() => toggleSort('code')} className="text-left px-4 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wide cursor-pointer hover:text-gray-300 select-none w-24">Código{si('code')}</th>
                 <th onClick={() => toggleSort('title')} className="text-left px-4 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wide cursor-pointer hover:text-gray-300 select-none">Título{si('title')}</th>
                 <th onClick={() => toggleSort('type')} className="text-left px-4 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wide cursor-pointer hover:text-gray-300 select-none w-20">Tipo{si('type')}</th>
@@ -337,6 +338,24 @@ export default function MediaFilesPage() {
                       isSelected ? 'bg-brand-900/20 ring-1 ring-inset ring-brand-700/40' :
                       isOrphan   ? 'bg-orange-950/10 hover:bg-orange-950/20' :
                                    'hover:bg-gray-800/30')}>
+
+                    {/* Thumbnail */}
+                    <td className="px-2 py-1.5 w-14" onClick={(e) => { if (file.ingestStatus === 'READY' && file.hlsPath) { e.stopPropagation(); setPreviewFile(file) } }}>
+                      {file.thumbnail ? (
+                        <div className={clsx('relative w-10 h-7 rounded overflow-hidden bg-gray-800 flex-shrink-0', file.ingestStatus === 'READY' && file.hlsPath && 'cursor-pointer group')}>
+                          <img src={`/api/media/${file.id}/thumbnail`} alt="" className="w-full h-full object-cover" loading="lazy" />
+                          {file.ingestStatus === 'READY' && file.hlsPath && (
+                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                              <Play className="h-3 w-3 text-white" />
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="w-10 h-7 rounded bg-gray-800 flex items-center justify-center">
+                          <Film className="h-3 w-3 text-gray-600" />
+                        </div>
+                      )}
+                    </td>
 
                     {/* Código */}
                     <td className="px-4 py-2.5">
