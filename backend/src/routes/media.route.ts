@@ -24,15 +24,23 @@ export default async function mediaRoutes(app: FastifyInstance) {
     return media
   })
 
-  // Thumbnail assinado
-  app.get('/:mediaId/thumbnail', auth, async (request: any, reply) => {
+  // Proxy de thumbnail — sem auth para funcionar em <img src="...">
+  app.get('/:mediaId/thumbnail', async (request: any, reply) => {
     const media = await prisma.mediaFile.findUnique({
       where: { id: request.params.mediaId },
       select: { thumbnail: true },
     })
     if (!media?.thumbnail) return reply.status(404).send({ error: 'Thumbnail não disponível' })
-    const url = await storageService.getSignedUrl(media.thumbnail, 300)
-    return { url }
+    try {
+      const stat = await storageService.getObjectStat(media.thumbnail)
+      const stream = await storageService.getObjectStream(media.thumbnail)
+      reply.header('Content-Type', 'image/jpeg')
+      reply.header('Content-Length', stat.size)
+      reply.header('Cache-Control', 'public, max-age=3600')
+      return reply.send(stream)
+    } catch {
+      return reply.status(404).send({ error: 'Thumbnail não encontrado no storage' })
+    }
   })
 
   // Gera (ou regenera) thumbnail a partir do HLS no MinIO
