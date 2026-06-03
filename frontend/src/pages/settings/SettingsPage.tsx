@@ -329,127 +329,94 @@ export default function SettingsPage() {
       {/* ── Aba: Padrões Playout ──────────────────────────────────────────── */}
       {tab === 'playout' && (
         <div className="card p-5 space-y-4">
-          <h2 className="text-sm font-semibold text-white">Visibilidade Padrão dos Blocos no Playout</h2>
-          <p className="text-xs text-gray-500">
-            Define o estado inicial (aberto/fechado) de cada bloco ao carregar o painel de playout.
-          </p>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-          {(
-            [
-              { key: 'defaultMonitorOpen',  label: 'Monitor de vídeo' },
-              { key: 'defaultFallbackOpen', label: 'Seletor de Sinal / Fallback' },
-              { key: 'defaultOutputsOpen',  label: 'Saídas de Streaming' },
-              { key: 'defaultPlaylistOpen', label: 'Playlist (lista de itens)' },
-            ] as { key: keyof typeof playoutDefaults; label: string }[]
-          ).map(({ key, label }) => (
-            <div key={key} className="flex items-center justify-between gap-3 p-3 rounded-lg hover:bg-gray-800/30">
-              <span className="text-sm text-gray-300">{label}</span>
-              <button
-                type="button"
-                onClick={() => setPlayoutDefaults((s) => ({ ...s, [key]: !s[key] }))}
-                className={clsx(
-                  'relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0',
-                  playoutDefaults[key] ? 'bg-brand-600' : 'bg-gray-700'
-                )}
-              >
-                <span className={clsx(
-                  'inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform',
-                  playoutDefaults[key] ? 'translate-x-[18px]' : 'translate-x-0.5'
-                )} />
-              </button>
+            {/* ── Coluna esquerda ── */}
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-sm font-semibold text-white">Visibilidade dos Blocos</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Estado inicial ao carregar o painel de playout.</p>
+              </div>
+              {(
+                [
+                  { key: 'defaultMonitorOpen',  label: 'Monitor de vídeo' },
+                  { key: 'defaultFallbackOpen', label: 'Seletor de Sinal / Fallback' },
+                  { key: 'defaultOutputsOpen',  label: 'Saídas de Streaming' },
+                  { key: 'defaultPlaylistOpen', label: 'Playlist' },
+                ] as { key: keyof typeof playoutDefaults; label: string }[]
+              ).map(({ key, label }) => (
+                <div key={key} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg hover:bg-gray-800/30">
+                  <span className="text-sm text-gray-300">{label}</span>
+                  <button type="button" onClick={() => setPlayoutDefaults((s) => ({ ...s, [key]: !s[key] }))}
+                    className={clsx('relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0',
+                      playoutDefaults[key] ? 'bg-brand-600' : 'bg-gray-700')}>
+                    <span className={clsx('inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform',
+                      playoutDefaults[key] ? 'translate-x-[18px]' : 'translate-x-0.5')} />
+                  </button>
+                </div>
+              ))}
+
+              {/* Relógio */}
+              <div className="border-t border-gray-800 pt-3 space-y-2">
+                <h3 className="text-sm font-semibold text-white">Relógio do Gráfico</h3>
+                <p className="text-xs text-gray-500">Fuso do relógio no stream. Brasil → <code className="bg-gray-800 px-1 rounded">-3</code>.</p>
+                <div className="flex items-center gap-2">
+                  <select value={clockOffsetHours} onChange={(e) => setClockOffsetHours(Number(e.target.value))}
+                    className={inputCls + ' w-36'}>
+                    {Array.from({ length: 27 }, (_, i) => i - 12).map((h) => (
+                      <option key={h} value={h}>{h === 0 ? 'UTC (0)' : `UTC${h > 0 ? '+' : ''}${h}`}</option>
+                    ))}
+                  </select>
+                  <span className="text-xs text-gray-500">
+                    {(() => { const d = new Date(); d.setUTCHours(d.getUTCHours() + clockOffsetHours); return d.toISOString().slice(11, 19) })()}
+                  </span>
+                </div>
+              </div>
             </div>
-          ))}
 
-          {/* Relógio de gráfico — fuso horário */}
-          <div className="border-t border-gray-800 pt-4 space-y-2">
-            <h3 className="text-sm font-semibold text-white">Relógio do Gráfico</h3>
-            <p className="text-xs text-gray-500">
-              Ajusta o fuso horário do relógio exibido no stream. Ex.: Brasil (UTC-3) → <code className="bg-gray-800 px-1 rounded">-3</code>.
-              Afeta novos processos de streaming iniciados após salvar.
-            </p>
-            <div className="flex items-center gap-3">
-              <label className="text-sm text-gray-300 flex-shrink-0">Offset UTC (horas):</label>
-              <select
-                value={clockOffsetHours}
-                onChange={(e) => setClockOffsetHours(Number(e.target.value))}
-                className={inputCls + ' w-40'}
-              >
-                {Array.from({ length: 27 }, (_, i) => i - 12).map((h) => (
-                  <option key={h} value={h}>
-                    {h === 0 ? 'UTC (0)' : `UTC${h > 0 ? '+' : ''}${h}`}
-                  </option>
-                ))}
-              </select>
-              <span className="text-xs text-gray-500">
-                Agora no stream: {(() => {
-                  const d = new Date()
-                  d.setUTCHours(d.getUTCHours() + clockOffsetHours)
-                  return d.toISOString().slice(11, 19)
-                })()}
-              </span>
-            </div>
-          </div>
+            {/* ── Coluna direita ── */}
+            <div className="space-y-4">
+              {/* BREAK */}
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold text-white">BREAK — Duração Padrão</h3>
+                <p className="text-xs text-gray-500">Tempo ao inserir um BREAK na playlist.</p>
+                <div className="flex items-center gap-2">
+                  <input type="number" min={0} max={86400} value={defaultBreakDuration}
+                    onChange={(e) => setDefaultBreakDuration(Math.max(0, Number(e.target.value)))}
+                    className={inputCls + ' w-28'} />
+                  <span className="text-xs text-gray-500">
+                    {Math.floor(defaultBreakDuration / 60)}:{String(defaultBreakDuration % 60).padStart(2, '0')} min
+                  </span>
+                </div>
+              </div>
 
-          {/* Duração padrão do BREAK */}
-          <div className="border-t border-gray-800 pt-4 space-y-2">
-            <h3 className="text-sm font-semibold text-white">BREAK — Duração Padrão</h3>
-            <p className="text-xs text-gray-500">
-              Tempo aplicado automaticamente ao inserir um item BREAK na playlist. Pode ser ajustado individualmente em cada BREAK.
-            </p>
-            <div className="flex items-center gap-3">
-              <label className="text-sm text-gray-300 flex-shrink-0">Duração (segundos):</label>
-              <input
-                type="number"
-                min={0}
-                max={86400}
-                value={defaultBreakDuration}
-                onChange={(e) => setDefaultBreakDuration(Math.max(0, Number(e.target.value)))}
-                className={inputCls + ' w-28'}
-              />
-              <span className="text-xs text-gray-500">
-                {Math.floor(defaultBreakDuration / 60)}:{String(defaultBreakDuration % 60).padStart(2, '0')} min
-              </span>
-            </div>
-          </div>
+              {/* Slide */}
+              <div className="border-t border-gray-800 pt-3 space-y-2">
+                <h3 className="text-sm font-semibold text-white">Slide (Imagem) — Duração Padrão</h3>
+                <p className="text-xs text-gray-500">Tempo ao inserir clipe de imagem na playlist.</p>
+                <div className="flex items-center gap-2">
+                  <input type="number" min={1} max={3600} value={defaultSlideDuration}
+                    onChange={(e) => setDefaultSlideDuration(Math.max(1, Number(e.target.value)))}
+                    className={inputCls + ' w-28'} />
+                  <span className="text-xs text-gray-500">
+                    {Math.floor(defaultSlideDuration / 60)}:{String(defaultSlideDuration % 60).padStart(2, '0')} min
+                  </span>
+                </div>
+              </div>
 
-          {/* Duração padrão de slides (imagens) */}
-          <div className="border-t border-gray-800 pt-4 space-y-2">
-            <h3 className="text-sm font-semibold text-white">Slide (Imagem) — Duração Padrão</h3>
-            <p className="text-xs text-gray-500">
-              Tempo aplicado automaticamente ao inserir um clipe de imagem (PNG, JPG, etc.) na playlist.
-              Pode ser ajustado individualmente com o ⏱ por item.
-            </p>
-            <div className="flex items-center gap-3">
-              <label className="text-sm text-gray-300 flex-shrink-0">Duração (segundos):</label>
-              <input
-                type="number" min={1} max={3600}
-                value={defaultSlideDuration}
-                onChange={(e) => setDefaultSlideDuration(Math.max(1, Number(e.target.value)))}
-                className={inputCls + ' w-28'}
-              />
-              <span className="text-xs text-gray-500">
-                {Math.floor(defaultSlideDuration / 60)}:{String(defaultSlideDuration % 60).padStart(2, '0')} min
-              </span>
-            </div>
-          </div>
-
-          {/* Duração padrão de clipes URL (YouTube, SRT) */}
-          <div className="border-t border-gray-800 pt-4 space-y-2">
-            <h3 className="text-sm font-semibold text-white">YouTube / URL — Duração Máxima Padrão</h3>
-            <p className="text-xs text-gray-500">
-              Limite automático ao inserir clipes URL (YouTube, SRT) na playlist. Use <code className="bg-gray-800 px-1 rounded">0</code> para sem limite (avança só manualmente ou pelo timer do clipe).
-            </p>
-            <div className="flex items-center gap-3">
-              <label className="text-sm text-gray-300 flex-shrink-0">Duração máx. (segundos):</label>
-              <input
-                type="number" min={0} max={86400}
-                value={defaultUrlDuration}
-                onChange={(e) => setDefaultUrlDuration(Math.max(0, Number(e.target.value)))}
-                className={inputCls + ' w-28'}
-              />
-              <span className="text-xs text-gray-500">
-                {defaultUrlDuration === 0 ? 'sem limite' : `${Math.floor(defaultUrlDuration / 60)}:${String(defaultUrlDuration % 60).padStart(2, '0')} min`}
-              </span>
+              {/* URL */}
+              <div className="border-t border-gray-800 pt-3 space-y-2">
+                <h3 className="text-sm font-semibold text-white">YouTube / URL — Duração Máxima</h3>
+                <p className="text-xs text-gray-500">Use <code className="bg-gray-800 px-1 rounded">0</code> para sem limite.</p>
+                <div className="flex items-center gap-2">
+                  <input type="number" min={0} max={86400} value={defaultUrlDuration}
+                    onChange={(e) => setDefaultUrlDuration(Math.max(0, Number(e.target.value)))}
+                    className={inputCls + ' w-28'} />
+                  <span className="text-xs text-gray-500">
+                    {defaultUrlDuration === 0 ? 'sem limite' : `${Math.floor(defaultUrlDuration / 60)}:${String(defaultUrlDuration % 60).padStart(2, '0')} min`}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
 
