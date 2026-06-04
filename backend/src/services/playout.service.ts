@@ -1232,6 +1232,8 @@ export async function insertBreak(channelId: string, afterItemId?: string | null
   let insertOrder: number
   const ref = afterItemId ? await prisma.playlistItem.findUnique({ where: { id: afterItemId } }) : null
   if (ref) {
+    // Impede BREAK imediatamente após outro BREAK
+    if (ref.isBreak) throw new Error('Não é possível inserir dois BREAKs consecutivos')
     insertOrder = ref.order + 1
   } else {
     // afterItemId não encontrado (stale/deletado) ou ausente → insere no final
@@ -1239,8 +1241,16 @@ export async function insertBreak(channelId: string, afterItemId?: string | null
       where: { playlistId: state.playlistId },
       orderBy: { order: 'desc' },
     })
+    if (last?.isBreak) throw new Error('Não é possível inserir dois BREAKs consecutivos')
     insertOrder = last ? last.order + 1 : 0
   }
+
+  // Impede BREAK antes de outro BREAK (o item que ficaria logo após a nova posição)
+  const nextItem = await prisma.playlistItem.findFirst({
+    where: { playlistId: state.playlistId, order: { gte: insertOrder } },
+    orderBy: { order: 'asc' },
+  })
+  if (nextItem?.isBreak) throw new Error('Não é possível inserir dois BREAKs consecutivos')
 
   await prisma.playlistItem.updateMany({
     where: { playlistId: state.playlistId, order: { gte: insertOrder } },

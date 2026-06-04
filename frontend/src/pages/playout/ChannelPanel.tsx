@@ -292,7 +292,7 @@ function PlaylistItemRow({
   loopPending, clipPlayPending, clipStopPending, deletePending,
   timerEditId, timerEditVal, setTimerEditId, setTimerEditVal, commitTimer,
   onDragStart, onDragOver, onDragEnd, onDrop,
-  liveElapsed,
+  liveElapsed, breakIndex,
 }: {
   item: PlaylistItemRow
   isCurrent: boolean
@@ -324,6 +324,7 @@ function PlaylistItemRow({
   onDragEnd: () => void
   onDrop: () => void
   liveElapsed?: number | null
+  breakIndex?: number
 }) {
   // Drag só começa a partir do grip handle — evita interceptar clicks em botões
   const fromHandle = useRef(false)
@@ -343,10 +344,10 @@ function PlaylistItemRow({
         onDragEnd={() => { fromHandle.current = false; onDragEnd() }}
         onDrop={(e) => { e.preventDefault(); onDrop() }}
         className={clsx(
-          'flex items-center gap-1.5 px-2 py-1 rounded transition-all bg-[rgb(9_23_110)]',
+          'flex items-center gap-1.5 px-2 py-1 rounded transition-all bg-[rgb(68_74_114)]',
           isCurrent
-            ? 'ring-2 ring-yellow-400/80 shadow-[inset_3px_0_0_0_rgb(250_204_21)]'
-            : 'border-l-2 border-l-yellow-600/60',
+            ? 'ring-2 ring-white/60 shadow-[inset_3px_0_0_0_rgb(255_255_255)]'
+            : '',
           isDragging ? 'opacity-30' : '',
           isDragOver ? 'border-t-2 border-brand-400' : '',
         )}
@@ -354,20 +355,20 @@ function PlaylistItemRow({
         <GripVertical
           onMouseDown={() => { fromHandle.current = true }}
           onMouseUp={() => { fromHandle.current = false }}
-          className="h-3.5 w-3.5 flex-shrink-0 cursor-grab active:cursor-grabbing text-yellow-800"
+          className="h-3.5 w-3.5 flex-shrink-0 cursor-grab active:cursor-grabbing text-white/50"
         />
         <span className="w-5 flex-shrink-0 flex items-center justify-end">
           {isCurrent
-            ? <span className="h-2 w-2 rounded-full bg-yellow-400 animate-pulse flex-shrink-0" />
-            : <span className="text-[10px] font-mono text-yellow-700">{item.index + 1}</span>}
+            ? <span className="h-2 w-2 rounded-full bg-white animate-pulse flex-shrink-0" />
+            : <span className="text-[10px] font-mono text-white/50">{item.index + 1}</span>}
         </span>
-        <span className="flex-1 text-center text-xs font-bold text-yellow-400 tracking-widest uppercase">
-          ⏸ BREAK
+        <span className="flex-1 text-center text-xs font-bold text-white tracking-widest uppercase">
+          ⏸ BREAK{breakIndex != null ? ` #${breakIndex}` : ''}
         </span>
         {timerEditId === item.id ? (
           <input
             autoFocus
-            className="w-14 bg-gray-900 text-yellow-300 text-[10px] font-mono rounded px-1 py-0.5 border border-yellow-600/60 outline-none flex-shrink-0"
+            className="w-14 bg-gray-900 text-white text-[10px] font-mono rounded px-1 py-0.5 border border-white/30 outline-none flex-shrink-0"
             placeholder="mm:ss"
             value={timerEditVal}
             onChange={(e) => setTimerEditVal(e.target.value)}
@@ -380,7 +381,7 @@ function PlaylistItemRow({
             title={item.maxDuration ? `Duração: ${Math.floor(item.maxDuration/60)}:${String(item.maxDuration%60).padStart(2,'0')}` : 'Definir duração do BREAK'}
             className={clsx(
               'flex-shrink-0 flex items-center gap-0.5 px-1 py-0.5 rounded text-[9px] font-medium transition-colors',
-              item.maxDuration ? 'text-yellow-400 hover:text-yellow-300 bg-yellow-500/10' : 'text-yellow-800 hover:text-yellow-500'
+              item.maxDuration ? 'text-white hover:text-white/80 bg-white/10' : 'text-white/40 hover:text-white/70'
             )}
           >
             <Timer className="h-3 w-3" />
@@ -392,7 +393,7 @@ function PlaylistItemRow({
             onClick={onDelete}
             disabled={deletePending}
             title="Remover BREAK"
-            className="flex-shrink-0 p-0.5 rounded text-yellow-800 hover:text-red-400 transition-colors disabled:opacity-40"
+            className="flex-shrink-0 p-0.5 rounded text-white/40 hover:text-red-400 transition-colors disabled:opacity-40"
           >
             <Trash2 className="h-3 w-3" />
           </button>
@@ -1523,8 +1524,12 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                   <p className="text-[11px] text-gray-600 text-center py-3">
                     {isFetchingItems ? 'Carregando...' : 'Playlist vazia'}
                   </p>
-                ) : (
-                  playlistItems.map((pi, idx) => {
+                ) : (() => {
+                  // Pré-calcula índice sequencial de cada BREAK para exibir BREAK #1, #2...
+                  let breakCount = 0
+                  const breakIndexOf = new Map<string, number>()
+                  for (const p of playlistItems) { if (p.isBreak) breakIndexOf.set(p.id, ++breakCount) }
+                  return playlistItems.map((pi, idx) => {
                     const isItemSelected = pi.id === selectedItemId
                     return (
                       <div
@@ -1570,12 +1575,13 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                           onDragEnd={handleDragEnd}
                           onDrop={() => handleDrop(idx)}
                           liveElapsed={idx === currentIndex && pi.sourceType === 'URL' ? position : null}
+                          breakIndex={breakIndexOf.get(pi.id)}
                         />
 
                       </div>
                     )
                   })
-                )}
+                })()}
               </div>
             ) : (
               <p className="text-[11px] text-gray-600 italic px-3 py-3">Selecione um roteiro na Biblioteca.</p>
