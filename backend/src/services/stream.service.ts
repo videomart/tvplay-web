@@ -598,7 +598,7 @@ function buildArgs(
     // Sistema novo: template com múltiplos elementos
     videoCodec = [
       ...templateResult.filterArgs,
-      '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
+      '-c:v', 'libx264', '-preset', 'veryfast', '-profile:v', 'high',
       ...videoBitrateArgs,
       '-g', '60', '-keyint_min', '60', '-sc_threshold', '0',
       '-c:a', 'aac', '-ar', '44100', '-b:a', `${aBitrate}k`,
@@ -611,7 +611,7 @@ function buildArgs(
     const dashMap = audioUrl ? ['-map', '0:v:0', '-map', '1:a:0'] : mapArgs
     videoCodec = [
       ...filterArgs,
-      '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
+      '-c:v', 'libx264', '-preset', 'veryfast', '-profile:v', 'high',
       ...videoBitrateArgs,
       '-g', '60', '-keyint_min', '60', '-sc_threshold', '0',
       '-c:a', 'aac', '-ar', '44100', '-b:a', `${aBitrate}k`,
@@ -911,7 +911,7 @@ function buildConcatArgs(
   if (useTemplate && templateResult) {
     videoCodec = [
       ...templateResult.filterArgs,
-      '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
+      '-c:v', 'libx264', '-preset', 'veryfast', '-profile:v', 'high',
       ...videoBitrateArgs,
       '-g', '60', '-keyint_min', '60', '-sc_threshold', '0',
       '-c:a', 'aac', '-ar', '44100', '-b:a', `${aBitrate}k`,
@@ -921,7 +921,7 @@ function buildConcatArgs(
     const { filterArgs, mapArgs } = buildVideoFilter(output.videoResolution, resolvedGraphic, !!logoUrl)
     videoCodec = [
       ...filterArgs,
-      '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
+      '-c:v', 'libx264', '-preset', 'veryfast', '-profile:v', 'high',
       ...videoBitrateArgs,
       '-g', '60', '-keyint_min', '60', '-sc_threshold', '0',
       '-c:a', 'aac', '-ar', '44100', '-b:a', `${aBitrate}k`,
@@ -1226,7 +1226,7 @@ function buildFallbackArgs(videoInput: string, output: OutputConfig, graphic: Gr
   const encodeArgs = [
     ...filterArgs,
     '-map', '0:v', '-map', '1:a',
-    '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
+    '-c:v', 'libx264', '-preset', 'veryfast', '-profile:v', 'high',
     ...(output.videoBitrate ? ['-b:v', `${output.videoBitrate}k`, '-maxrate', `${Math.round(output.videoBitrate * 1.5)}k`, '-bufsize', `${output.videoBitrate * 2}k`] : []),
     '-g', '50', '-keyint_min', '50', '-sc_threshold', '0',  // keyframe a cada 2s (25fps) — dentro do limite de 4s do YouTube
     '-c:a', 'aac', '-ar', '44100', '-b:a', `${aBitrate}k`,
