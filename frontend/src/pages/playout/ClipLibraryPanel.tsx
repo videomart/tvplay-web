@@ -650,9 +650,18 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
             </button>
           ))}
 
-          {/* Botão BREAK */}
-          <button onClick={() => insertBreakMut.mutate()} disabled={!hasActivePlaylist || insertBreakMut.isPending}
-            title="Inserir BREAK" className="ml-auto flex-shrink-0 flex items-center gap-1 px-2 py-0.5 rounded bg-black border-2 border-yellow-400 text-yellow-400 text-[10px] font-black hover:bg-yellow-400 hover:text-black disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+          {/* Botão BREAK — clicável e arrastável para posição no grid */}
+          <button
+            draggable={hasActivePlaylist}
+            onDragStart={(e) => {
+              e.dataTransfer.setData('application/x-break', 'true')
+              e.dataTransfer.effectAllowed = 'copy'
+            }}
+            onClick={() => insertBreakMut.mutate()}
+            disabled={!hasActivePlaylist || insertBreakMut.isPending}
+            title="Inserir BREAK (ou arraste para posição no grid)"
+            className="ml-auto flex-shrink-0 flex items-center gap-1 px-2 py-0.5 rounded bg-yellow-400/10 text-yellow-400 text-[10px] font-black hover:bg-yellow-400 hover:text-black disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-grab active:cursor-grabbing"
+          >
             {insertBreakMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : '⏸'} BREAK
           </button>
         </div>

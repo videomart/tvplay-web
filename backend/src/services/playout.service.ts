@@ -1,5 +1,7 @@
 import { execFile } from 'child_process'
 import { promisify } from 'util'
+import fs from 'fs'
+import path from 'path'
 import { prisma } from '../lib/prisma'
 import { config } from '../config'
 import * as streamService from './stream.service'
@@ -116,10 +118,15 @@ function ytClientArgs(client: string): string[] {
   return client ? ['--extractor-args', `youtube:player_client=${client}`] : []
 }
 
-// Retorna ['--cookies', '/path/to/file'] se YTDLP_COOKIES_FILE estiver configurado
+// Retorna ['--cookies', '/tmp/yt-cookies-tmp.txt'] copiando o arquivo original.
+// yt-dlp reescreve o arquivo de cookies após cada execução (comportamento padrão),
+// o que reduziria o arquivo de N→poucas linhas. A cópia temporária preserva o original.
 function ytCookiesArgs(): string[] {
   const f = config.ytdlp?.cookiesFile
-  return f ? ['--cookies', f] : []
+  if (!f || !fs.existsSync(f)) return []
+  const tmp = path.join('/tmp', 'yt-cookies-tmp.txt')
+  try { fs.copyFileSync(f, tmp) } catch { return ['--cookies', f] }
+  return ['--cookies', tmp]
 }
 
 // Verifica se URL YouTube/Twitch é stream ao vivo (true) ou VOD (false)

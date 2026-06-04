@@ -129,7 +129,9 @@ export default async function settingsRoutes(app: FastifyInstance) {
     }
   })
 
-  // Upload do arquivo de cookies do YouTube (substitui /app/youtube-cookies.txt)
+  // Upload do arquivo de cookies do YouTube — aceita qualquer nome de arquivo
+  // (Chrome, Firefox e extensões exportam com nomes diferentes; o servidor sempre
+  //  grava em YTDLP_COOKIES_FILE independentemente do nome enviado pelo browser)
   app.post('/upload-youtube-cookies', auth, async (request: any, reply) => {
     const data = await request.file()
     if (!data) return reply.status(400).send({ error: 'Nenhum arquivo enviado' })
@@ -138,17 +140,26 @@ export default async function settingsRoutes(app: FastifyInstance) {
     if (!cookiesPath) return reply.status(400).send({ error: 'Caminho de cookies não configurado (YTDLP_COOKIES_FILE)' })
 
     const buffer = await data.toBuffer()
+    if (!buffer.length) return reply.status(400).send({ error: 'Arquivo vazio' })
+
     const content = buffer.toString('utf-8')
 
-    // Valida que é um arquivo Netscape cookies (yt-dlp format)
-    if (!content.includes('youtube.com') && !content.includes('# Netscape HTTP Cookie File')) {
-      return reply.status(400).send({ error: 'Arquivo não parece ser um cookies.txt válido do YouTube' })
+    // Validação mínima — exige pelo menos uma linha que não seja comentário
+    const dataLines = content.split('\n').filter((l: string) => l.trim() && !l.startsWith('#'))
+    if (dataLines.length === 0) {
+      return reply.status(400).send({ error: 'Arquivo de cookies vazio ou sem entradas válidas' })
     }
 
-    fs.writeFileSync(cookiesPath, buffer)
-    const lines = content.split('\n').filter((l: string) => l.trim() && !l.startsWith('#')).length
-    console.log(`[settings] YouTube cookies atualizados: ${cookiesPath} (${lines} cookies)`)
-    return { ok: true, cookies: lines }
+    try {
+      fs.mkdirSync(path.dirname(cookiesPath), { recursive: true })
+      fs.writeFileSync(cookiesPath, buffer)
+    } catch (err: any) {
+      console.error(`[settings] Erro ao gravar cookies em ${cookiesPath}:`, err.message)
+      return reply.status(500).send({ error: `Erro ao gravar arquivo: ${err.message}` })
+    }
+
+    console.log(`[settings] YouTube cookies gravados: ${cookiesPath} (${dataLines.length} entradas, arquivo: ${data.filename})`)
+    return { ok: true, cookies: dataLines.length }
   })
 
   // Status das cookies do YouTube

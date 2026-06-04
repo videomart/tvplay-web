@@ -343,7 +343,7 @@ function PlaylistItemRow({
         onDragEnd={() => { fromHandle.current = false; onDragEnd() }}
         onDrop={(e) => { e.preventDefault(); onDrop() }}
         className={clsx(
-          'flex items-center gap-1.5 px-2 py-1.5 rounded transition-all bg-[rgb(9_23_110)]',
+          'flex items-center gap-1.5 px-2 py-1 rounded transition-all bg-[rgb(9_23_110)]',
           isCurrent
             ? 'ring-2 ring-yellow-400/80 shadow-[inset_3px_0_0_0_rgb(250_204_21)]'
             : 'border-l-2 border-l-yellow-600/60',
@@ -414,7 +414,7 @@ function PlaylistItemRow({
       onDrop={(e) => { e.preventDefault(); onDrop() }}
       className={clsx(
         'flex items-center gap-1.5 px-2 rounded transition-all',
-        isCurrent  ? 'py-2 bg-emerald-400 ring-2 ring-emerald-300 shadow-[inset_3px_0_0_0_rgb(52_211_153)]' : 'py-1.5',
+        isCurrent  ? 'py-1.5 bg-emerald-400 ring-2 ring-emerald-300 shadow-[inset_3px_0_0_0_rgb(52_211_153)]' : 'py-1',
         isPlayed   ? 'italic bg-gray-800 text-white' : '',
         !isCurrent && !isPlayed && !isSelected ? (lightRow ? 'bg-gray-200' : 'bg-gray-800') : '',
         !isCurrent && !isPlayed && !isSelected ? 'group hover:bg-violet-700' : '',
@@ -779,8 +779,8 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
     refetchInterval: 4000,
   })
 
-  const { data: playlistItems = [], refetch: refetchItems } = useQuery({
-    queryKey: ['playout-items', channel.id],
+  const { data: playlistItems = [], refetch: refetchItems, isFetching: isFetchingItems } = useQuery({
+    queryKey: ['playout-items', channel.id, state?.playlistId ?? null],
     queryFn: () => playoutApi.getItems(channel.id),
     enabled: !!state?.playlistId,
     refetchInterval: state?.playlistId ? 15_000 : false,
@@ -922,8 +922,17 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
     onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao inserir'),
   })
 
+  const insertBreakFromDropMut = useMutation({
+    mutationFn: (afterItemId: string | null) => playoutApi.insertBreak(channel.id, afterItemId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['playout-items', channel.id] })
+      qc.invalidateQueries({ queryKey: ['playout-state', channel.id] })
+    },
+    onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao inserir BREAK'),
+  })
+
   function handleLibraryDragOver(e: React.DragEvent, afterIdx: number) {
-    if (e.dataTransfer.types.includes('application/x-clip-id')) {
+    if (e.dataTransfer.types.includes('application/x-clip-id') || e.dataTransfer.types.includes('application/x-break')) {
       e.preventDefault()
       e.stopPropagation()
       setLibraryDragOver(afterIdx)
@@ -931,6 +940,13 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
   }
 
   function handleLibraryDrop(e: React.DragEvent, afterItemId: string | null) {
+    if (e.dataTransfer.types.includes('application/x-break')) {
+      e.preventDefault()
+      e.stopPropagation()
+      setLibraryDragOver(null)
+      insertBreakFromDropMut.mutate(afterItemId)
+      return
+    }
     const clipId = e.dataTransfer.getData('application/x-clip-id')
     if (!clipId) return
     e.preventDefault()
@@ -1488,12 +1504,12 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
             state?.playlistId ? (
               <div
                 ref={playlistScrollRef}
-                className="max-h-72 overflow-y-auto py-1"
+                className="max-h-[340px] overflow-y-auto py-1"
                 onScroll={() => {
                   if (!programmaticScrollRef.current) userScrolledRef.current = true
                 }}
                 onDragOver={(e) => {
-                  if (e.dataTransfer.types.includes('application/x-clip-id')) {
+                  if (e.dataTransfer.types.includes('application/x-clip-id') || e.dataTransfer.types.includes('application/x-break')) {
                     e.preventDefault()
                     setLibraryDragOver(playlistItems.length) // indica "no final"
                   }
@@ -1504,7 +1520,9 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                 onDrop={(e) => handleLibraryDrop(e, null)}
               >
                 {playlistItems.length === 0 ? (
-                  <p className="text-[11px] text-gray-600 text-center py-3">Carregando...</p>
+                  <p className="text-[11px] text-gray-600 text-center py-3">
+                    {isFetchingItems ? 'Carregando...' : 'Playlist vazia'}
+                  </p>
                 ) : (
                   playlistItems.map((pi, idx) => {
                     const isItemSelected = pi.id === selectedItemId

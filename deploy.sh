@@ -25,14 +25,12 @@ git pull origin main
 if [ "$SKIP_COOKIES" = false ]; then
   mkdir -p ./cookies
   if [ -f "./cookies/youtube-cookies.txt" ] && [ -s "./cookies/youtube-cookies.txt" ]; then
-    echo "▶ 2/4  Cookies encontrados em ./cookies/youtube-cookies.txt — OK"
-  elif [ -f "./youtube-cookies.txt" ] && [ -s "./youtube-cookies.txt" ]; then
-    cp ./youtube-cookies.txt ./cookies/youtube-cookies.txt
-    echo "▶ 2/4  Cookies migrados: ./youtube-cookies.txt → ./cookies/youtube-cookies.txt"
+    LINES=$(grep -c . ./cookies/youtube-cookies.txt 2>/dev/null || echo 0)
+    echo "▶ 2/4  Cookies encontrados em ./cookies/youtube-cookies.txt ($LINES linhas) — OK"
   else
-    echo "⚠  2/4  Cookies não encontrados em ./cookies/youtube-cookies.txt"
+    echo "⚠  2/4  Cookies não encontrados ou vazios em ./cookies/youtube-cookies.txt"
     echo "        Coloque o arquivo em ./cookies/youtube-cookies.txt e tente novamente."
-    echo "        Ou use --skip-cookies se os cookies já estão na pasta."
+    echo "        Ou use --skip-cookies para continuar sem cookies (YouTube pode não funcionar)."
     exit 1
   fi
 else
