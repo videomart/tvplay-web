@@ -5,6 +5,9 @@ interface PlayoutSelectionState {
   selectedByChannel: Record<string, string | null>
   setSelected: (channelId: string, itemId: string | null) => void
   clearSelected: (channelId: string) => void
+  // clipId do item selecionado — espelhado na biblioteca de mídias
+  focusedClipId: string | null
+  setFocusedClipId: (clipId: string | null) => void
 }
 
 export const usePlayoutSelection = create<PlayoutSelectionState>((set) => ({
@@ -13,4 +16,6 @@ export const usePlayoutSelection = create<PlayoutSelectionState>((set) => ({
     set((s) => ({ selectedByChannel: { ...s.selectedByChannel, [channelId]: itemId } })),
   clearSelected: (channelId) =>
     set((s) => ({ selectedByChannel: { ...s.selectedByChannel, [channelId]: null } })),
+  focusedClipId: null,
+  setFocusedClipId: (clipId) => set({ focusedClipId: clipId }),
 }))

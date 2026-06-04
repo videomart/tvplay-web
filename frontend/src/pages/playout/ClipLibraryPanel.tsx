@@ -131,7 +131,21 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [page, setPage] = useState(1)
   const [selectedLibraryClip, setSelectedLibraryClip] = useState<any | null>(null)
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const debounceRef    = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const clipListRef    = useRef<HTMLDivElement>(null)
+  const focusedRowRef  = useRef<HTMLDivElement>(null)
+
+  const { focusedClipId } = usePlayoutSelection()
+
+  // Ao receber foco de clip vindo do playlist, seleciona e rola até ele
+  useEffect(() => {
+    if (!focusedClipId) return
+    // Rola até o elemento já renderizado (se visível na página atual)
+    const t = setTimeout(() => {
+      focusedRowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }, 80)
+    return () => clearTimeout(t)
+  }, [focusedClipId])
 
   // ── Estado CRUD ──────────────────────────────────────────────────────────
   const [open, setOpen] = useState(false)
@@ -698,8 +712,10 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
             const mtStyle = CLIP_MEDIA_STYLE[mt] ?? 'bg-gray-800 text-gray-500 border-gray-600/40'
             const inPlaylistCount = activeClipCounts.get(clip.id) ?? 0
             const t = clip.typeId ? typeMap[clip.typeId] : null
+            const isFocused = focusedClipId === clip.id
             return (
               <div key={clip.id}
+                ref={isFocused ? focusedRowRef : undefined}
                 draggable
                 onDragStart={(e) => { e.dataTransfer.setData('application/x-clip-id', clip.id); e.dataTransfer.effectAllowed = 'copy' }}
                 onClick={() => setSelectedLibraryClip(selectedLibraryClip?.id === clip.id ? null : clip)}
@@ -707,6 +723,8 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
                   'flex items-center gap-1 px-2 py-1.5 transition-colors cursor-pointer',
                   selectedLibraryClip?.id === clip.id
                     ? 'bg-brand-900/30 border-l-2 border-brand-500'
+                    : isFocused
+                    ? 'bg-violet-900/40 border-l-2 border-violet-500'
                     : inPlaylistCount > 0
                     ? 'bg-emerald-950/20 hover:bg-emerald-950/30 border-l-2 border-emerald-700/40'
                     : 'hover:bg-gray-800/30 border-l-2 border-transparent'

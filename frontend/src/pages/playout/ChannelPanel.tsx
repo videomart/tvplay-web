@@ -419,8 +419,8 @@ function PlaylistItemRow({
         // Prioridade de fundo: isCurrent > isSelected/hover > isPlayed > zebra
         isCurrent  ? 'bg-emerald-400 ring-2 ring-emerald-300 shadow-[inset_3px_0_0_0_rgb(52_211_153)]' :
         isSelected ? 'bg-violet-700' :
-        isPlayed   ? 'italic bg-gray-800' :
         lightRow   ? 'bg-gray-200' : 'bg-gray-800',
+        isPlayed && !isSelected && 'line-through opacity-60',
         // Hover (violet) prevalece sobre tudo exceto isCurrent
         !isCurrent && 'hover:bg-violet-700',
         isDragging ? 'opacity-30' : '',
@@ -473,7 +473,7 @@ function PlaylistItemRow({
         title={isSelected ? 'Clique para desselecionar · Duplo clique para ir para este clipe' : 'Clique para selecionar posição · Duplo clique para ir para este clipe'}
         className={clsx(
           'flex-1 text-left text-xs truncate transition-colors min-w-0 pl-1',
-          isCurrent ? 'text-emerald-950 font-bold cursor-default' : isSelected ? 'text-white font-bold cursor-pointer' : isPlayed ? 'text-gray-300 cursor-pointer group-hover:text-white' : lightRow ? 'text-gray-800 font-medium group-hover:text-white cursor-pointer' : 'text-gray-300 group-hover:text-white cursor-pointer'
+          isCurrent ? 'text-emerald-950 font-bold cursor-default' : isSelected ? 'text-white font-bold cursor-pointer' : lightRow ? 'text-gray-800 font-medium group-hover:text-white cursor-pointer' : 'text-gray-300 group-hover:text-white cursor-pointer'
         )}
       >
         {item.title}
@@ -660,9 +660,12 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
   const [dragIdx, setDragIdx] = useState<number | null>(null)
   const [overIdx, setOverIdx] = useState<number | null>(null)
   const [libraryDragOver, setLibraryDragOver] = useState<number | null>(null) // idx após o qual o clip será inserido via drag da Biblioteca
-  const { selectedByChannel, setSelected, clearSelected } = usePlayoutSelection()
+  const { selectedByChannel, setSelected, clearSelected, setFocusedClipId } = usePlayoutSelection()
   const selectedItemId = selectedByChannel[channel.id] ?? null
-  const setSelectedItemId = (id: string | null) => id === null ? clearSelected(channel.id) : setSelected(channel.id, id)
+  const setSelectedItemId = (id: string | null, clipId?: string | null) => {
+    if (id === null) { clearSelected(channel.id); setFocusedClipId(null) }
+    else { setSelected(channel.id, id); if (clipId !== undefined) setFocusedClipId(clipId) }
+  }
   const [monitorSrc, setMonitorSrc] = useState<string | null>(null)
   const [monitorStartAt, setMonitorStartAt] = useState(0)
   const [serverPreviewUrl, setServerPreviewUrl] = useState<string | null>(null)
@@ -1557,7 +1560,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                           playoutStatus={status}
                           rowIdx={idx}
                           isSelected={isItemSelected}
-                          onSelect={() => setSelectedItemId(pi.id === selectedItemId ? null : pi.id)}
+                          onSelect={() => setSelectedItemId(pi.id === selectedItemId ? null : pi.id, pi.id === selectedItemId ? null : (pi.clipId ?? null))}
                           onJump={() => jumpMut.mutate(idx)}
                           onClipPlay={() => handleClipPlay(idx)}
                           onClipStop={() => stopMut.mutate()}
