@@ -260,6 +260,19 @@ export default async function inputSourceRoutes(app: FastifyInstance) {
       return reply.send({ hlsUrl: `/api/input-sources/${source.id}/active-stream/index.m3u8` })
     }
 
+    // Relay ativo mas ainda aguardando primeiro segmento (ex: SRT listener esperando sender).
+    // NÃO iniciar segundo FFmpeg — causaria conflito de porta. Aguarda o relay ficar pronto.
+    if (activeInputsService.isActive(source.id)) {
+      const MAX_WAIT = 60  // segundos
+      for (let i = 0; i < MAX_WAIT * 2; i++) {
+        await new Promise((r) => setTimeout(r, 500))
+        if (activeInputsService.isReady(source.id)) {
+          return reply.send({ hlsUrl: `/api/input-sources/${source.id}/active-stream/index.m3u8` })
+        }
+      }
+      return reply.status(504).send({ error: `Timeout: a fonte SRT não enviou dados em ${MAX_WAIT}s. Verifique se vps1 está transmitindo.` })
+    }
+
     // Tipo CLIP: resolve a URL a partir do clipe cadastrado
     if ((source as any).type === 'CLIP') {
       const clip = (source as any).clip

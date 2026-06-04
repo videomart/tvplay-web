@@ -63,11 +63,10 @@ function buildArgs(inputUrl: string, outputDir: string): string[] {
     ...(isRtsp ? ['-rtsp_transport', 'tcp', '-stimeout', '15000000'] : []),
     ...(isHls  ? ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5', '-timeout', '30000000'] : []),
     '-i', url,
-    // HLS/DASH já estão em H.264: só remux. Outros: re-encode para garantir compatibilidade.
-    ...(isHls
-      ? ['-c', 'copy']
-      : ['-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
-         '-c:a', 'aac', '-ar', '44100', '-b:a', '128k']),
+    // Usa copy em todos os casos — streams broadcast (SRT/RTMP/RTSP) já vêm em H.264/AAC.
+    // Re-encodar com ultrafast causava dupla compressão e degradação severa de qualidade.
+    // Se o codec da fonte for incompatível com MPEG-TS, o processo sai com erro e reinicia.
+    '-c', 'copy',
     '-f', 'hls',
     '-hls_time', '2',
     '-hls_list_size', '6',
