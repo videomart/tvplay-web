@@ -446,7 +446,7 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
 
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="card flex flex-col h-full overflow-hidden">
 
       {/* Inputs ocultos */}
       <input ref={fileRef}       type="file" accept="video/*,image/*,.mxf,.mts,.m2ts" className="hidden" onChange={handleFileUpload} />
