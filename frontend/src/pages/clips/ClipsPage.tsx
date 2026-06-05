@@ -212,16 +212,21 @@ export default function ClipsPage() {
     setOpen(true)
   }
 
-  // Abre o modal de edição quando navega com state.editClipId
+  // Abre o modal quando navega com state.editClipId ou state.openNew
   // state.returnTo: URL para navegar ao fechar o modal
   const returnTo = (location.state as any)?.returnTo ?? null
   useEffect(() => {
     const editClipId = (location.state as any)?.editClipId
-    if (!editClipId) return
-    clipsApi.get(editClipId)
-      .then(c => { openEdit(c) })
-      .catch(() => toast.error('Clipe não encontrado'))
-    window.history.replaceState({}, '')
+    const doOpenNew = (location.state as any)?.openNew
+    if (editClipId) {
+      clipsApi.get(editClipId)
+        .then(c => { openEdit(c) })
+        .catch(() => toast.error('Clipe não encontrado'))
+      window.history.replaceState({}, '')
+    } else if (doOpenNew) {
+      openNew()
+      window.history.replaceState({}, '')
+    }
   }, [location.state]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleDirectUpload(e: React.ChangeEvent<HTMLInputElement>) {

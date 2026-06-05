@@ -17,6 +17,7 @@ import UsersPage from './pages/users/UsersPage'
 import SettingsPage from './pages/settings/SettingsPage'
 import GraphicsPage from './pages/graphics/GraphicsPage'
 import MediaFilesPage from './pages/media/MediaFilesPage'
+import ClipsPage from './pages/clips/ClipsPage'
 import GraphicTemplatesPage from './pages/graphic-templates/GraphicTemplatesPage'
 import GraphicTemplateEditorPage from './pages/graphic-templates/GraphicTemplateEditorPage'
 
@@ -56,6 +57,7 @@ export default function App() {
           <Route path="graphic-templates"           element={<GraphicTemplatesPage />} />
           <Route path="graphic-templates/:id"       element={<GraphicTemplateEditorPage />} />
           <Route path="media"                       element={<MediaFilesPage />} />
+          <Route path="clips"                       element={<ClipsPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

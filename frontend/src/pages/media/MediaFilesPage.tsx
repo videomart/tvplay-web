@@ -287,7 +287,7 @@ export default function MediaFilesPage() {
           className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-gray-800 text-yellow-400 hover:bg-gray-700 transition-colors disabled:opacity-50 border border-gray-700">
           {scanLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <ScanSearch className="h-3 w-3" />}Scan MinIO
         </button>
-        <button onClick={() => navigate('/playout?newClip=1')}
+        <button onClick={() => navigate('/clips', { state: { openNew: true, returnTo: '/media' } })}
           className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-brand-600/30 text-brand-300 hover:bg-brand-600/50 transition-colors border border-brand-700/40">
           <Plus className="h-3 w-3" />Novo
         </button>
