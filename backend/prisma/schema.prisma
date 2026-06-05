@@ -418,6 +418,7 @@ model InputSource {
   deviceDriver String?   // DSHOW | V4L2 | DECKLINK (para LOCAL_DEVICE)
   deviceName   String?   // nome/caminho do dispositivo no host (para LOCAL_DEVICE)
   serverIp     String?   // IP do servidor TVPlay para o agente LOCAL_DEVICE enviar SRT
+  inputNumber  Int?            // índice único por canal — usado nos botões do Switcher
   active       Boolean         @default(true)
   createdAt DateTime        @default(now())
   updatedAt DateTime        @updatedAt

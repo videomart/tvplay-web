@@ -23,7 +23,30 @@ const schema = z.object({
   clipId:       z.string().optional().nullable(),
   channelId:    z.string().optional().nullable(),
   active:       z.boolean().optional(),
+  inputNumber:  z.number().int().positive().optional().nullable(),
 })
+
+// Garante unicidade de inputNumber por canal: se houver conflito, move o existente
+// para o primeiro número disponível.
+async function resolveInputNumber(
+  channelId: string | null | undefined,
+  desiredNumber: number,
+  excludeId?: string,
+): Promise<void> {
+  if (!channelId) return
+  const conflict = await prisma.inputSource.findFirst({
+    where: { channelId, inputNumber: desiredNumber, ...(excludeId ? { id: { not: excludeId } } : {}) },
+  })
+  if (!conflict) return
+  const others = await prisma.inputSource.findMany({
+    where: { channelId, ...(excludeId ? { id: { not: excludeId } } : {}) },
+    select: { inputNumber: true },
+  })
+  const used = new Set(others.map((o: any) => o.inputNumber).filter(Boolean))
+  let n = 1
+  while (used.has(n)) n++
+  await prisma.inputSource.update({ where: { id: conflict.id }, data: { inputNumber: n } })
+}
 
 const include = {
   channel: { select: { id: true, name: true, number: true } },
@@ -208,6 +231,9 @@ export default async function inputSourceRoutes(app: FastifyInstance) {
   app.post('/', auth, async (request, reply) => {
     const body = schema.safeParse(request.body)
     if (!body.success) return reply.status(400).send({ error: body.error.flatten() })
+    if (body.data.inputNumber != null) {
+      await resolveInputNumber(body.data.channelId, body.data.inputNumber)
+    }
     const source = await prisma.inputSource.create({ data: body.data, include })
     return reply.status(201).send(source)
   })
@@ -215,6 +241,10 @@ export default async function inputSourceRoutes(app: FastifyInstance) {
   app.put('/:id', auth, async (request: any, reply) => {
     const body = schema.partial().safeParse(request.body)
     if (!body.success) return reply.status(400).send({ error: body.error.flatten() })
+    if (body.data.inputNumber != null) {
+      const current = await prisma.inputSource.findUnique({ where: { id: request.params.id }, select: { channelId: true } })
+      await resolveInputNumber(body.data.channelId ?? current?.channelId, body.data.inputNumber, request.params.id)
+    }
     const source = await prisma.inputSource.update({
       where: { id: request.params.id },
       data: body.data,

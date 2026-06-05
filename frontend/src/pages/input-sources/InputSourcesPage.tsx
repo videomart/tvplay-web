@@ -17,7 +17,7 @@ import { VideoPlayer } from '../../components/ui/VideoPlayer'
 // IP e YOUTUBE são unificados na UI como "URL" — YOUTUBE fica como legado no banco
 const SELECTABLE_TYPES: InputSourceType[] = ['IP', 'SRT', 'SDI', 'CLIP', 'WEBCAM']
 
-const empty = { name: '', type: 'IP' as InputSourceType, url: '', device: '', channelId: '', clipId: '', graphicId: '' }
+const empty = { name: '', type: 'IP' as InputSourceType, url: '', device: '', channelId: '', clipId: '', graphicId: '', inputNumber: '' }
 type SrtConfig = { host: string; port: string; mode: 'caller' | 'listener' }
 type UdpConfig = { address: string; port: string }
 type LocalDeviceConfig = {
@@ -277,6 +277,7 @@ export default function InputSourcesPage() {
         clipId:       isClip ? (selectedClip?.id || form.clipId || undefined) : null,
         channelId:    form.channelId || undefined,
         graphicId:    form.graphicId || null,
+        inputNumber:  form.inputNumber ? parseInt(form.inputNumber, 10) : null,
       }
       return editing ? inputSourcesApi.update(editing.id, payload) : inputSourcesApi.create(payload)
     },
@@ -306,7 +307,7 @@ export default function InputSourcesPage() {
     setEditing(s)
     // YOUTUBE legado → exibe como IP na UI (URL unificada)
     const uiType: InputSourceType = s.type === 'YOUTUBE' ? 'IP' : s.type
-    setForm({ name: s.name, type: uiType, url: s.url ?? '', device: s.device ?? '', channelId: s.channelId ?? '', clipId: s.clipId ?? '', graphicId: (s as any).graphicId ?? '' })
+    setForm({ name: s.name, type: uiType, url: s.url ?? '', device: s.device ?? '', channelId: s.channelId ?? '', clipId: s.clipId ?? '', graphicId: (s as any).graphicId ?? '', inputNumber: s.inputNumber != null ? String(s.inputNumber) : '' })
     if (s.type === 'SRT' && s.url) setSrtCfg(parseSrtUrl(s.url))
     else setSrtCfg(emptySrt)
     setUdpCfg(emptyUdp)
@@ -496,7 +497,10 @@ export default function InputSourcesPage() {
       {/* Modal: criar / editar */}
       <Modal open={open} onClose={() => setOpen(false)} title={editing ? 'Editar Fonte' : 'Nova Fonte de Entrada'} size="md">
         <div className="space-y-4">
-          <Input label="Nome *" value={form.name} onChange={f('name')} placeholder="YouTube Ao Vivo" />
+          <div className="flex gap-3">
+            <div className="flex-1"><Input label="Nome *" value={form.name} onChange={f('name')} placeholder="YouTube Ao Vivo" /></div>
+            <div className="w-24"><Input label="Nº Switcher" type="number" min="1" value={form.inputNumber} onChange={f('inputNumber')} placeholder="1" /></div>
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <Select label="Tipo *" value={form.type} onChange={(e) => handleTypeChange(e.target.value as InputSourceType)}>
               {SELECTABLE_TYPES.map((k) => (
