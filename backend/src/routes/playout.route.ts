@@ -119,6 +119,15 @@ export default async function playoutRoutes(app: FastifyInstance) {
     )
   })
 
+  // CUT imediato para BLACK ou COLORBARS sem alterar o fallback configurado
+  app.post('/:channelId/cut-to-type', auth, async (request: any, reply) => {
+    const { type } = request.body as { type: 'BLACK' | 'COLORBARS' }
+    if (!type) return reply.status(400).send({ error: 'type é obrigatório' })
+    return playout.cutToFallbackType(request.params.channelId, type)
+      .then(() => ({ ok: true }))
+      .catch((e) => reply.status(400).send({ error: e.message }))
+  })
+
   // Define fallback do canal e aplica imediatamente se idle/stopped
   app.post('/:channelId/set-fallback', auth, async (request: any, reply) => {
     const { fallbackType, fallbackSourceId } = request.body as {

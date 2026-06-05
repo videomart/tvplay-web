@@ -828,6 +828,11 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
     onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao definir fallback'),
   })
 
+  const cutToTypeMut = useMutation({
+    mutationFn: (type: 'BLACK' | 'COLORBARS') => playoutApi.cutToType(channel.id, type),
+    onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao comutar'),
+  })
+
   const cutToInputMut = useMutation({
     mutationFn: (sourceId: string) => playoutApi.cutToInput(channel.id, sourceId),
     onSuccess: () => {
@@ -1224,7 +1229,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
 
           {/* Linha 1: CUT buttons + BAR + BLK + expand */}
           <div className="flex items-center gap-1 px-3 py-1">
-            {/* Mnemônico do fallback configurado */}
+            {/* Mnemônico do fallback CONFIGURADO (não muda com o corte) */}
             <span className={clsx(
               'text-[9px] font-black w-7 text-center py-0.5 rounded flex-shrink-0',
               channel.fallbackType === 'INPUT_SOURCE' ? 'bg-brand-600/20 text-brand-300' :
@@ -1237,7 +1242,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
             {/* CUT por entrada (ordenado por inputNumber) */}
             {availableSources.map((s) => {
               const isWebcam = s.type === 'WEBCAM'
-              const isPlaying = status === 'PLAYING' || status === 'PAUSED'
+              const isOnAir = state?.activeCut?.type === 'INPUT_SOURCE' && state.activeCut.sourceId === s.id
               return (
                 <button
                   key={s.id}
@@ -1248,10 +1253,10 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                   disabled={cutToInputMut.isPending}
                   title={`CUT → ${s.name}`}
                   className={clsx(
-                    'text-[9px] font-black w-7 py-0.5 rounded flex-shrink-0 transition-colors disabled:opacity-40',
-                    isPlaying
-                      ? 'bg-red-700/40 text-red-300 hover:bg-red-600/60'
-                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    'text-[9px] font-black w-7 py-0.5 rounded flex-shrink-0 transition-all disabled:opacity-40',
+                    isOnAir
+                      ? 'bg-amber-400 text-black shadow-[0_0_6px_2px_rgb(251_191_36/0.6)]'
+                      : 'bg-gray-700 text-gray-300 hover:bg-red-700/50 hover:text-red-200'
                   )}
                 >
                   {s.inputNumber ?? '?'}
@@ -1259,29 +1264,31 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
               )
             })}
 
-            {/* CUT BAR */}
+            {/* CUT BAR — não altera config de fallback */}
             <button
-              onClick={() => fallbackMut.mutate({ fallbackType: 'COLORBARS', fallbackSourceId: null })}
+              onClick={() => cutToTypeMut.mutate('COLORBARS')}
+              disabled={cutToTypeMut.isPending}
               title="CUT → Barras de cor"
               className={clsx(
-                'text-[9px] font-black w-7 py-0.5 rounded flex-shrink-0 transition-colors',
-                status === 'PLAYING' || status === 'PAUSED'
-                  ? 'bg-red-700/40 text-red-300 hover:bg-red-600/60'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                'text-[9px] font-black w-7 py-0.5 rounded flex-shrink-0 transition-all disabled:opacity-40',
+                state?.activeCut?.type === 'COLORBARS'
+                  ? 'bg-amber-400 text-black shadow-[0_0_6px_2px_rgb(251_191_36/0.6)]'
+                  : 'bg-gray-700 text-gray-300 hover:bg-red-700/50 hover:text-red-200'
               )}
             >
               BAR
             </button>
 
-            {/* CUT BLK */}
+            {/* CUT BLK — não altera config de fallback */}
             <button
-              onClick={() => fallbackMut.mutate({ fallbackType: 'BLACK', fallbackSourceId: null })}
+              onClick={() => cutToTypeMut.mutate('BLACK')}
+              disabled={cutToTypeMut.isPending}
               title="CUT → Black"
               className={clsx(
-                'text-[9px] font-black w-7 py-0.5 rounded flex-shrink-0 transition-colors',
-                status === 'PLAYING' || status === 'PAUSED'
-                  ? 'bg-red-700/40 text-red-300 hover:bg-red-600/60'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                'text-[9px] font-black w-7 py-0.5 rounded flex-shrink-0 transition-all disabled:opacity-40',
+                state?.activeCut?.type === 'BLACK'
+                  ? 'bg-amber-400 text-black shadow-[0_0_6px_2px_rgb(251_191_36/0.6)]'
+                  : 'bg-gray-700 text-gray-300 hover:bg-red-700/50 hover:text-red-200'
               )}
             >
               BLK
@@ -1319,10 +1326,10 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                     }}
                     title={`Fallback → ${s.name}`}
                     className={clsx(
-                      'text-[9px] font-bold w-7 py-0.5 rounded flex-shrink-0 transition-colors',
+                      'text-[9px] font-bold w-7 py-0.5 rounded flex-shrink-0 transition-all',
                       isActive
-                        ? 'bg-brand-600/30 text-brand-300 ring-1 ring-brand-500/40'
-                        : 'bg-gray-800 text-gray-400 hover:bg-brand-700/30 hover:text-brand-300'
+                        ? 'bg-brand-500 text-white shadow-[0_0_5px_1px_rgb(99_102_241/0.5)]'
+                        : 'bg-gray-800 text-gray-400 hover:bg-brand-700/40 hover:text-brand-300'
                     )}
                   >
                     {mnemonic(s.name)}
@@ -1335,10 +1342,10 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                 onClick={() => { fallbackMut.mutate({ fallbackType: 'COLORBARS', fallbackSourceId: null }); setSignalSelectorOpen(false) }}
                 title="Fallback → Barras de cor"
                 className={clsx(
-                  'text-[9px] font-bold w-7 py-0.5 rounded flex-shrink-0 transition-colors',
+                  'text-[9px] font-bold w-7 py-0.5 rounded flex-shrink-0 transition-all',
                   channel.fallbackType === 'COLORBARS'
-                    ? 'bg-violet-600/30 text-violet-300 ring-1 ring-violet-500/40'
-                    : 'bg-gray-800 text-gray-400 hover:bg-violet-700/30 hover:text-violet-300'
+                    ? 'bg-brand-500 text-white shadow-[0_0_5px_1px_rgb(99_102_241/0.5)]'
+                    : 'bg-gray-800 text-gray-400 hover:bg-brand-700/40 hover:text-brand-300'
                 )}
               >
                 BAR
@@ -1349,9 +1356,9 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                 onClick={() => { fallbackMut.mutate({ fallbackType: 'BLACK', fallbackSourceId: null }); setSignalSelectorOpen(false) }}
                 title="Fallback → Black"
                 className={clsx(
-                  'text-[9px] font-bold w-7 py-0.5 rounded flex-shrink-0 transition-colors',
+                  'text-[9px] font-bold w-7 py-0.5 rounded flex-shrink-0 transition-all',
                   channel.fallbackType === 'BLACK'
-                    ? 'bg-gray-600/50 text-gray-200 ring-1 ring-gray-500/40'
+                    ? 'bg-brand-500 text-white shadow-[0_0_5px_1px_rgb(99_102_241/0.5)]'
                     : 'bg-gray-800 text-gray-400 hover:bg-gray-600/50 hover:text-gray-200'
                 )}
               >

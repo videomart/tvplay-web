@@ -453,7 +453,7 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
       <input ref={fileRefDirect} type="file" accept="video/*,image/*,.mxf,.mts,.m2ts" multiple className="hidden" onChange={handleDirectUpload} />
 
       {/* ── Cabeçalho: Upload + Novo + contexto do clipe selecionado ── */}
-      <div className="px-2 py-1.5 flex items-center gap-1 bg-gray-900/60 border-b border-gray-800 flex-shrink-0 min-h-0">
+      <div className="px-3 py-1.5 flex items-center gap-1 border-b border-gray-800 flex-shrink-0">
         {/* Esquerda: Upload + Novo */}
         <Button size="sm" variant="secondary" loading={uploadDirectLoading}
           onClick={() => fileRefDirect.current?.click()}

@@ -254,6 +254,8 @@ export interface PlayoutState {
   itemCount: number             // total de itens na playlist
   updatedAt: number             // timestamp epoch ms
   activeGraphic: ActiveGraphic | null
+  // Rastreia o sinal atualmente no ar (para iluminação do switcher)
+  activeCut: { type: 'INPUT_SOURCE' | 'BLACK' | 'COLORBARS'; sourceId?: string | null } | null
 }
 
 export interface CurrentItem {
@@ -331,6 +333,7 @@ function defaultState(channelId: string): PlayoutState {
     itemCount: 0,
     updatedAt: Date.now(),
     activeGraphic: null,
+    activeCut: null,
   }
 }
 
@@ -938,6 +941,7 @@ export async function play(channelId: string, playlistId: string, startItemId?: 
     itemCount: count,
     updatedAt: Date.now(),
     activeGraphic,
+    activeCut: null,
   }
   states.set(channelId, state)
   await prisma.channel.update({ where: { id: channelId }, data: { status: 'PLAYING' } }).catch(() => {})
@@ -1126,6 +1130,7 @@ export async function cutToInput(channelId: string, sourceId: string): Promise<P
   state.status = 'STOPPED'
   state.currentItem = null
   state.position = 0
+  state.activeCut = { type: 'INPUT_SOURCE', sourceId }
   state.updatedAt = Date.now()
   states.set(channelId, state)
 
@@ -1142,6 +1147,17 @@ export async function cutToInput(channelId: string, sourceId: string): Promise<P
 
   broadcast(channelId, state)
   return state
+}
+
+// CUT imediato para BLACK ou COLORBARS sem alterar o fallback configurado no banco
+export async function cutToFallbackType(channelId: string, type: 'BLACK' | 'COLORBARS'): Promise<void> {
+  const state = states.get(channelId)
+  if (state) {
+    state.activeCut = { type }
+    state.updatedAt = Date.now()
+    broadcast(channelId, state)
+  }
+  streamService.startStreamingFromFallback(channelId, type).catch(() => {})
 }
 
 // CUT para câmera (browser webcam via SRT local)
@@ -1399,6 +1415,13 @@ export async function setFallback(
   const state = states.get(channelId) ?? defaultState(channelId)
   if (state.status === 'PLAYING' || state.status === 'PAUSED') return // apenas salva para depois
 
+  // Atualiza activeCut ao configurar fallback em modo stop
+  state.activeCut = fallbackType === 'INPUT_SOURCE'
+    ? { type: 'INPUT_SOURCE', sourceId: fallbackSourceId }
+    : { type: fallbackType }
+  state.updatedAt = Date.now()
+  broadcast(channelId, state)
+
   if (source) {
     resolveGraphic(null, null, channelId).catch(() => null).then(fbGraphic => {
       activateFallbackSource(channelId, source!, fbGraphic).catch(() => {})
@@ -1450,6 +1473,7 @@ export async function initFromDb(): Promise<void> {
       itemCount: count,
       updatedAt: Date.now(),
       activeGraphic,
+      activeCut: null,
     }
     states.set(ch.id, state)
 

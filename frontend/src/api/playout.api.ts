@@ -65,6 +65,7 @@ export interface PlayoutState {
   itemCount: number
   updatedAt: number
   activeGraphic: ActiveGraphic | null
+  activeCut: { type: 'INPUT_SOURCE' | 'BLACK' | 'COLORBARS'; sourceId?: string | null } | null
 }
 
 export interface PlaylistItemRow {
@@ -149,4 +150,6 @@ export const playoutApi = {
     api.delete(`/camera/${channelId}`).then((r) => r.data),
   cutToCamera: (channelId: string) =>
     api.post<PlayoutState>(`/playout/${channelId}/cut-to-camera`).then((r) => r.data),
+  cutToType: (channelId: string, type: 'BLACK' | 'COLORBARS') =>
+    api.post(`/playout/${channelId}/cut-to-type`, { type }).then((r) => r.data),
 }
