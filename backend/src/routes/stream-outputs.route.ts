@@ -46,7 +46,7 @@ export default async function streamOutputRoutes(app: FastifyInstance) {
   const auth = { preHandler: [app.authenticate] }
 
   app.get('/', auth, async () =>
-    prisma.streamOutput.findMany({ include, orderBy: { name: 'asc' } })
+    prisma.streamOutput.findMany({ include, orderBy: [{ outputNumber: 'asc' }, { name: 'asc' }] })
   )
 
   app.post('/', auth, async (request, reply) => {

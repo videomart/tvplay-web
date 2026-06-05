@@ -33,13 +33,17 @@ async function resolveInputNumber(
   desiredNumber: number,
   excludeId?: string,
 ): Promise<void> {
-  if (!channelId) return
+  // Escopo de unicidade: por canal se channelId informado, global caso contrário
+  const scope = channelId ? { channelId } : { channelId: null }
+  const excludeFilter = excludeId ? { id: { not: excludeId } } : {}
+
   const conflict = await prisma.inputSource.findFirst({
-    where: { channelId, inputNumber: desiredNumber, ...(excludeId ? { id: { not: excludeId } } : {}) },
+    where: { ...scope, inputNumber: desiredNumber, ...excludeFilter },
   })
   if (!conflict) return
+
   const others = await prisma.inputSource.findMany({
-    where: { channelId, ...(excludeId ? { id: { not: excludeId } } : {}) },
+    where: { ...scope, ...excludeFilter },
     select: { inputNumber: true },
   })
   const used = new Set(others.map((o: any) => o.inputNumber).filter(Boolean))
@@ -225,7 +229,7 @@ export default async function inputSourceRoutes(app: FastifyInstance) {
   })
 
   app.get('/', auth, async () =>
-    prisma.inputSource.findMany({ include, orderBy: { name: 'asc' } })
+    prisma.inputSource.findMany({ include, orderBy: [{ inputNumber: 'asc' }, { name: 'asc' }] })
   )
 
   app.post('/', auth, async (request, reply) => {

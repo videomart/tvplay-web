@@ -441,6 +441,7 @@ export default function InputSourcesPage() {
       <div className="card">
         <Table>
           <Thead>
+            <Th className="w-10 text-center">Idx</Th>
             <Th>Nome</Th>
             <Th>Tipo</Th>
             <Th>URL / Dispositivo</Th>
@@ -450,11 +451,16 @@ export default function InputSourcesPage() {
           </Thead>
           <Tbody>
             {isLoading ? (
-              <Tr><Td colSpan={6} className="text-center text-gray-500 py-8">Carregando...</Td></Tr>
+              <Tr><Td colSpan={7} className="text-center text-gray-500 py-8">Carregando...</Td></Tr>
             ) : data.length === 0 ? (
-              <Tr><Td colSpan={6} className="text-center text-gray-500 py-8">Nenhuma fonte configurada.</Td></Tr>
-            ) : data.map((s) => (
+              <Tr><Td colSpan={7} className="text-center text-gray-500 py-8">Nenhuma fonte configurada.</Td></Tr>
+            ) : [...data].sort((a, b) => (a.inputNumber ?? 999) - (b.inputNumber ?? 999)).map((s) => (
               <Tr key={s.id}>
+                <Td className="text-center">
+                  {s.inputNumber != null
+                    ? <span className="text-[11px] font-black text-brand-400 bg-brand-900/30 px-1.5 py-0.5 rounded">{s.inputNumber}</span>
+                    : <span className="text-gray-700">—</span>}
+                </Td>
                 <Td><span className="font-medium text-white">{s.name}</span></Td>
                 <Td>
                   <span className="text-xs bg-gray-700 text-gray-300 px-2 py-0.5 rounded">

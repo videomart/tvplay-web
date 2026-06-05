@@ -253,6 +253,7 @@ export default function StreamOutputsPage() {
       <div className="card">
         <Table>
           <Thead>
+            <Th className="w-10 text-center">Idx</Th>
             <Th>Nome</Th>
             <Th>Tipo</Th>
             <Th>Destino</Th>
@@ -263,11 +264,16 @@ export default function StreamOutputsPage() {
           </Thead>
           <Tbody>
             {isLoading ? (
-              <Tr><Td colSpan={7} className="text-center text-gray-500 py-8">Carregando...</Td></Tr>
+              <Tr><Td colSpan={8} className="text-center text-gray-500 py-8">Carregando...</Td></Tr>
             ) : data.length === 0 ? (
-              <Tr><Td colSpan={7} className="text-center text-gray-500 py-8">Nenhuma saída configurada.</Td></Tr>
-            ) : data.map((o) => (
+              <Tr><Td colSpan={8} className="text-center text-gray-500 py-8">Nenhuma saída configurada.</Td></Tr>
+            ) : [...data].sort((a, b) => (a.outputNumber ?? 999) - (b.outputNumber ?? 999)).map((o) => (
               <Tr key={o.id}>
+                <Td className="text-center">
+                  {o.outputNumber != null
+                    ? <span className="text-[11px] font-black text-brand-400 bg-brand-900/30 px-1.5 py-0.5 rounded">{o.outputNumber}</span>
+                    : <span className="text-gray-700">—</span>}
+                </Td>
                 <Td>
                   <span className="font-medium text-white">{o.name}</span>
                   {o.description && <p className="text-[11px] text-gray-500 mt-0.5">{o.description}</p>}
