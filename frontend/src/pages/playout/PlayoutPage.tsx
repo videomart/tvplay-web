@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Tv2, Radio, Library } from 'lucide-react'
 import { clsx } from 'clsx'
@@ -8,6 +9,7 @@ import ClipLibraryPanel from './ClipLibraryPanel'
 
 export default function PlayoutPage() {
   const [mobileTab, setMobileTab] = useState(0) // índice da aba ativa no mobile
+  const [searchParams] = useSearchParams()
 
   const { data: channels = [], isLoading } = useQuery({
     queryKey: ['channels'],
@@ -16,6 +18,13 @@ export default function PlayoutPage() {
   })
 
   const active = channels.filter((ch) => ch.active)
+
+  // Quando vem de ?newClip=1 (botão Novo em Mídias), força aba Biblioteca no mobile
+  useEffect(() => {
+    if (searchParams.get('newClip') === '1' && active.length > 0) {
+      setMobileTab(active.length)
+    }
+  }, [searchParams.get('newClip'), active.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Desktop: grade intercalando canais com a biblioteca
   function buildGrid() {

@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from 'react'
-import { useLocation, useSearchParams } from 'react-router-dom'
+import { useLocation, useSearchParams, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Library, Loader2, Plus, Search, Trash2, Copy, Play, ListPlus,
@@ -171,14 +171,26 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
   const fileRefModal  = useRef<HTMLInputElement>(null)
   const uploadClipIdRef = useRef<string | null>(null)
   const [searchParams, setSearchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const [returnToMedia, setReturnToMedia] = useState(false)
 
   useEffect(() => {
     if (searchParams.get('newClip') === '1') {
+      setReturnToMedia(true)
       openNew()
       setSearchParams({}, { replace: true })
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Ao fechar o modal quando aberto via botão Novo em Mídias, volta para /media
+  function handleModalClose() {
+    setOpen(false)
+    if (returnToMedia) {
+      setReturnToMedia(false)
+      navigate('/media')
+    }
+  }
 
   // ── Debounce busca ────────────────────────────────────────────────────────
   function handleSearchChange(v: string) {
@@ -354,7 +366,7 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
       toast.success(editing ? 'Clipe atualizado' : 'Clipe criado')
       qc.invalidateQueries({ queryKey: ['clips-library'] })
       qc.invalidateQueries({ queryKey: ['clips'] })
-      setOpen(false)
+      handleModalClose()
     },
     onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao salvar'),
   })
@@ -780,7 +792,7 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
       )}
 
       {/* ── Modal CRUD Clipe ─────────────────────────────────────────────── */}
-      <Modal open={open} onClose={() => setOpen(false)} title={editing ? 'Editar Clipe' : 'Novo Clipe'}
+      <Modal open={open} onClose={handleModalClose} title={editing ? 'Editar Clipe' : 'Novo Clipe'}
         size={editing?.media?.ingestStatus === 'READY' ? 'xl' : 'lg'}>
         <div className={editing?.media?.ingestStatus === 'READY' ? 'grid grid-cols-1 sm:grid-cols-2 gap-6' : ''}>
 
@@ -909,7 +921,7 @@ export default function ClipLibraryPanel({ channels }: ClipLibraryPanelProps) {
             )}
 
             <div className="flex gap-3 justify-end pt-2">
-              <Button variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button>
+              <Button variant="secondary" onClick={handleModalClose}>Cancelar</Button>
               <Button loading={save.isPending} onClick={handleSave}>Salvar</Button>
             </div>
           </div>
