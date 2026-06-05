@@ -1061,52 +1061,47 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
     )}>
 
       {/* ── Header ────────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
-        <div className="flex items-center gap-2.5">
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-800">
+        {/* Esquerda: número + nome */}
+        <div className="flex items-center gap-1.5 min-w-0 flex-1">
           <div className={clsx(
-            'h-8 w-8 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0',
+            'h-6 w-6 rounded flex items-center justify-center text-[11px] font-bold flex-shrink-0',
             status === 'PLAYING' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-gray-800 text-gray-400'
           )}>
             {channel.number}
           </div>
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-white leading-tight truncate">{channel.name}</p>
-            <div className="flex items-center gap-1.5">
-              <p className={clsx('text-[11px] font-bold tracking-wider', statusColor)}>{statusLabel}</p>
-              {(status === 'PLAYING' || ((status === 'STOPPED' || status === 'IDLE') && streamingUp)) && (
-                <span className={`flex items-center gap-0.5 text-[10px] font-semibold ${status === 'PLAYING' ? 'text-emerald-400' : 'text-sky-400'}`}>
-                  <span className={`h-1.5 w-1.5 rounded-full animate-pulse ${status === 'PLAYING' ? 'bg-emerald-400' : 'bg-sky-400'}`} />
-                  {status === 'PLAYING' ? 'LIVE' : `${activeOutputs} UP`}
-                </span>
-              )}
-            </div>
-          </div>
+          <p className="text-sm font-semibold text-white truncate">{channel.name}</p>
         </div>
-        <div className="flex items-center gap-1.5">
+
+        {/* Centro: status */}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <p className={clsx('text-[11px] font-bold tracking-wider', statusColor)}>{statusLabel}</p>
+          {(status === 'PLAYING' || ((status === 'STOPPED' || status === 'IDLE') && streamingUp)) && (
+            <span className={`flex items-center gap-0.5 text-[10px] font-semibold ${status === 'PLAYING' ? 'text-emerald-400' : 'text-sky-400'}`}>
+              <span className={`h-1.5 w-1.5 rounded-full animate-pulse ${status === 'PLAYING' ? 'bg-emerald-400' : 'bg-sky-400'}`} />
+              {status === 'PLAYING' ? 'LIVE' : `${activeOutputs} UP`}
+            </span>
+          )}
+        </div>
+
+        {/* Direita: botões */}
+        <div className="flex items-center gap-0.5 flex-shrink-0">
           {connected
             ? <Wifi className="h-3.5 w-3.5 text-emerald-500" />
             : <WifiOff className="h-3.5 w-3.5 text-red-500" />}
           <button
             onClick={() => setFallbackOpen((v) => !v)}
-            className={clsx(
-              'p-1 rounded transition-colors',
-              fallbackOpen ? 'text-brand-400 hover:text-brand-300' : 'text-gray-500 hover:text-gray-300'
-            )}
+            className={clsx('p-1 rounded transition-colors', fallbackOpen ? 'text-brand-400 hover:text-brand-300' : 'text-gray-500 hover:text-gray-300')}
             title={fallbackOpen ? 'Ocultar sinal/fallback' : 'Mostrar sinal/fallback'}
           >
-            <Antenna className="h-4 w-4" />
+            <Antenna className="h-3.5 w-3.5" />
           </button>
           <button
             onClick={toggleMonitor}
-            className={clsx(
-              'p-1 rounded transition-colors',
-              monitorOpen ? 'text-brand-400 hover:text-brand-300' : 'text-gray-500 hover:text-gray-300'
-            )}
+            className={clsx('p-1 rounded transition-colors', monitorOpen ? 'text-brand-400 hover:text-brand-300' : 'text-gray-500 hover:text-gray-300')}
             title={monitorOpen ? 'Fechar monitor' : 'Abrir monitor'}
           >
-            {monitorOpen
-              ? <MonitorOff className="h-4 w-4" />
-              : <MonitorPlay className="h-4 w-4" />}
+            {monitorOpen ? <MonitorOff className="h-3.5 w-3.5" /> : <MonitorPlay className="h-3.5 w-3.5" />}
           </button>
         </div>
       </div>
