@@ -42,11 +42,14 @@ async function resolveInputNumber(
   })
   if (!conflict) return
 
+  // Libera o slot antes de recalcular para evitar cascade de conflitos
+  await prisma.inputSource.update({ where: { id: conflict.id }, data: { inputNumber: null } })
   const others = await prisma.inputSource.findMany({
-    where: { ...scope, ...excludeFilter },
+    where: { ...scope, id: { notIn: [conflict.id, ...(excludeId ? [excludeId] : [])] } },
     select: { inputNumber: true },
   })
   const used = new Set(others.map((o: any) => o.inputNumber).filter(Boolean))
+  used.add(desiredNumber)
   let n = 1
   while (used.has(n)) n++
   await prisma.inputSource.update({ where: { id: conflict.id }, data: { inputNumber: n } })

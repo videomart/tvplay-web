@@ -27,11 +27,15 @@ async function resolveOutputNumber(channelId: string, desiredNumber: number, exc
     where: { channelId, outputNumber: desiredNumber, ...(excludeId ? { id: { not: excludeId } } : {}) },
   })
   if (!conflict) return
+  // Libera o slot do conflitante antes de recalcular (evita cascade de conflitos)
+  await prisma.streamOutput.update({ where: { id: conflict.id }, data: { outputNumber: null } })
+  // Calcula o próximo índice livre (excluindo o slot desejado que vai para o item atualizado)
   const others = await prisma.streamOutput.findMany({
-    where: { channelId, ...(excludeId ? { id: { not: excludeId } } : {}) },
+    where: { channelId, id: { notIn: [conflict.id, ...(excludeId ? [excludeId] : [])] } },
     select: { outputNumber: true },
   })
   const used = new Set(others.map((o: any) => o.outputNumber).filter(Boolean))
+  used.add(desiredNumber)
   let n = 1
   while (used.has(n)) n++
   await prisma.streamOutput.update({ where: { id: conflict.id }, data: { outputNumber: n } })

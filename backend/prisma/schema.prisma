@@ -404,7 +404,6 @@ model StreamOutput {
   graphicId String?
   graphic   Graphic? @relation(fields: [graphicId], references: [id])
 
-  @@unique([channelId, outputNumber])
   @@map("stream_outputs")
 }
 
