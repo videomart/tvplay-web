@@ -30,7 +30,7 @@ const empty = {
   name: '', description: '', type: 'RTMP' as StreamOutputType,
   url: '', streamKey: '', device: '', channelId: '',
   videoResolution: '', videoBitrate: '', audioBitrate: '',
-  graphicId: '',
+  graphicId: '', outputNumber: '',
 }
 
 type SrtConfig    = { host: string; port: string; mode: 'caller' | 'listener'; passphrase: string }
@@ -152,6 +152,7 @@ export default function StreamOutputsPage() {
         videoBitrate:    (!noTranscode && form.videoBitrate)    ? parseInt(form.videoBitrate, 10) : null,
         audioBitrate:    (!noTranscode && form.audioBitrate)    ? parseInt(form.audioBitrate, 10) : null,
         graphicId:       form.graphicId || null,
+        outputNumber:    form.outputNumber ? parseInt(form.outputNumber, 10) : null,
       }
       return editing ? streamOutputsApi.update(editing.id, payload) : streamOutputsApi.create(payload)
     },
@@ -180,7 +181,7 @@ export default function StreamOutputsPage() {
       name: o.name, description: o.description ?? '', type: o.type,
       url: o.url ?? '', streamKey: o.streamKey ?? '', device: o.device ?? '', channelId: o.channelId ?? '',
       videoResolution: o.videoResolution ?? '', videoBitrate: o.videoBitrate?.toString() ?? '', audioBitrate: o.audioBitrate?.toString() ?? '',
-      graphicId: o.graphicId ?? '',
+      graphicId: o.graphicId ?? '', outputNumber: o.outputNumber != null ? String(o.outputNumber) : '',
     })
     if (o.type === 'SRT' && o.url)  setSrtCfg(parseSrtUrl(o.url, o.streamKey))
     else setSrtCfg(emptySrt)
@@ -320,10 +321,10 @@ export default function StreamOutputsPage() {
           {/* Área rolável */}
           <div className="overflow-y-auto max-h-[78vh] pr-3 space-y-3">
 
-            {/* Nome + Descrição */}
-            <div className="grid grid-cols-2 gap-3">
-              <Input label="Nome *" value={form.name} onChange={f('name')} placeholder="YouTube Live Show" />
-              <Input label="Descrição" value={form.description} onChange={f('description')} placeholder="Canal 2 Backup..." />
+            {/* Nome + Nº Painel + Descrição */}
+            <div className="flex gap-3">
+              <div className="flex-1"><Input label="Nome *" value={form.name} onChange={f('name')} placeholder="YouTube Live Show" /></div>
+              <div className="w-24"><Input label="Nº Painel" type="number" min="1" value={form.outputNumber} onChange={f('outputNumber')} placeholder="1" /></div>
             </div>
 
             {/* Tipo + Canal */}

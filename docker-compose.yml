@@ -94,7 +94,8 @@ services:
       YTDLP_COOKIES_FILE: /app/cookies/youtube-cookies.txt
     ports:
       - '3001:3001'
-      - '4000-4020:4000-4020/udp'  # SRT / UDP listener (21 portas — suficiente para múltiplos streams)
+      - '4000:4000/udp'
+      - '4002-4020:4002-4020/udp'  # SRT / UDP listener (skip 4001 — ocupado pelo host)
     depends_on:
       postgres:
         condition: service_healthy

@@ -393,6 +393,7 @@ model StreamOutput {
   videoResolution String?
   videoBitrate    Int?
   audioBitrate    Int?
+  outputNumber Int?            // índice de exibição no painel — 1 = sempre visível
   active      Boolean          @default(true)
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt

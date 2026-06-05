@@ -19,7 +19,23 @@ const schema = z.object({
   graphicId:       z.string().optional().nullable(),
   channelId:       z.string().min(1),
   active:          z.boolean().optional(),
+  outputNumber:    z.number().int().positive().optional().nullable(),
 })
+
+async function resolveOutputNumber(channelId: string, desiredNumber: number, excludeId?: string) {
+  const conflict = await prisma.streamOutput.findFirst({
+    where: { channelId, outputNumber: desiredNumber, ...(excludeId ? { id: { not: excludeId } } : {}) },
+  })
+  if (!conflict) return
+  const others = await prisma.streamOutput.findMany({
+    where: { channelId, ...(excludeId ? { id: { not: excludeId } } : {}) },
+    select: { outputNumber: true },
+  })
+  const used = new Set(others.map((o: any) => o.outputNumber).filter(Boolean))
+  let n = 1
+  while (used.has(n)) n++
+  await prisma.streamOutput.update({ where: { id: conflict.id }, data: { outputNumber: n } })
+}
 
 const include = {
   channel: { select: { id: true, name: true, number: true } },
@@ -36,6 +52,7 @@ export default async function streamOutputRoutes(app: FastifyInstance) {
   app.post('/', auth, async (request, reply) => {
     const body = schema.safeParse(request.body)
     if (!body.success) return reply.status(400).send({ error: body.error.flatten() })
+    if (body.data.outputNumber != null) await resolveOutputNumber(body.data.channelId, body.data.outputNumber)
     const output = await prisma.streamOutput.create({ data: body.data, include })
     return reply.status(201).send(output)
   })
@@ -43,6 +60,11 @@ export default async function streamOutputRoutes(app: FastifyInstance) {
   app.put('/:id', auth, async (request: any, reply) => {
     const body = schema.partial().safeParse(request.body)
     if (!body.success) return reply.status(400).send({ error: body.error.flatten() })
+    if (body.data.outputNumber != null) {
+      const cur = await prisma.streamOutput.findUnique({ where: { id: request.params.id }, select: { channelId: true } })
+      const cid = body.data.channelId ?? cur?.channelId
+      if (cid) await resolveOutputNumber(cid, body.data.outputNumber, request.params.id)
+    }
     const output = await prisma.streamOutput.update({
       where: { id: request.params.id },
       data: body.data,

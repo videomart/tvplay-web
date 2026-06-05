@@ -97,15 +97,16 @@ export interface OutputStats {
 }
 
 export interface ChannelOutput {
-  id:          string
-  name:        string
-  description: string | null
-  type:        string
-  url:         string | null
-  streamKey:   string | null
-  active:      boolean
-  streaming:   boolean
-  stats:       OutputStats | null
+  id:           string
+  name:         string
+  description:  string | null
+  type:         string
+  url:          string | null
+  streamKey:    string | null
+  active:       boolean
+  streaming:    boolean
+  outputNumber: number | null
+  stats:        OutputStats | null
 }
 
 export const playoutApi = {

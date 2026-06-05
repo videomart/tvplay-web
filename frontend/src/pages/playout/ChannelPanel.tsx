@@ -1363,45 +1363,57 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
       )}
 
       {/* ── Saídas de streaming ───────────────────────────────────────────── */}
-      {outputs.length > 0 && (
-        <div className="border-b border-gray-800/60 bg-gray-900/20">
-          <div className="flex items-center justify-between px-3 pt-1.5 pb-0.5">
-            <span className="text-[10px] uppercase tracking-widest text-gray-600 font-semibold">
-              Saídas
-              {!outputsOpen && (
-                <span className="ml-1.5 text-gray-700 normal-case tracking-normal">
-                  ({outputs.filter((o) => o.streaming).length} ao ar)
-                </span>
-              )}
-            </span>
-            <button
-              onClick={() => setOutputsOpen((v) => !v)}
-              className="text-gray-700 hover:text-gray-400 transition-colors"
-              title={outputsOpen ? 'Ocultar saídas' : 'Mostrar saídas'}
-            >
-              {outputsOpen
-                ? <ChevronUp className="h-3 w-3" />
-                : <ChevronDown className="h-3 w-3" />}
-            </button>
-          </div>
-          {outputsOpen && (
-            <div className="px-2 pb-1.5">
-              {outputs.map((o) => (
+      {outputs.length > 0 && (() => {
+        const sorted   = [...outputs].sort((a, b) => (a.outputNumber ?? 999) - (b.outputNumber ?? 999))
+        const primary  = sorted[0]
+        const rest     = sorted.slice(1)
+        return (
+          <div className="border-b border-gray-800/60 bg-gray-900/20">
+            {/* Linha fixa: saída primária + toggle */}
+            <div className="flex items-center gap-1 px-2 py-0.5">
+              <div className="flex-1 min-w-0">
                 <OutputRow
-                  key={o.id}
-                  output={o}
+                  output={primary}
                   channelId={channel.id}
                   isPlaying={status === 'PLAYING'}
-                  onToggle={() => toggleOutput.mutate(o.id)}
-                  onReconnect={() => reconnectOutput.mutate(o.id)}
-                  toggling={toggleOutput.isPending && toggleOutput.variables === o.id}
-                  reconnecting={reconnectOutput.isPending && reconnectOutput.variables === o.id}
+                  onToggle={() => toggleOutput.mutate(primary.id)}
+                  onReconnect={() => reconnectOutput.mutate(primary.id)}
+                  toggling={toggleOutput.isPending && toggleOutput.variables === primary.id}
+                  reconnecting={reconnectOutput.isPending && reconnectOutput.variables === primary.id}
                 />
-              ))}
+              </div>
+              {rest.length > 0 && (
+                <button
+                  onClick={() => setOutputsOpen((v) => !v)}
+                  className="text-gray-700 hover:text-gray-400 transition-colors flex-shrink-0"
+                  title={outputsOpen ? 'Ocultar outras saídas' : `Ver mais ${rest.length} saída(s)`}
+                >
+                  {outputsOpen
+                    ? <ChevronUp className="h-3 w-3" />
+                    : <ChevronDown className="h-3 w-3" />}
+                </button>
+              )}
             </div>
-          )}
-        </div>
-      )}
+            {/* Demais saídas — só quando expandido */}
+            {outputsOpen && rest.length > 0 && (
+              <div className="px-2 pb-1">
+                {rest.map((o) => (
+                  <OutputRow
+                    key={o.id}
+                    output={o}
+                    channelId={channel.id}
+                    isPlaying={status === 'PLAYING'}
+                    onToggle={() => toggleOutput.mutate(o.id)}
+                    onReconnect={() => reconnectOutput.mutate(o.id)}
+                    toggling={toggleOutput.isPending && toggleOutput.variables === o.id}
+                    reconnecting={reconnectOutput.isPending && reconnectOutput.variables === o.id}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })()}
 
       {/* ── Playlist de itens ─────────────────────────────────────────────── */}
       <div className="border-t border-gray-800 flex-1 min-h-0 flex flex-col">
