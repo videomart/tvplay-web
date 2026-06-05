@@ -471,7 +471,7 @@ export default function ClipsPage() {
         title={editing ? 'Editar Clipe' : 'Novo Clipe'}
         size={editing?.media?.ingestStatus === 'READY' ? 'xl' : 'lg'}
       >
-        <div className={editing?.media?.ingestStatus === 'READY' ? 'grid grid-cols-2 gap-6' : ''}>
+        <div className={editing?.media?.ingestStatus === 'READY' ? 'grid grid-cols-1 sm:grid-cols-2 gap-6' : ''}>
 
           {/* Player de edição — só aparece quando o clipe tem mídia READY */}
           {editing?.media?.ingestStatus === 'READY' && editing.media.hlsPath && (
@@ -494,7 +494,7 @@ export default function ClipsPage() {
               </div>
 
               {/* Botões de marcação */}
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <Button
                   size="sm"
                   variant="secondary"
@@ -554,7 +554,7 @@ export default function ClipsPage() {
 
           {/* Formulário */}
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input label="Código *" value={form.code} onChange={handleCodeChange} placeholder="COM000001" error={formErrors.code} />
               <Select label="Tipo" value={form.typeId} onChange={handleTypeChange}>
                 <option value="">Sem tipo</option>

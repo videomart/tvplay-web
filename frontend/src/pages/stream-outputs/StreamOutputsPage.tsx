@@ -334,7 +334,7 @@ export default function StreamOutputsPage() {
             </div>
 
             {/* Tipo + Canal */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Select label="Tipo *" value={form.type} onChange={(e) => handleTypeChange(e.target.value as StreamOutputType)}>
                 {(Object.keys(TYPE_LABELS) as StreamOutputType[]).map((k) => (
                   <option key={k} value={k}>{TYPE_LABELS[k]}</option>
@@ -354,7 +354,7 @@ export default function StreamOutputsPage() {
 
             {/* RTMP: URL + Key na mesma linha */}
             {showUrl && showKey && (
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Input label="URL de destino *" value={form.url} onChange={f('url')} placeholder={urlPlaceholder[form.type] ?? 'URL...'} />
                 <Input label="Stream Key" value={form.streamKey} onChange={f('streamKey')} placeholder="xxxx-xxxx-xxxx-xxxx" />
               </div>
@@ -366,14 +366,14 @@ export default function StreamOutputsPage() {
             {/* SRT */}
             {form.type === 'SRT' && (
               <div className="space-y-2">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <Select label="Modo" value={srtCfg.mode} onChange={(e) => setSrtCfg((v) => ({ ...v, mode: e.target.value as 'caller' | 'listener' }))}>
                     <option value="caller">Caller</option>
                     <option value="listener">Listener</option>
                   </Select>
                   <Input label="Passphrase (criptografia)" value={srtCfg.passphrase} onChange={(e) => setSrtCfg((v) => ({ ...v, passphrase: e.target.value }))} placeholder="Vazio = sem criptografia" />
                 </div>
-                <div className="grid grid-cols-5 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                   <div className="col-span-3">
                     <Input
                       label={srtCfg.mode === 'listener' ? 'Host / IP (não usado)' : 'Host / IP *'}
@@ -396,7 +396,7 @@ export default function StreamOutputsPage() {
             {/* UDP */}
             {form.type === 'UDP' && (
               <div className="space-y-2">
-                <div className="grid grid-cols-5 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                   <div className="col-span-3">
                     <Input label="Endereço *" value={udpCfg.address} onChange={(e) => setUdpCfg((v) => ({ ...v, address: e.target.value }))} placeholder="239.0.0.1" />
                   </div>
@@ -425,7 +425,7 @@ export default function StreamOutputsPage() {
             {form.type === 'LOCAL_DEVICE' && (
               <div className="space-y-3 rounded-lg border border-gray-700 p-3 bg-gray-800/40">
                 <p className="text-xs font-medium text-gray-300">Configuração do Agente Externo</p>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <Select label="Sistema operacional" value={agentCfg.deviceOs} onChange={(e) => setAgentCfg((v) => ({ ...v, deviceOs: e.target.value as 'WINDOWS' | 'LINUX', deviceDriver: 'DECKLINK', deviceName: '' }))}>
                     <option value="WINDOWS">Windows</option>
                     <option value="LINUX">Linux</option>
@@ -440,7 +440,7 @@ export default function StreamOutputsPage() {
                   onChange={(e) => setAgentCfg((v) => ({ ...v, deviceName: e.target.value }))}
                   placeholder={AGENT_DEVICE_PLACEHOLDER[agentCfg.deviceDriver] ?? 'DeckLink SDI'}
                 />
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <Input label="Porta SRT (listener)" type="number" value={agentCfg.srtPort} onChange={(e) => setAgentCfg((v) => ({ ...v, srtPort: e.target.value }))} placeholder="4010" />
                   <Input
                     label="IP deste servidor (para o agente)"
@@ -467,7 +467,7 @@ export default function StreamOutputsPage() {
             {/* Codificação + Overlay — só para tipos com transcodificação */}
             {!['HLS_PUSH', 'SDI', 'LOCAL_DEVICE'].includes(form.type) && (
               <div className="border-t border-gray-800 pt-3 space-y-3">
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <Select label="Resolução" value={form.videoResolution} onChange={f('videoResolution')}>
                     {RESOLUTION_PRESETS.map((p) => (
                       <option key={p.value} value={p.value}>{p.label}</option>

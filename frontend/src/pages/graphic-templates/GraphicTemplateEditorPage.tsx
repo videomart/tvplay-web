@@ -182,7 +182,7 @@ export default function GraphicTemplateEditorPage() {
       {/* Modal adicionar / editar elemento */}
       <Modal open={addOpen} onClose={() => setAddOpen(false)} title={editingElement ? 'Editar Elemento' : `Adicionar em ${POSITION_LABELS[form.position]}`} size="lg">
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Tipo *</label>
               <select value={form.type} onChange={e => setForm(v => ({ ...v, type: e.target.value as GraphicElementType }))}
@@ -288,7 +288,7 @@ export default function GraphicTemplateEditorPage() {
           )}
 
           {/* Cores + tamanho */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Cor da letra */}
             <div className="space-y-1">
               <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Cor da letra</label>
@@ -324,7 +324,7 @@ export default function GraphicTemplateEditorPage() {
           </div>
 
           {/* Tamanho + opacidade */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="space-y-1">
               <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Tamanho fonte</label>
               <input type="number" value={form.fontSize} onChange={e => setForm(v => ({ ...v, fontSize: +e.target.value }))}
@@ -346,7 +346,7 @@ export default function GraphicTemplateEditorPage() {
             )}
           </div>
           {form.type === 'LOGO' && (
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="space-y-1">
                 <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Altura (px)</label>
                 <input type="number" value={form.height ?? ''} onChange={e => setForm(v => ({ ...v, height: +e.target.value || null }))}

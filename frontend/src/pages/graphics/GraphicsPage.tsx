@@ -404,7 +404,7 @@ export default function GraphicsPage() {
               />
 
               {/* 3×3 grid */}
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 {POSITION_GRID_ROWS.flat().map(pos => (
                   <PositionCell
                     key={pos} pos={pos} elements={byPos(pos)}

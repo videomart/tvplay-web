@@ -153,7 +153,7 @@ export default function UsersPage() {
       <Modal open={open} onClose={() => setOpen(false)} title={editing ? 'Editar Usuário' : 'Novo Usuário'} size="md">
         <div className="space-y-4">
           <Input label="Nome completo *" value={form.name} onChange={f('name')} placeholder="João da Silva" />
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input
               label="Username *"
               value={form.username}

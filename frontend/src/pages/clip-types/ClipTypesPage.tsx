@@ -152,7 +152,7 @@ export default function ClipTypesPage() {
       {/* Modal: criar / editar tipo */}
       <Modal open={open} onClose={() => setOpen(false)} title={editing ? 'Editar Tipo' : 'Novo Tipo'}>
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input label="Nome *" value={form.name} onChange={f('name')} placeholder="Comercial" className="col-span-2" />
             <Input label="Código *" value={form.code} onChange={f('code')} placeholder="CP" maxLength={4} />
             <div className="col-span-1" />

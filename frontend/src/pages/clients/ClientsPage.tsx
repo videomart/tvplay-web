@@ -94,7 +94,7 @@ export default function ClientsPage() {
 
       <Modal open={open} onClose={() => setOpen(false)} title={editing ? 'Editar Cliente' : 'Novo Cliente'} size="lg">
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input label="Nome *" value={form.name} onChange={f('name')} placeholder="Nome do anunciante" className="col-span-2" />
             <Input label="Documento" value={form.document} onChange={f('document')} placeholder="CNPJ / CPF" />
             <Input label="Contato" value={form.contact} onChange={f('contact')} placeholder="Nome do contato" />

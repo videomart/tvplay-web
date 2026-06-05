@@ -98,7 +98,7 @@ export default function ChannelsPage() {
 
       <Modal open={open} onClose={() => setOpen(false)} title={editing ? 'Editar Canal' : 'Novo Canal'}>
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input label="Nome" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Canal Principal" />
             <Input label="Número" type="number" value={form.number} onChange={(e) => setForm((f) => ({ ...f, number: e.target.value }))} placeholder="1" />
           </div>

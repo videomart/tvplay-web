@@ -507,7 +507,7 @@ export default function InputSourcesPage() {
             <div className="flex-1"><Input label="Nome *" value={form.name} onChange={f('name')} placeholder="YouTube Ao Vivo" /></div>
             <div className="w-24"><Input label="Nº Switcher" type="number" min="1" value={form.inputNumber} onChange={f('inputNumber')} placeholder="1" /></div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Select label="Tipo *" value={form.type} onChange={(e) => handleTypeChange(e.target.value as InputSourceType)}>
               {SELECTABLE_TYPES.map((k) => (
                 <option key={k} value={k}>{SOURCE_TYPE_LABELS[k]}</option>
@@ -604,7 +604,7 @@ export default function InputSourcesPage() {
                 <option value="caller">Caller — conecta ao servidor SRT remoto</option>
                 <option value="listener">Listener — aguarda o encoder/câmera conectar-se à porta</option>
               </Select>
-              <div className="grid grid-cols-5 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                 <div className="col-span-3">
                   <Input
                     label={srtCfg.mode === 'listener' ? 'Host / IP (não usado no listener)' : 'Host / IP *'}
@@ -687,7 +687,7 @@ export default function InputSourcesPage() {
           {/* LOCAL_DEVICE — Host Agent */}
           {needsLocalDevice(form.type) && (
             <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Select
                   label="Sistema operacional do host"
                   value={localDeviceCfg.os}
@@ -718,7 +718,7 @@ export default function InputSourcesPage() {
                 placeholder={DEVICE_PLACEHOLDER[localDeviceCfg.driver]}
               />
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Input
                   label="Porta SRT (listener no TVPlay) *"
                   type="number"

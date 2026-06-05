@@ -336,14 +336,14 @@ export default function PlaylistsListPage() {
               Se não informado, será gerado automaticamente no formato DDMMAA-N baseado na data.
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input label="Data *" type="date" value={form.date} onChange={f('date')} />
             <Select label="Canal" value={form.channelId} onChange={f('channelId')}>
               <option value="">Ambos os canais</option>
               {channels.map((ch) => <option key={ch.id} value={ch.id}>{ch.number} — {ch.name}</option>)}
             </Select>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input label="Observações" value={form.notes} onChange={f('notes')} placeholder="Opcional" />
             <Select label="Gráfico" value={form.graphicId} onChange={f('graphicId')}>
               <option value="">Nenhum</option>
