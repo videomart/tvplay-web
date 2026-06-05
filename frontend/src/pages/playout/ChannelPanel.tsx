@@ -1056,7 +1056,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
 
   return (
     <div className={clsx(
-      'card flex flex-col gap-0 overflow-hidden transition-all',
+      'card flex flex-col gap-0 overflow-hidden transition-all h-full',
       status === 'PLAYING' && 'ring-1 ring-emerald-500/30'
     )}>
 
@@ -1345,7 +1345,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
       )}
 
       {/* ── Playlist de itens ─────────────────────────────────────────────── */}
-      <div className="border-t border-gray-800">
+      <div className="border-t border-gray-800 flex-1 min-h-0 flex flex-col">
           {/* Header da playlist com transport controls integrados */}
           <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-gray-800/50">
             {/* Controles de transporte */}
@@ -1512,7 +1512,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
             state?.playlistId ? (
               <div
                 ref={playlistScrollRef}
-                className="max-h-[340px] overflow-y-auto py-1"
+                className="flex-1 min-h-0 overflow-y-auto py-1"
                 onScroll={() => {
                   if (!programmaticScrollRef.current) userScrolledRef.current = true
                 }}
