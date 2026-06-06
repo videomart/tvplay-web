@@ -121,6 +121,9 @@ export default function MediaFilesPage() {
   // Tipos presentes nos arquivos (para filtro)
   const activeTypes = types.filter(t => files.some(f => f.clips.some(c => c.type?.id === t.id)))
 
+  const processingCount = files.filter(f => ['PROCESSING', 'TRANSCODING'].includes(f.ingestStatus)).length
+  const pendingCount    = files.filter(f => f.ingestStatus === 'PENDING').length
+
   const deleteMut = useMutation({
     mutationFn: (id: string) => clipsApi.deleteMedia(id),
     onSuccess: (data) => {
@@ -253,13 +256,37 @@ export default function MediaFilesPage() {
         </button>
 
         {/* Status do storage */}
-        {['READY', 'ERROR', 'PENDING', 'PROCESSING'].map(s => (
-          <button key={s} onClick={() => setFilterStatus(filterStatus === s ? '' : s)}
-            className={clsx('px-2 py-1 rounded text-xs font-medium transition-colors',
-              filterStatus === s ? 'bg-brand-600/30 text-brand-300 ring-1 ring-brand-500/40' : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>
-            {s}
-          </button>
-        ))}
+        {(['READY', 'ERROR', 'PENDING', 'PROCESSING'] as const).map(s => {
+          const isProcessing = s === 'PROCESSING' && processingCount > 0
+          const isPending    = s === 'PENDING'    && pendingCount > 0
+          const active = filterStatus === s
+          return (
+            <button key={s} onClick={() => setFilterStatus(active ? '' : s)}
+              className={clsx(
+                'flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors relative',
+                active
+                  ? 'bg-brand-600/30 text-brand-300 ring-1 ring-brand-500/40'
+                  : isProcessing
+                    ? 'bg-amber-900/40 text-amber-300 border border-amber-600/50 animate-pulse'
+                    : isPending
+                      ? 'bg-gray-800 text-yellow-400 border border-yellow-700/40'
+                      : 'bg-gray-800 text-gray-400 hover:bg-gray-700',
+              )}>
+              {isProcessing && <Loader2 className="h-3 w-3 animate-spin" />}
+              {s}
+              {isProcessing && (
+                <span className="ml-0.5 bg-amber-500 text-black text-[9px] font-bold px-1 rounded-full leading-tight">
+                  {processingCount}
+                </span>
+              )}
+              {isPending && !isProcessing && pendingCount > 0 && (
+                <span className="ml-0.5 bg-yellow-600/60 text-yellow-200 text-[9px] font-bold px-1 rounded-full leading-tight">
+                  {pendingCount}
+                </span>
+              )}
+            </button>
+          )
+        })}
 
         {/* Modalidade do conteúdo */}
         {activeTypes.map(t => (
@@ -274,14 +301,25 @@ export default function MediaFilesPage() {
         <div className="w-px h-4 bg-gray-700 mx-0.5 flex-shrink-0" />
 
         {/* Upload + Novo */}
-        {uploadLoading && (
-          <span className="text-[11px] text-gray-400 flex items-center gap-1">
-            <Loader2 className="h-3 w-3 animate-spin" />{uploadCount.done}/{uploadCount.total} · {uploadProgress}%
+        <button onClick={() => !uploadLoading && fileRef.current?.click()} disabled={false}
+          className={clsx(
+            'relative flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors border overflow-hidden',
+            uploadLoading
+              ? 'bg-purple-900/40 text-purple-200 border-purple-600/50 animate-pulse cursor-default'
+              : 'bg-gray-800 text-purple-400 hover:bg-gray-700 border-gray-700',
+          )}>
+          {uploadLoading && (
+            <div
+              className="absolute inset-0 bg-purple-500/20 origin-left transition-all duration-300"
+              style={{ width: `${uploadProgress}%` }}
+            />
+          )}
+          <span className="relative flex items-center gap-1">
+            {uploadLoading
+              ? <><Loader2 className="h-3 w-3 animate-spin" />{uploadCount.done}/{uploadCount.total} · {uploadProgress}%</>
+              : <><Upload className="h-3 w-3" />Upload</>
+            }
           </span>
-        )}
-        <button onClick={() => fileRef.current?.click()} disabled={uploadLoading}
-          className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-gray-800 text-purple-400 hover:bg-gray-700 transition-colors disabled:opacity-50 border border-gray-700">
-          <Upload className="h-3 w-3" />Upload
         </button>
         <button onClick={handleScanMinio} disabled={scanLoading}
           title="Importar arquivos enviados diretamente ao MinIO"
