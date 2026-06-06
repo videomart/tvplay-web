@@ -59,8 +59,8 @@ export default function MediaFilesPage() {
   const [filterStatus,   setFilterStatus]   = useState('')
   const [filterTypeId,   setFilterTypeId]   = useState('')
   const [confirmId,      setConfirmId]      = useState<string | null>(null)
-  const [sortBy,         setSortBy]         = useState('originalName')
-  const [sortDir,        setSortDir]        = useState<'asc' | 'desc'>('asc')
+  const [sortBy,         setSortBy]         = useState('createdAt')
+  const [sortDir,        setSortDir]        = useState<'asc' | 'desc'>('desc')
   const [uploadLoading,  setUploadLoading]  = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [uploadCount,    setUploadCount]    = useState({ done: 0, total: 0 })
@@ -110,7 +110,8 @@ export default function MediaFilesPage() {
       case 'duration':     av = a.duration ?? -1; bv = b.duration ?? -1; break
       case 'sizeBytes':    av = Number(a.sizeBytes ?? 0); bv = Number(b.sizeBytes ?? 0); break
       case 'clips':        av = a._count?.clips ?? 0; bv = b._count?.clips ?? 0; break
-      default:             av = a.originalName?.toLowerCase(); bv = b.originalName?.toLowerCase()
+      case 'createdAt':    av = a.createdAt ?? ''; bv = b.createdAt ?? ''; break
+      default:             av = a.createdAt ?? ''; bv = b.createdAt ?? ''
     }
     if (av < bv) return sortDir === 'asc' ? -1 : 1
     if (av > bv) return sortDir === 'asc' ? 1 : -1
@@ -348,12 +349,18 @@ export default function MediaFilesPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-800">
-                <th className="px-2 py-3 w-14">
-                  <button onClick={handleRegenAllThumbnails} disabled={thumbRegenAll}
-                    title="Regenerar todas as thumbnails"
-                    className="flex items-center justify-center w-full p-1 rounded bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 border border-yellow-600/40 transition-colors disabled:opacity-50">
-                    {thumbRegenAll ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImagePlus className="h-5 w-5" />}
-                  </button>
+                <th className="px-1 py-2 w-28">
+                  <div className="flex items-center gap-1">
+                    <button onClick={handleRegenAllThumbnails} disabled={thumbRegenAll}
+                      title="Regenerar todas as thumbnails"
+                      className="p-1 rounded bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 border border-yellow-600/40 transition-colors disabled:opacity-50 flex-shrink-0">
+                      {thumbRegenAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+                    </button>
+                    <button onClick={() => toggleSort('createdAt')}
+                      className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide hover:text-gray-300 select-none whitespace-nowrap flex items-center gap-0.5">
+                      Data{si('createdAt')}
+                    </button>
+                  </div>
                 </th>
                 <th onClick={() => toggleSort('code')} className="text-left px-4 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wide cursor-pointer hover:text-gray-300 select-none w-24">Código{si('code')}</th>
                 <th onClick={() => toggleSort('title')} className="text-left px-4 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wide cursor-pointer hover:text-gray-300 select-none">Título{si('title')}</th>
@@ -378,13 +385,13 @@ export default function MediaFilesPage() {
                                    'hover:bg-gray-800/30')}>
 
                     {/* Thumbnail */}
-                    <td className="px-2 py-1.5 w-14" onClick={(e) => { if (file.thumbnail && file.ingestStatus === 'READY' && file.hlsPath) { e.stopPropagation(); setPreviewFile(file) } }}>
+                    <td className="p-1 w-28" onClick={(e) => { if (file.thumbnail && file.ingestStatus === 'READY' && file.hlsPath) { e.stopPropagation(); setPreviewFile(file) } }}>
                       {file.thumbnail ? (
-                        <div className={clsx('relative w-10 h-7 rounded overflow-hidden bg-gray-800 flex-shrink-0', file.ingestStatus === 'READY' && file.hlsPath && 'cursor-pointer group')}>
+                        <div className={clsx('relative w-full aspect-video rounded overflow-hidden bg-gray-800', file.ingestStatus === 'READY' && file.hlsPath && 'cursor-pointer group')}>
                           <img src={`/api/media/${file.id}/thumbnail${thumbVersion[file.id] ? `?v=${thumbVersion[file.id]}` : ''}`} alt="" className="w-full h-full object-cover" loading="lazy" />
                           {file.ingestStatus === 'READY' && file.hlsPath && (
                             <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                              <Play className="h-3 w-3 text-white" />
+                              <Play className="h-4 w-4 text-white" />
                             </div>
                           )}
                         </div>
@@ -392,14 +399,14 @@ export default function MediaFilesPage() {
                         <button onClick={(e) => handleGenerateThumbnail(e, file.id)}
                           disabled={thumbGenId === file.id}
                           title="Gerar thumbnail"
-                          className="w-10 h-7 rounded bg-gray-800 hover:bg-gray-700 flex items-center justify-center transition-colors disabled:opacity-50">
+                          className="w-full aspect-video rounded bg-gray-800 hover:bg-gray-700 flex items-center justify-center transition-colors disabled:opacity-50">
                           {thumbGenId === file.id
-                            ? <Loader2 className="h-3 w-3 text-gray-400 animate-spin" />
-                            : <ImagePlus className="h-3 w-3 text-gray-500" />}
+                            ? <Loader2 className="h-3.5 w-3.5 text-gray-400 animate-spin" />
+                            : <ImagePlus className="h-3.5 w-3.5 text-gray-500" />}
                         </button>
                       ) : (
-                        <div className="w-10 h-7 rounded bg-gray-800 flex items-center justify-center">
-                          <Film className="h-3 w-3 text-gray-600" />
+                        <div className="w-full aspect-video rounded bg-gray-800 flex items-center justify-center">
+                          <Film className="h-3.5 w-3.5 text-gray-600" />
                         </div>
                       )}
                     </td>
