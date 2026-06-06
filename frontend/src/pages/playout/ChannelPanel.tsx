@@ -1190,9 +1190,20 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                   : <div className="w-full h-full flex items-center justify-center"><Radio className="h-6 w-6 text-gray-700" /></div>
             ) : (
               (() => {
-                if (channel.fallbackType === 'COLORBARS') return <ColorBars />
-                if (channel.fallbackType === 'INPUT_SOURCE') {
-                  const src = channel.fallbackSource
+                // CUT ativo sobrepõe o preview (activeCut vem do WS, não do config de fallback)
+                const cutType = state?.activeCut?.type
+                if (cutType === 'COLORBARS') return <ColorBars />
+                if (cutType === 'BLACK') return <div className="w-full h-full bg-black" />
+
+                // Sem CUT ativo (ou CUT para entrada): usa configuração de fallback do canal
+                const previewSrc = cutType === 'INPUT_SOURCE'
+                  ? (availableSources.find(s => s.id === state?.activeCut?.sourceId) ?? channel.fallbackSource)
+                  : channel.fallbackSource
+                const fbType = cutType === 'INPUT_SOURCE' ? 'INPUT_SOURCE' : channel.fallbackType
+
+                if (fbType === 'COLORBARS') return <ColorBars />
+                if (fbType === 'INPUT_SOURCE') {
+                  const src = previewSrc
                   if (!src) return <div className="w-full h-full bg-black" />
                   // WEBCAM: mostra preview local da câmera (MediaStream do browser)
                   if (src.type === 'WEBCAM' && camera.active && camera.previewStream)

@@ -1015,6 +1015,7 @@ export async function stop(channelId: string): Promise<PlayoutState> {
   state.status = 'STOPPED'
   state.position = 0
   state.currentItem = null
+  state.activeCut = null  // limpa CUT manual; preview volta a mostrar o fallback configurado
   state.updatedAt = Date.now()
   states.set(channelId, state)
   persistState(channelId, null, 0)
