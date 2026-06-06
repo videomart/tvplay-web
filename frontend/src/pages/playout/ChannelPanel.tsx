@@ -1588,17 +1588,21 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                 </div>
                 <div className="flex items-center gap-1.5 text-[10px] font-mono">
                   <span className={clsx(
-                    'text-[9px] font-bold uppercase tracking-wide flex-shrink-0',
-                    segmentTiming.hasNextBreak ? 'text-amber-400' : 'text-gray-500'
+                    'text-[9px] font-bold px-1.5 py-0.5 rounded flex-shrink-0 uppercase tracking-wide',
+                    segmentTiming.hasNextBreak
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                      : 'bg-gray-700/60 text-gray-400 border border-gray-600/40'
                   )}>
-                    {segmentTiming.hasNextBreak ? 'BREAK' : 'FIM'}
+                    {segmentTiming.hasNextBreak ? 'Dur Break' : 'Dur Fim'}
                   </span>
-                  <span className="flex items-center gap-0.5 text-sky-400">
-                    <ChevronUp className="h-3 w-3" />{formatTime(segmentTiming.segElapsed)}
-                  </span>
-                  <span className="flex items-center gap-0.5 text-amber-400">
-                    <ChevronDown className="h-3 w-3" />{formatTime(segmentTiming.segRemaining)}
-                  </span>
+                  <div className="flex-1 flex items-center justify-end gap-1.5">
+                    <span className="flex items-center gap-0.5 text-sky-400">
+                      <ChevronUp className="h-3 w-3" />{formatTime(segmentTiming.segElapsed)}
+                    </span>
+                    <span className="flex items-center gap-0.5 text-amber-400">
+                      <ChevronDown className="h-3 w-3" />{formatTime(segmentTiming.segRemaining)}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -1608,22 +1612,27 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                   <div className="h-full bg-brand-500 transition-all duration-1000 ease-linear"
                     style={{ width: `${item.duration > 0 ? Math.min((position / item.duration) * 100, 100) : 0}%` }} />
                 </div>
-                <div className="flex items-center justify-end gap-1.5 text-[10px] font-mono">
+                <div className="flex items-center gap-1.5 text-[10px] font-mono">
                   {item.sourceType === 'URL' ? (
-                    <span className="flex items-center gap-1 text-red-400 animate-pulse text-[9px] font-bold uppercase tracking-wide">
+                    <span className="flex items-center gap-1 text-red-400 animate-pulse text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-500/20 border border-red-500/40 uppercase tracking-wide flex-shrink-0">
                       <span className="h-1.5 w-1.5 rounded-full bg-red-400" />AO VIVO
                     </span>
                   ) : (
-                    <span className="text-gray-600 text-[9px] uppercase tracking-wide">
-                      DUR <span className="text-gray-500 normal-case">{formatTime(item.duration)}</span>
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-brand-500/20 text-brand-300 border border-brand-500/40 uppercase tracking-wide flex-shrink-0">
+                      Dur Clipe
                     </span>
                   )}
-                  <span className="flex items-center gap-0.5 text-emerald-400">
-                    <ChevronUp className="h-3 w-3" />{formatTime(position)}
-                  </span>
-                  <span className="flex items-center gap-0.5 text-red-400">
-                    <ChevronDown className="h-3 w-3" />{formatTime(segmentTiming.clipRemaining)}
-                  </span>
+                  <div className="flex-1 flex items-center justify-end gap-1.5">
+                    {!item.sourceType || item.sourceType !== 'URL' ? (
+                      <span className="text-gray-500 text-[10px] font-mono">{formatTime(item.duration)}</span>
+                    ) : null}
+                    <span className="flex items-center gap-0.5 text-emerald-400">
+                      <ChevronUp className="h-3 w-3" />{formatTime(position)}
+                    </span>
+                    <span className="flex items-center gap-0.5 text-red-400">
+                      <ChevronDown className="h-3 w-3" />{formatTime(segmentTiming.clipRemaining)}
+                    </span>
+                  </div>
                 </div>
               </div>
 
