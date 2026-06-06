@@ -306,6 +306,14 @@ export default function MediaFilesPage() {
             <span className="text-sm font-medium text-brand-300 truncate max-w-[180px]" title={selected.originalName}>
               {selected.clips?.[0]?.code || selected.originalName}
             </span>
+            {selected._count?.clips === 0 && (
+              <button
+                onClick={() => navigate('/clips', { state: { openNew: true, returnTo: '/media', selectedOrphanId: selected.id } })}
+                title="Criar clipe vinculado a este arquivo"
+                className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 transition-colors border border-emerald-700/40">
+                <Plus className="h-3 w-3" />Criar Clipe
+              </button>
+            )}
             {selected.ingestStatus === 'READY' && selected.hlsPath && (
               <button onClick={() => setPreviewFile(selected)} title="Preview"
                 className="p-1.5 rounded text-gray-500 hover:text-emerald-400 hover:bg-emerald-900/20 transition-colors">

@@ -212,19 +212,21 @@ export default function ClipsPage() {
     setOpen(true)
   }
 
-  // Abre o modal quando navega com state.editClipId ou state.openNew
+  // Abre o modal quando navega com state.editClipId, state.openNew ou state.selectedOrphanId
   // state.returnTo: URL para navegar ao fechar o modal
   const returnTo = (location.state as any)?.returnTo ?? null
   useEffect(() => {
     const editClipId = (location.state as any)?.editClipId
     const doOpenNew = (location.state as any)?.openNew
+    const preselectedMediaId = (location.state as any)?.selectedOrphanId
     if (editClipId) {
       clipsApi.get(editClipId)
         .then(c => { openEdit(c) })
         .catch(() => toast.error('Clipe não encontrado'))
       window.history.replaceState({}, '')
-    } else if (doOpenNew) {
+    } else if (doOpenNew || preselectedMediaId) {
       openNew()
+      if (preselectedMediaId) setSelectedOrphanId(preselectedMediaId)
       window.history.replaceState({}, '')
     }
   }, [location.state]) // eslint-disable-line react-hooks/exhaustive-deps
