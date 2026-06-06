@@ -795,6 +795,27 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
     refetchOnWindowFocus: true,
   })
 
+  // Calcula elapsed/remaining do segmento atual (entre BREAKs ou até o fim)
+  const segmentTiming = (() => {
+    if (!item || playlistItems.length === 0) return null
+    let nextBreakIdx = -1
+    for (let i = currentIndex + 1; i < playlistItems.length; i++) {
+      if (playlistItems[i]?.isBreak) { nextBreakIdx = i; break }
+    }
+    let lastBreakIdx = -1
+    for (let i = currentIndex - 1; i >= 0; i--) {
+      if (playlistItems[i]?.isBreak) { lastBreakIdx = i; break }
+    }
+    const itemsAfter = nextBreakIdx === -1
+      ? playlistItems.slice(currentIndex + 1)
+      : playlistItems.slice(currentIndex + 1, nextBreakIdx)
+    const itemsBefore = playlistItems.slice(lastBreakIdx + 1, currentIndex)
+    const clipRemaining = Math.max(0, (item.duration ?? 0) - position)
+    const segRemaining = clipRemaining + itemsAfter.reduce((s, it) => s + (it.duration ?? 0), 0)
+    const segElapsed   = itemsBefore.reduce((s, it) => s + (it.duration ?? 0), 0) + position
+    return { segElapsed, segRemaining, hasNextBreak: nextBreakIdx !== -1, clipRemaining }
+  })()
+
   // Quando items chegam/recarregam (ex: retorno após inatividade), rola para o item atual
   useEffect(() => {
     if (playlistItems.length === 0) return
@@ -1424,16 +1445,16 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
 
       {/* ── Playlist de itens ─────────────────────────────────────────────── */}
       <div className="border-t border-gray-800 flex-1 min-h-0 flex flex-col">
-          {/* Header da playlist com transport controls integrados */}
-          <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-gray-800/50">
+          {/* ── Linha 1: Transport controls + título da mídia em exibição ── */}
+          <div className="flex items-center gap-1 px-2 py-1 border-b border-gray-800/50">
             {/* Controles de transporte */}
             <button
               onClick={() => prevMut.mutate()}
               disabled={status === 'IDLE' || prevMut.isPending}
               title="Clipe anterior"
-              className="p-1 rounded text-gray-500 hover:text-white hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              className="p-0.5 rounded text-gray-500 hover:text-white hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
-              <SkipBack className="h-3.5 w-3.5" />
+              <SkipBack className="h-5 w-5" />
             </button>
 
             {status === 'PLAYING' ? (
@@ -1441,27 +1462,27 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                 onClick={() => pauseMut.mutate()}
                 disabled={pauseMut.isPending}
                 title="Pausar"
-                className="p-1 rounded text-amber-400 hover:bg-amber-900/30 disabled:opacity-40 transition-colors"
+                className="p-0.5 rounded text-amber-400 hover:bg-amber-900/30 disabled:opacity-40 transition-colors"
               >
-                <Pause className="h-3.5 w-3.5" />
+                <Pause className="h-5 w-5" />
               </button>
             ) : status === 'PAUSED' ? (
               <button
                 onClick={() => resumeMut.mutate()}
                 disabled={resumeMut.isPending}
                 title="Retomar"
-                className="p-1 rounded text-emerald-400 hover:bg-emerald-900/30 disabled:opacity-40 transition-colors"
+                className="p-0.5 rounded text-emerald-400 hover:bg-emerald-900/30 disabled:opacity-40 transition-colors"
               >
-                <Play className="h-3.5 w-3.5" />
+                <Play className="h-5 w-5" />
               </button>
             ) : (
               <button
                 onClick={handlePlay}
                 disabled={playMut.isPending}
                 title="Play"
-                className="p-1 rounded text-emerald-400 hover:bg-emerald-900/30 disabled:opacity-40 transition-colors"
+                className="p-0.5 rounded text-emerald-400 hover:bg-emerald-900/30 disabled:opacity-40 transition-colors"
               >
-                <Play className="h-3.5 w-3.5" />
+                <Play className="h-5 w-5" />
               </button>
             )}
 
@@ -1469,46 +1490,44 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
               onClick={() => stopMut.mutate()}
               disabled={status === 'IDLE' || stopMut.isPending}
               title="Stop"
-              className="p-1 rounded text-red-400 hover:bg-red-900/30 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              className="p-0.5 rounded text-red-400 hover:bg-red-900/30 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
-              <Square className="h-3.5 w-3.5" />
+              <Square className="h-5 w-5" />
             </button>
 
             <button
               onClick={() => nextMut.mutate()}
               disabled={status === 'IDLE' || nextMut.isPending}
               title="Próximo clipe"
-              className="p-1 rounded text-gray-500 hover:text-white hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              className="p-0.5 rounded text-gray-500 hover:text-white hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
-              <SkipForward className="h-3.5 w-3.5" />
+              <SkipForward className="h-5 w-5" />
             </button>
 
             {selectedItemId && (
-              <span className="flex items-center gap-1 text-[9px] text-cyan-400 border border-cyan-700/40 rounded px-1.5 py-0.5">
+              <span className="flex items-center gap-1 text-[9px] text-cyan-400 border border-cyan-700/40 rounded px-1.5 py-0.5 flex-shrink-0">
                 <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />
                 #{(playlistItems.findIndex(p => p.id === selectedItemId) + 1)}
                 <button onClick={() => setSelectedItemId(null)} className="ml-0.5 text-cyan-600 hover:text-cyan-300">✕</button>
               </span>
             )}
 
-            {/* Label roteiro/autosave — centro da barra */}
+            {/* Centro: título da mídia em exibição */}
             <div className="flex-1 flex items-center justify-center gap-1.5 min-w-0 px-1">
-              {state?.playlistIsAutoSave ? (
+              {item ? (
                 <>
-                  <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 uppercase tracking-wide flex-shrink-0">
-                    AUTOSAVE
-                  </span>
-                  <span className="text-[10px] text-gray-600 truncate hidden sm:block">sem roteiro</span>
-                </>
-              ) : state?.name ? (
-                <>
-                  <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-brand-500/20 text-brand-400 border border-brand-500/30 uppercase tracking-wide flex-shrink-0">
-                    ROT
-                  </span>
-                  <span className="text-[10px] text-gray-300 font-medium truncate">{state.name}</span>
+                  {item.typeBg && item.typeColor && item.typeCode && (
+                    <span
+                      className="text-[9px] font-bold px-1 py-0.5 rounded flex-shrink-0"
+                      style={{ background: item.typeBg + '44', color: item.typeColor, border: `1px solid ${item.typeBg}88` }}
+                    >
+                      {item.typeCode}
+                    </span>
+                  )}
+                  <span className="text-[11px] text-white font-medium truncate" title={item.title}>{item.title}</span>
                 </>
               ) : (
-                <span className="text-[10px] text-gray-700 italic truncate">sem roteiro</span>
+                <span className="text-[10px] text-gray-600 italic">sem mídia em exibição</span>
               )}
             </div>
 
@@ -1522,50 +1541,87 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                 state?.loop ? 'text-emerald-400 hover:text-emerald-300' : 'text-gray-600 hover:text-gray-400'
               )}
             >
-              <Repeat className="h-3.5 w-3.5" />
+              <Repeat className="h-5 w-5" />
             </button>
 
             {/* Limpar grid — apenas em stop/idle com playlist ativa */}
             {(status === 'STOPPED' || status === 'IDLE') && state?.playlistId && (
-              <>
-                <button
-                  onClick={() => {
-                    if (playlistItems.length === 0) return
-                    if (!confirm('Remover todos os itens do grid?')) return
-                    clearItemsMut.mutate()
-                  }}
-                  disabled={clearItemsMut.isPending || playlistItems.length === 0}
-                  title="Limpar grid (remover todos os itens)"
-                  className="flex-shrink-0 text-gray-600 hover:text-red-400 transition-colors disabled:opacity-30"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </>
+              <button
+                onClick={() => {
+                  if (playlistItems.length === 0) return
+                  if (!confirm('Remover todos os itens do grid?')) return
+                  clearItemsMut.mutate()
+                }}
+                disabled={clearItemsMut.isPending || playlistItems.length === 0}
+                title="Limpar grid (remover todos os itens)"
+                className="flex-shrink-0 p-0.5 text-gray-600 hover:text-red-400 transition-colors disabled:opacity-30"
+              >
+                <X className="h-5 w-5" />
+              </button>
             )}
             {playlistItems.length > 0 && (
-              <span className="text-[10px] text-gray-700 flex-shrink-0">
-                {playlistItems.length} · {formatTime(totalPlaylistDuration)}
+              <span className="text-[10px] text-gray-700 flex-shrink-0 font-mono">
+                {playlistItems.length}·{formatTime(totalPlaylistDuration)}
               </span>
             )}
 
             <button
               onClick={() => setPlaylistOpen((v) => !v)}
-              className="flex-shrink-0 text-gray-600 hover:text-gray-400 transition-colors"
+              className="flex-shrink-0 p-0.5 text-gray-600 hover:text-gray-400 transition-colors"
               title={playlistOpen ? 'Ocultar playlist' : 'Mostrar playlist'}
             >
-              {playlistOpen
-                ? <ChevronUp className="h-3.5 w-3.5" />
-                : <ChevronDown className="h-3.5 w-3.5" />}
+              {playlistOpen ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
             </button>
           </div>
 
-          {/* Barras de progresso compactas */}
-          {item && (
-            <div className="px-3 pt-1.5 pb-1 space-y-1 border-b border-gray-800/40">
-              <ClipProgressBar position={position} duration={item.duration} isLive={item.sourceType === 'URL'} />
-              {totalPlaylistDuration > 0 && (
-                <PlaylistProgressBar elapsed={totalElapsed} total={totalPlaylistDuration} />
-              )}
+          {/* ── Linha 2 (única): tempos do clipe + segmento até próx. BREAK/FIM ── */}
+          {item && segmentTiming && (
+            <div className="px-3 py-1 border-b border-gray-800/40">
+              {/* Duas barras finas lado a lado: clipe (azul) | segmento (verde) */}
+              <div className="flex gap-px mb-1">
+                <div className="flex-1 h-0.5 bg-gray-800 rounded-full overflow-hidden">
+                  <div className="h-full bg-brand-500 transition-all duration-1000 ease-linear"
+                    style={{ width: `${item.duration > 0 ? Math.min((position / item.duration) * 100, 100) : 0}%` }} />
+                </div>
+                <div className="w-px bg-gray-700 flex-shrink-0" />
+                <div className="flex-1 h-0.5 bg-gray-800 rounded-full overflow-hidden">
+                  <div className="h-full bg-emerald-600/70 transition-all duration-1000 ease-linear"
+                    style={{ width: `${(segmentTiming.segElapsed + segmentTiming.segRemaining) > 0 ? Math.min((segmentTiming.segElapsed / (segmentTiming.segElapsed + segmentTiming.segRemaining)) * 100, 100) : 0}%` }} />
+                </div>
+              </div>
+              {/* Uma linha de texto com todos os tempos */}
+              <div className="flex items-center gap-2 text-[10px] font-mono">
+                {item.sourceType === 'URL' ? (
+                  <span className="flex items-center gap-1 text-red-400 animate-pulse text-[9px] font-bold uppercase tracking-wide flex-shrink-0">
+                    <span className="h-1.5 w-1.5 rounded-full bg-red-400" />AO VIVO
+                  </span>
+                ) : (
+                  <span className="text-gray-600 text-[9px] uppercase tracking-wide flex-shrink-0">
+                    DUR <span className="text-gray-500 normal-case">{formatTime(item.duration)}</span>
+                  </span>
+                )}
+                <span className="flex items-center gap-0.5 text-emerald-400 flex-shrink-0">
+                  <ChevronUp className="h-3 w-3" />{formatTime(position)}
+                </span>
+                <span className="flex items-center gap-0.5 text-red-400 flex-shrink-0">
+                  <ChevronDown className="h-3 w-3" />{formatTime(segmentTiming.clipRemaining)}
+                </span>
+
+                <div className="w-px h-3 bg-gray-700 flex-shrink-0" />
+
+                <span className={clsx(
+                  'text-[9px] font-bold uppercase tracking-wide flex-shrink-0',
+                  segmentTiming.hasNextBreak ? 'text-amber-500' : 'text-gray-600'
+                )}>
+                  {segmentTiming.hasNextBreak ? 'BREAK' : 'FIM'}
+                </span>
+                <span className="flex items-center gap-0.5 text-sky-400 flex-shrink-0">
+                  <ChevronUp className="h-3 w-3" />{formatTime(segmentTiming.segElapsed)}
+                </span>
+                <span className="flex items-center gap-0.5 text-amber-400 flex-shrink-0">
+                  <ChevronDown className="h-3 w-3" />{formatTime(segmentTiming.segRemaining)}
+                </span>
+              </div>
             </div>
           )}
 
