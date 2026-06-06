@@ -1,1 +1,1 @@
-cd /home/bolais/projects/tvplay-web && git pull origin main && docker compose up -d --build
+cd /home/bolais/projects/tvplay-web && git pull origin main && docker compose up -d --build && docker compose restart nginx-proxy
