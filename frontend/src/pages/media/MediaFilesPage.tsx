@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   HardDrive, Trash2, AlertTriangle, CheckCircle, Clock, XCircle,
-  Filter, Upload, ChevronUp, ChevronDown, Copy, Play, ExternalLink, Loader2, Plus, Film, ScanSearch, ImagePlus,
+  Filter, Upload, ChevronUp, ChevronDown, Copy, Play, ExternalLink, Loader2, Plus, Film, ScanSearch, ImagePlus, Pencil, Scissors,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
@@ -312,6 +312,14 @@ export default function MediaFilesPage() {
                 title="Criar clipe vinculado a este arquivo"
                 className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 transition-colors border border-emerald-700/40">
                 <Plus className="h-3 w-3" />Criar Clipe
+              </button>
+            )}
+            {selected.clips?.[0] && (
+              <button
+                onClick={() => navigate('/clips', { state: { editClipId: selected.clips[0].id, returnTo: '/media' } })}
+                title="Editar clipe / marcar Cue-In e Cue-Out"
+                className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-amber-600/20 text-amber-400 hover:bg-amber-600/30 transition-colors border border-amber-700/40">
+                <Scissors className="h-3 w-3" />Cue / Editar
               </button>
             )}
             {selected.ingestStatus === 'READY' && selected.hlsPath && (
