@@ -1593,7 +1593,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                       ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
                       : 'bg-gray-700/60 text-gray-400 border border-gray-600/40'
                   )}>
-                    {segmentTiming.hasNextBreak ? 'Dur Break' : 'Dur Fim'}
+                    {segmentTiming.hasNextBreak ? 'Dur Break' : 'Dur Playlist'}
                   </span>
                   <div className="flex-1 flex items-center justify-end gap-1.5">
                     <span className="flex items-center gap-0.5 text-sky-400">
