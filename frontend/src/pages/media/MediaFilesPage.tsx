@@ -249,7 +249,7 @@ export default function MediaFilesPage() {
         })()}
 
         {/* Órfãos */}
-        <button onClick={() => setFilterOrphan(v => !v)}
+        <button onClick={() => { setFilterOrphan(v => !v); setFilterStatus(''); setFilterTypeId('') }}
           className={clsx('flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors',
             filterOrphan ? 'bg-orange-600/30 text-orange-300 ring-1 ring-orange-500/40' : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>
           <AlertTriangle className="h-3 w-3" />Órfãos
@@ -261,7 +261,7 @@ export default function MediaFilesPage() {
           const isPending    = s === 'PENDING'    && pendingCount > 0
           const active = filterStatus === s
           return (
-            <button key={s} onClick={() => setFilterStatus(active ? '' : s)}
+            <button key={s} onClick={() => { setFilterStatus(active ? '' : s); setFilterOrphan(false) }}
               className={clsx(
                 'flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors relative',
                 active
