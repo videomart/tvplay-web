@@ -1151,12 +1151,18 @@ export async function cutToInput(channelId: string, sourceId: string): Promise<P
 
 // CUT imediato para BLACK ou COLORBARS sem alterar o fallback configurado no banco
 export async function cutToFallbackType(channelId: string, type: 'BLACK' | 'COLORBARS'): Promise<void> {
-  const state = states.get(channelId)
-  if (state) {
-    state.activeCut = { type }
-    state.updatedAt = Date.now()
-    broadcast(channelId, state)
-  }
+  stopTimer(channelId)
+
+  const state = states.get(channelId) ?? defaultState(channelId)
+  state.status = 'STOPPED'
+  state.currentItem = null
+  state.position = 0
+  state.activeCut = { type }
+  state.updatedAt = Date.now()
+  states.set(channelId, state)
+
+  persistState(channelId, null, 0)
+  broadcast(channelId, state)
   streamService.startStreamingFromFallback(channelId, type).catch(() => {})
 }
 
@@ -1393,7 +1399,8 @@ export async function removeItem(channelId: string, itemId: string): Promise<Pla
   return state
 }
 
-// Define fallback do canal — aplica imediatamente se o canal estiver idle/stopped
+// Define fallback do canal — apenas grava a configuração, nunca comuta o sinal
+// Para comutar imediatamente use cutToFallbackType ou cutToInput
 export async function setFallback(
   channelId: string,
   fallbackType: 'BLACK' | 'COLORBARS' | 'INPUT_SOURCE',
@@ -1404,30 +1411,11 @@ export async function setFallback(
     data: { fallbackType, fallbackSourceId: fallbackSourceId ?? null },
   })
 
-  // Pré-resolve URL sempre que INPUT_SOURCE é configurado — mesmo com canal PLAYING
-  // para que a entrada esteja pronta quando for ativada (sem atraso de yt-dlp)
-  let source: Awaited<ReturnType<typeof prisma.inputSource.findUnique>> = null
+  // Pré-resolve URL sempre que INPUT_SOURCE é configurado para que esteja
+  // pronta quando o sistema ativar o fallback automaticamente (sem atraso yt-dlp)
   if (fallbackType === 'INPUT_SOURCE' && fallbackSourceId) {
-    source = await prisma.inputSource.findUnique({ where: { id: fallbackSourceId } })
+    const source = await prisma.inputSource.findUnique({ where: { id: fallbackSourceId } })
     if (source) preFetchFallbackUrl(source)
-  }
-
-  const state = states.get(channelId) ?? defaultState(channelId)
-  if (state.status === 'PLAYING' || state.status === 'PAUSED') return // apenas salva para depois
-
-  // Atualiza activeCut ao configurar fallback em modo stop
-  state.activeCut = fallbackType === 'INPUT_SOURCE'
-    ? { type: 'INPUT_SOURCE', sourceId: fallbackSourceId }
-    : { type: fallbackType }
-  state.updatedAt = Date.now()
-  broadcast(channelId, state)
-
-  if (source) {
-    resolveGraphic(null, null, channelId).catch(() => null).then(fbGraphic => {
-      activateFallbackSource(channelId, source!, fbGraphic).catch(() => {})
-    })
-  } else {
-    streamService.startStreamingFromFallback(channelId, fallbackType).catch(() => {})
   }
 }
 

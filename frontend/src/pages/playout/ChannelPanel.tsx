@@ -1250,7 +1250,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
 
           {/* Célula esquerda — FALLBACK */}
           <div className="flex items-center gap-1 px-2 py-1 flex-1 min-w-0">
-            <span className="text-[9px] font-black text-gray-500 flex-shrink-0">FB</span>
+            <span className="text-[9px] font-black px-1 py-0.5 rounded bg-brand-900/40 text-brand-400 flex-shrink-0">FB</span>
             <div className="flex-1" />
 
             {/* FB por entrada */}
@@ -1308,7 +1308,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
 
           {/* Célula direita — CUT */}
           <div className="flex items-center gap-1 px-2 py-1 flex-1 min-w-0">
-            <span className="text-[9px] font-black text-gray-500 flex-shrink-0">CUT</span>
+            <span className="text-[9px] font-black px-1 py-0.5 rounded bg-red-900/40 text-red-400 flex-shrink-0">CUT</span>
             <div className="flex-1" />
 
             {/* CUT por entrada */}
