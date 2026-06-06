@@ -1445,8 +1445,10 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
 
       {/* ── Playlist de itens ─────────────────────────────────────────────── */}
       <div className="border-t border-gray-800 flex-1 min-h-0 flex flex-col">
+        {/* ══ PAINEL DE CONTROLE ══════════════════════════════════════════════ */}
+        <div className="bg-gray-950 border-b-2 border-brand-900/60">
           {/* ── Linha 1: Transport controls + título da mídia em exibição ── */}
-          <div className="flex items-center gap-1 px-2 py-1 border-b border-gray-800/50">
+          <div className="flex items-center gap-1 px-2 py-1 border-b border-gray-800/60">
             {/* Controles de transporte */}
             <button
               onClick={() => prevMut.mutate()}
@@ -1574,56 +1576,60 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
             </button>
           </div>
 
-          {/* ── Linha 2 (única): tempos do clipe + segmento até próx. BREAK/FIM ── */}
+          {/* ── Linha 2: Playlist (esq) | Mídia em exibição (dir) ── */}
           {item && segmentTiming && (
-            <div className="px-3 py-1 border-b border-gray-800/40">
-              {/* Duas barras finas lado a lado: clipe (azul) | segmento (verde) */}
-              <div className="flex gap-px mb-1">
-                <div className="flex-1 h-0.5 bg-gray-800 rounded-full overflow-hidden">
+            <div className="flex items-stretch px-2 py-1 gap-0">
+
+              {/* ─ ESQUERDA: Playlist / segmento até BREAK ou FIM ─ */}
+              <div className="flex-1 flex flex-col gap-0.5 pr-2 border-r border-gray-700/60">
+                <div className="h-0.5 bg-gray-800 rounded-full overflow-hidden">
+                  <div className="h-full bg-emerald-500/70 transition-all duration-1000 ease-linear"
+                    style={{ width: `${(segmentTiming.segElapsed + segmentTiming.segRemaining) > 0 ? Math.min((segmentTiming.segElapsed / (segmentTiming.segElapsed + segmentTiming.segRemaining)) * 100, 100) : 0}%` }} />
+                </div>
+                <div className="flex items-center gap-1.5 text-[10px] font-mono">
+                  <span className={clsx(
+                    'text-[9px] font-bold uppercase tracking-wide flex-shrink-0',
+                    segmentTiming.hasNextBreak ? 'text-amber-400' : 'text-gray-500'
+                  )}>
+                    {segmentTiming.hasNextBreak ? 'BREAK' : 'FIM'}
+                  </span>
+                  <span className="flex items-center gap-0.5 text-sky-400">
+                    <ChevronUp className="h-3 w-3" />{formatTime(segmentTiming.segElapsed)}
+                  </span>
+                  <span className="flex items-center gap-0.5 text-amber-400">
+                    <ChevronDown className="h-3 w-3" />{formatTime(segmentTiming.segRemaining)}
+                  </span>
+                </div>
+              </div>
+
+              {/* ─ DIREITA: Mídia em exibição ─ */}
+              <div className="flex-1 flex flex-col gap-0.5 pl-2">
+                <div className="h-0.5 bg-gray-800 rounded-full overflow-hidden">
                   <div className="h-full bg-brand-500 transition-all duration-1000 ease-linear"
                     style={{ width: `${item.duration > 0 ? Math.min((position / item.duration) * 100, 100) : 0}%` }} />
                 </div>
-                <div className="w-px bg-gray-700 flex-shrink-0" />
-                <div className="flex-1 h-0.5 bg-gray-800 rounded-full overflow-hidden">
-                  <div className="h-full bg-emerald-600/70 transition-all duration-1000 ease-linear"
-                    style={{ width: `${(segmentTiming.segElapsed + segmentTiming.segRemaining) > 0 ? Math.min((segmentTiming.segElapsed / (segmentTiming.segElapsed + segmentTiming.segRemaining)) * 100, 100) : 0}%` }} />
+                <div className="flex items-center justify-end gap-1.5 text-[10px] font-mono">
+                  {item.sourceType === 'URL' ? (
+                    <span className="flex items-center gap-1 text-red-400 animate-pulse text-[9px] font-bold uppercase tracking-wide">
+                      <span className="h-1.5 w-1.5 rounded-full bg-red-400" />AO VIVO
+                    </span>
+                  ) : (
+                    <span className="text-gray-600 text-[9px] uppercase tracking-wide">
+                      DUR <span className="text-gray-500 normal-case">{formatTime(item.duration)}</span>
+                    </span>
+                  )}
+                  <span className="flex items-center gap-0.5 text-emerald-400">
+                    <ChevronUp className="h-3 w-3" />{formatTime(position)}
+                  </span>
+                  <span className="flex items-center gap-0.5 text-red-400">
+                    <ChevronDown className="h-3 w-3" />{formatTime(segmentTiming.clipRemaining)}
+                  </span>
                 </div>
               </div>
-              {/* Uma linha de texto com todos os tempos */}
-              <div className="flex items-center gap-2 text-[10px] font-mono">
-                {item.sourceType === 'URL' ? (
-                  <span className="flex items-center gap-1 text-red-400 animate-pulse text-[9px] font-bold uppercase tracking-wide flex-shrink-0">
-                    <span className="h-1.5 w-1.5 rounded-full bg-red-400" />AO VIVO
-                  </span>
-                ) : (
-                  <span className="text-gray-600 text-[9px] uppercase tracking-wide flex-shrink-0">
-                    DUR <span className="text-gray-500 normal-case">{formatTime(item.duration)}</span>
-                  </span>
-                )}
-                <span className="flex items-center gap-0.5 text-emerald-400 flex-shrink-0">
-                  <ChevronUp className="h-3 w-3" />{formatTime(position)}
-                </span>
-                <span className="flex items-center gap-0.5 text-red-400 flex-shrink-0">
-                  <ChevronDown className="h-3 w-3" />{formatTime(segmentTiming.clipRemaining)}
-                </span>
 
-                <div className="w-px h-3 bg-gray-700 flex-shrink-0" />
-
-                <span className={clsx(
-                  'text-[9px] font-bold uppercase tracking-wide flex-shrink-0',
-                  segmentTiming.hasNextBreak ? 'text-amber-500' : 'text-gray-600'
-                )}>
-                  {segmentTiming.hasNextBreak ? 'BREAK' : 'FIM'}
-                </span>
-                <span className="flex items-center gap-0.5 text-sky-400 flex-shrink-0">
-                  <ChevronUp className="h-3 w-3" />{formatTime(segmentTiming.segElapsed)}
-                </span>
-                <span className="flex items-center gap-0.5 text-amber-400 flex-shrink-0">
-                  <ChevronDown className="h-3 w-3" />{formatTime(segmentTiming.segRemaining)}
-                </span>
-              </div>
             </div>
           )}
+        </div>{/* fim painel de controle */}
 
           {/* Cabeçalho das colunas do grid */}
           {playlistOpen && (
