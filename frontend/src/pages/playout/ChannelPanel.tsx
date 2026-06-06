@@ -1246,21 +1246,72 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
 
       {/* ── Switcher ──────────────────────────────────────────────────────── */}
       {fallbackOpen && (
-        <div className="border-b border-gray-800">
+        <div className="border-b border-gray-800 flex items-stretch divide-x divide-gray-700/60">
 
-          {/* Linha 1: CUT buttons + BAR + BLK + expand */}
-          <div className="flex items-center gap-1 px-3 py-1">
-            {/* Mnemônico do fallback CONFIGURADO (não muda com o corte) */}
-            <span className={clsx(
-              'text-[9px] font-black w-7 text-center py-0.5 rounded flex-shrink-0',
-              channel.fallbackType === 'INPUT_SOURCE' ? 'bg-brand-600/20 text-brand-300' :
-              channel.fallbackType === 'COLORBARS'    ? 'bg-violet-600/20 text-violet-300' :
-                                                        'bg-gray-700/50 text-gray-400'
-            )}>
-              {currentFallbackMnemonic()}
-            </span>
+          {/* Célula esquerda — FALLBACK */}
+          <div className="flex items-center gap-1 px-2 py-1 flex-1 min-w-0">
+            <span className="text-[9px] font-black text-gray-500 flex-shrink-0">FB</span>
+            <div className="flex-1" />
 
-            {/* CUT por entrada (ordenado por inputNumber) */}
+            {/* FB por entrada */}
+            {availableSources.map((s) => {
+              const isActive = channel.fallbackType === 'INPUT_SOURCE' && channel.fallbackSourceId === s.id
+              const isWebcam = s.type === 'WEBCAM'
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => {
+                    if (isWebcam && !camera.active) { setCameraOpen(true); return }
+                    fallbackMut.mutate({ fallbackType: 'INPUT_SOURCE', fallbackSourceId: s.id })
+                  }}
+                  title={`Fallback → ${s.name}`}
+                  className={clsx(
+                    'text-[9px] font-bold w-7 py-0.5 rounded flex-shrink-0 transition-all',
+                    isActive
+                      ? 'bg-brand-500 text-white shadow-[0_0_5px_1px_rgb(99_102_241/0.5)]'
+                      : 'bg-gray-800 text-gray-400 hover:bg-brand-700/40 hover:text-brand-300'
+                  )}
+                >
+                  {mnemonic(s.name)}
+                </button>
+              )
+            })}
+
+            {/* FB BAR */}
+            <button
+              onClick={() => fallbackMut.mutate({ fallbackType: 'COLORBARS', fallbackSourceId: null })}
+              title="Fallback → Barras de cor"
+              className={clsx(
+                'text-[9px] font-bold w-7 py-0.5 rounded flex-shrink-0 transition-all',
+                channel.fallbackType === 'COLORBARS'
+                  ? 'bg-brand-500 text-white shadow-[0_0_5px_1px_rgb(99_102_241/0.5)]'
+                  : 'bg-gray-800 text-gray-400 hover:bg-brand-700/40 hover:text-brand-300'
+              )}
+            >
+              BAR
+            </button>
+
+            {/* FB BLK */}
+            <button
+              onClick={() => fallbackMut.mutate({ fallbackType: 'BLACK', fallbackSourceId: null })}
+              title="Fallback → Black"
+              className={clsx(
+                'text-[9px] font-bold w-7 py-0.5 rounded flex-shrink-0 transition-all',
+                channel.fallbackType === 'BLACK'
+                  ? 'bg-brand-500 text-white shadow-[0_0_5px_1px_rgb(99_102_241/0.5)]'
+                  : 'bg-gray-800 text-gray-400 hover:bg-gray-600/50 hover:text-gray-200'
+              )}
+            >
+              BLK
+            </button>
+          </div>
+
+          {/* Célula direita — CUT */}
+          <div className="flex items-center gap-1 px-2 py-1 flex-1 min-w-0">
+            <span className="text-[9px] font-black text-gray-500 flex-shrink-0">CUT</span>
+            <div className="flex-1" />
+
+            {/* CUT por entrada */}
             {availableSources.map((s) => {
               const isWebcam = s.type === 'WEBCAM'
               const isOnAir = state?.activeCut?.type === 'INPUT_SOURCE' && state.activeCut.sourceId === s.id
@@ -1285,7 +1336,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
               )
             })}
 
-            {/* CUT BAR — não altera config de fallback */}
+            {/* CUT BAR */}
             <button
               onClick={() => cutToTypeMut.mutate('COLORBARS')}
               disabled={cutToTypeMut.isPending}
@@ -1300,7 +1351,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
               BAR
             </button>
 
-            {/* CUT BLK — não altera config de fallback */}
+            {/* CUT BLK */}
             <button
               onClick={() => cutToTypeMut.mutate('BLACK')}
               disabled={cutToTypeMut.isPending}
@@ -1314,79 +1365,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
             >
               BLK
             </button>
-
-            <div className="flex-1" />
-
-            {/* Expandir para seleção de fallback */}
-            <button
-              onClick={() => setSignalSelectorOpen((v) => !v)}
-              title={signalSelectorOpen ? 'Fechar seleção de fallback' : 'Selecionar fallback'}
-              className="text-gray-600 hover:text-gray-400 transition-colors"
-            >
-              <ChevronDown className={clsx('h-3 w-3 transition-transform', signalSelectorOpen && 'rotate-180')} />
-            </button>
           </div>
-
-          {/* Linha 2: seleção de fallback (só quando expandido) */}
-          {signalSelectorOpen && (
-            <div className="flex items-center gap-1 px-3 pb-1">
-              {/* Espaçador alinhado com o mnemônico */}
-              <span className="w-7 flex-shrink-0 text-[8px] text-gray-600 text-center">FB</span>
-
-              {/* Botão de fallback por entrada */}
-              {availableSources.map((s) => {
-                const isActive = channel.fallbackType === 'INPUT_SOURCE' && channel.fallbackSourceId === s.id
-                const isWebcam = s.type === 'WEBCAM'
-                return (
-                  <button
-                    key={s.id}
-                    onClick={() => {
-                      if (isWebcam && !camera.active) { setCameraOpen(true); return }
-                      fallbackMut.mutate({ fallbackType: 'INPUT_SOURCE', fallbackSourceId: s.id })
-                      setSignalSelectorOpen(false)
-                    }}
-                    title={`Fallback → ${s.name}`}
-                    className={clsx(
-                      'text-[9px] font-bold w-7 py-0.5 rounded flex-shrink-0 transition-all',
-                      isActive
-                        ? 'bg-brand-500 text-white shadow-[0_0_5px_1px_rgb(99_102_241/0.5)]'
-                        : 'bg-gray-800 text-gray-400 hover:bg-brand-700/40 hover:text-brand-300'
-                    )}
-                  >
-                    {mnemonic(s.name)}
-                  </button>
-                )
-              })}
-
-              {/* Fallback BAR */}
-              <button
-                onClick={() => { fallbackMut.mutate({ fallbackType: 'COLORBARS', fallbackSourceId: null }); setSignalSelectorOpen(false) }}
-                title="Fallback → Barras de cor"
-                className={clsx(
-                  'text-[9px] font-bold w-7 py-0.5 rounded flex-shrink-0 transition-all',
-                  channel.fallbackType === 'COLORBARS'
-                    ? 'bg-brand-500 text-white shadow-[0_0_5px_1px_rgb(99_102_241/0.5)]'
-                    : 'bg-gray-800 text-gray-400 hover:bg-brand-700/40 hover:text-brand-300'
-                )}
-              >
-                BAR
-              </button>
-
-              {/* Fallback BLK */}
-              <button
-                onClick={() => { fallbackMut.mutate({ fallbackType: 'BLACK', fallbackSourceId: null }); setSignalSelectorOpen(false) }}
-                title="Fallback → Black"
-                className={clsx(
-                  'text-[9px] font-bold w-7 py-0.5 rounded flex-shrink-0 transition-all',
-                  channel.fallbackType === 'BLACK'
-                    ? 'bg-brand-500 text-white shadow-[0_0_5px_1px_rgb(99_102_241/0.5)]'
-                    : 'bg-gray-800 text-gray-400 hover:bg-gray-600/50 hover:text-gray-200'
-                )}
-              >
-                BLK
-              </button>
-            </div>
-          )}
         </div>
       )}
 
