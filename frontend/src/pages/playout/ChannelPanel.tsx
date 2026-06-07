@@ -639,7 +639,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
   const [monitorOpen, setMonitorOpen] = useState(true)
   const [fallbackOpen, setFallbackOpen] = useState(true)
   const [signalSelectorOpen, setSignalSelectorOpen] = useState(false)
-  const [outputsOpen, setOutputsOpen] = useState(true)
+  const [outputsOpen, setOutputsOpen] = useState(false)
   const [playlistOpen, setPlaylistOpen] = useState(true)
   const [defaultsApplied, setDefaultsApplied] = useState(false)
   const playlistScrollRef = useRef<HTMLDivElement>(null)

@@ -458,7 +458,7 @@ model SystemSettings {
   // Visibilidade default dos blocos no Playout
   defaultMonitorOpen  Boolean @default(true)
   defaultFallbackOpen Boolean @default(true)
-  defaultOutputsOpen  Boolean @default(true)
+  defaultOutputsOpen  Boolean @default(false) // colapsado: mostra só a saída ativa; demais via expandir
   defaultPlaylistOpen Boolean @default(true)
 
   // Fuso horário do relógio no gráfico de stream (offset UTC em horas inteiras)

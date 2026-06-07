@@ -48,7 +48,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
         email: email ?? null,
         defaultMonitorOpen:   defaultMonitorOpen   ?? true,
         defaultFallbackOpen:  defaultFallbackOpen  ?? true,
-        defaultOutputsOpen:   defaultOutputsOpen   ?? true,
+        defaultOutputsOpen:   defaultOutputsOpen   ?? false,
         defaultPlaylistOpen:  defaultPlaylistOpen  ?? true,
         clockOffsetHours:     clockOffsetHours     ?? 0,
         defaultBreakDuration: defaultBreakDuration ?? 300,
