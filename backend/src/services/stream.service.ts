@@ -79,10 +79,15 @@ const channelProcs = new Map<string, Map<string, StreamProcess>>()
 // Relay processes never restart during clip switches, keeping the external connection alive.
 
 interface RelayProcess {
-  proc:    ChildProcess
-  port:    number
-  stopped: boolean
+  proc:      ChildProcess
+  port:      number
+  stopped:   boolean
+  startedAt: number
 }
+
+// YouTube (e outras plataformas RTMP) encerram sessões de ingest contínuas após ~12h.
+// Reciclamos a conexão proativamente um pouco antes para evitar corte abrupto em transmissões 24/7.
+const RTMP_RELAY_MAX_AGE_MS = 11 * 60 * 60 * 1000
 
 const relayProcs  = new Map<string, Map<string, RelayProcess>>()
 const relayPortMap  = new Map<string, number>()
@@ -143,7 +148,7 @@ function spawnRelay(channelId: string, output: OutputConfig, port: number): Rela
   const args = buildRelayArgs(output, port)
   if (!args) return null
 
-  const entry: RelayProcess = { proc: null as any, port, stopped: false }
+  const entry: RelayProcess = { proc: null as any, port, stopped: false, startedAt: Date.now() }
   const proc = spawn(config.ffmpeg.path, args, {
     stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, TZ: clockTz() },
@@ -222,6 +227,58 @@ function stopRelays(channelId: string): void {
   }
   relayProcs.delete(channelId)
   console.log(`[relay/${channelId}] Todos os relays parados`)
+}
+
+// Recicla a conexão RTMP de um relay específico: mata o processo atual e sobe um novo
+// na mesma porta UDP. O conteúdo (proxy/UDP) continua fluindo sem interrupção — apenas
+// a sessão externa (RTMP → YouTube) é renovada, evitando o corte forçado por limite de duração.
+async function recycleRelay(channelId: string, outputId: string): Promise<void> {
+  const relayMap = relayProcs.get(channelId)
+  const entry = relayMap?.get(outputId)
+  if (!entry || entry.stopped) return
+
+  const dbOutput = await prisma.streamOutput.findUnique({
+    where: { id: outputId },
+    include: { graphic: { include: { template: { include: { elements: { where: { active: true }, orderBy: { order: 'asc' } } } } } } },
+  })
+  if (!dbOutput?.active || dbOutput.type !== 'RTMP') return
+
+  const ageHours = (Date.now() - entry.startedAt) / 3_600_000
+  console.log(`[relay/${channelId}/${dbOutput.name}] Reciclando conexão RTMP proativamente (${ageHours.toFixed(1)}h ativa) — evita corte de sessão por limite de duração (YouTube ~12h)`)
+
+  const oldProc = entry.proc
+  const port = entry.port
+  entry.stopped = true
+  try { oldProc.kill('SIGTERM') } catch {}
+
+  setTimeout(() => {
+    if (!relayProcs.has(channelId)) return
+    const current = relayProcs.get(channelId)?.get(outputId)
+    if (current && current.proc !== oldProc) return // já foi substituído por outra via
+    const newEntry = spawnRelay(channelId, dbOutput, port)
+    if (newEntry) relayProcs.get(channelId)!.set(outputId, newEntry)
+  }, 1500)
+}
+
+let relayCycleTimer: NodeJS.Timeout | null = null
+
+// Varre periodicamente todos os relays RTMP ativos e recicla os que estão
+// próximos do limite de sessão contínua das plataformas (ex.: YouTube ~12h).
+// Essencial para transmissões 24/7 — sem isso a plataforma encerraria a sessão
+// abruptamente e a reconexão automática poderia falhar (stream key/sessão inválida).
+export function startRelayCycleWatcher(): void {
+  if (relayCycleTimer) return
+  relayCycleTimer = setInterval(() => {
+    for (const [channelId, relayMap] of relayProcs) {
+      for (const [outputId, entry] of relayMap) {
+        if (entry.stopped) continue
+        if (Date.now() - entry.startedAt >= RTMP_RELAY_MAX_AGE_MS) {
+          recycleRelay(channelId, outputId).catch(() => {})
+        }
+      }
+    }
+  }, 5 * 60 * 1000)
+  console.log(`[relay] Watcher de reciclagem RTMP ativo (limite: ${RTMP_RELAY_MAX_AGE_MS / 3_600_000}h)`)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -6,7 +6,7 @@ import authPlugin from './plugins/auth.plugin'
 import corsPlugin from './plugins/cors.plugin'
 import { registerRoutes } from './routes'
 import { initFromDb, handleStreamFailure, resolveSourceUrl } from './services/playout.service'
-import { setStreamFailureCallback, setClockOffsetHours } from './services/stream.service'
+import { setStreamFailureCallback, setClockOffsetHours, startRelayCycleWatcher } from './services/stream.service'
 import { setUrlResolver, initActiveInputs } from './services/active-inputs.service'
 import { startScheduler } from './services/scheduler.service'
 import { prisma } from './lib/prisma'
@@ -48,6 +48,7 @@ async function bootstrap() {
   await initFromDb()
   await initActiveInputs()
   startScheduler()
+  startRelayCycleWatcher()
 }
 
 bootstrap().catch((err) => {
