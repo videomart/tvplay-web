@@ -65,4 +65,31 @@ export default async function logsRoutes(app: FastifyInstance) {
     await prisma.log.delete({ where: { id: request.params.id } }).catch(() => null)
     return reply.status(204).send()
   })
+
+  // Limpa logs em lote — respeita os mesmos filtros da listagem (busca, canal, período, exibido)
+  app.delete('/', auth, async (request, reply) => {
+    const q = querySchema.omit({ page: true, limit: true }).safeParse(request.query)
+    if (!q.success) return reply.status(400).send({ error: q.error.flatten() })
+
+    const { search, channelId, dateFrom, dateTo, exhibited } = q.data
+    const where: any = {}
+
+    if (search) {
+      where.OR = [
+        { title:   { contains: search, mode: 'insensitive' } },
+        { program: { contains: search, mode: 'insensitive' } },
+        { client:  { contains: search, mode: 'insensitive' } },
+      ]
+    }
+    if (exhibited !== undefined) where.exhibited = exhibited === 'true'
+    if (dateFrom || dateTo) {
+      where.startedAt = {}
+      if (dateFrom) where.startedAt.gte = new Date(dateFrom)
+      if (dateTo)   where.startedAt.lte = new Date(dateTo + 'T23:59:59.999Z')
+    }
+    if (channelId) where.playlist = { channelId }
+
+    const { count } = await prisma.log.deleteMany({ where })
+    return { count }
+  })
 }

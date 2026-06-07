@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Trash2, Search, ClipboardList, RefreshCw } from 'lucide-react'
+import { Trash2, Search, ClipboardList, RefreshCw, Eraser } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { logsApi, type LogFilters } from '../../api/logs.api'
 import { channelsApi } from '../../api/channels.api'
@@ -38,6 +38,22 @@ export default function LogsPage() {
     onSuccess: () => { toast.success('Log removido'); qc.invalidateQueries({ queryKey: ['logs'] }) },
   })
 
+  const clear = useMutation({
+    mutationFn: () => logsApi.clear(filters),
+    onSuccess: ({ count }) => {
+      toast.success(`${count} log(s) removido(s)`)
+      qc.invalidateQueries({ queryKey: ['logs'] })
+    },
+  })
+
+  function handleClear() {
+    const hasFilter = !!(filters.search || filters.channelId || filters.dateFrom || filters.dateTo || filters.exhibited)
+    const msg = hasFilter
+      ? `Remover TODOS os ${total} registro(s) que correspondem aos filtros atuais? Esta ação não pode ser desfeita.`
+      : `Remover TODOS os ${total} registro(s) de log? Esta ação não pode ser desfeita.`
+    if (confirm(msg)) clear.mutate()
+  }
+
   function applySearch() {
     setFilters((f) => ({ ...f, search: search || undefined, page: 1 }))
   }
@@ -55,9 +71,19 @@ export default function LogsPage() {
           </h1>
           <p className="text-gray-500 text-sm mt-1">{total} registro(s)</p>
         </div>
-        <Button variant="secondary" icon={<RefreshCw className="h-4 w-4" />} onClick={() => refetch()}>
-          Atualizar
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="secondary" icon={<RefreshCw className="h-4 w-4" />} onClick={() => refetch()}>
+            Atualizar
+          </Button>
+          <Button
+            variant="danger"
+            icon={<Eraser className="h-4 w-4" />}
+            disabled={total === 0 || clear.isPending}
+            onClick={handleClear}
+          >
+            Limpar logs
+          </Button>
+        </div>
       </div>
 
       {/* Filtros */}

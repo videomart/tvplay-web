@@ -45,4 +45,10 @@ export const logsApi = {
     return api.get<LogsResponse>('/logs', { params }).then((r) => r.data)
   },
   delete: (id: string) => api.delete(`/logs/${id}`),
+  clear: (filters: Omit<LogFilters, 'page' | 'limit'> = {}) => {
+    const params = Object.fromEntries(
+      Object.entries(filters).filter(([, v]) => v !== '' && v !== undefined)
+    )
+    return api.delete<{ count: number }>('/logs', { params }).then((r) => r.data)
+  },
 }
