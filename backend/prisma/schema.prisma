@@ -69,6 +69,11 @@ enum GraphicElementType {
   LOWER_THIRD  // caixa com título + subtítulo
 }
 
+enum GraphicAnchorRef {
+  FRAME  // posição vertical relativa à borda do quadro
+  BAR    // posição vertical relativa ao limite interno da barra adjacente (BAR_TOP/BAR_BOTTOM)
+}
+
 enum GraphicPosition {
   TL          // top-left
   TC          // top-center
@@ -362,6 +367,9 @@ model GraphicElement {
   width      Int?      // px — LOGO/BOX
   height     Int?      // px — LOGO/BOX
   padding    Int       @default(10)
+  marginX    Int       @default(20) // px — distância da borda esquerda/direita do quadro
+  marginY    Int       @default(20) // px — distância da borda superior/inferior (ou deslocamento da barra, se for o elemento mais externo)
+  anchorRef  GraphicAnchorRef @default(FRAME) // só para TL/TC/TR/BL/BC/BR: referência vertical (borda do quadro ou barra adjacente)
 
   // Ticker
   tickerSpeed Float    @default(5)  // pixels/segundo (independente do framerate)

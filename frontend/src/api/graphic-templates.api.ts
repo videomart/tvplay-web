@@ -2,6 +2,12 @@ import { api } from './client'
 
 export type GraphicElementType = 'LOGO' | 'CLOCK' | 'TEXT' | 'TICKER' | 'LOWER_THIRD'
 export type GraphicPosition    = 'TL' | 'TC' | 'TR' | 'ML' | 'MC' | 'MR' | 'BL' | 'BC' | 'BR' | 'BAR_TOP' | 'BAR_BOTTOM'
+export type GraphicAnchorRef   = 'FRAME' | 'BAR'
+
+export const ANCHOR_REF_LABELS: Record<GraphicAnchorRef, string> = {
+  FRAME: 'Borda do quadro',
+  BAR:   'Barra adjacente',
+}
 
 export const POSITION_LABELS: Record<GraphicPosition, string> = {
   TL: 'Superior Esquerdo', TC: 'Superior Centro',  TR: 'Superior Direito',
@@ -35,6 +41,9 @@ export interface GraphicElement {
   width?:    number | null
   height?:   number | null
   padding:   number
+  marginX:   number         // px — distância da borda esquerda/direita do quadro
+  marginY:   number         // px — distância da borda superior/inferior (ou deslocamento da barra)
+  anchorRef: GraphicAnchorRef // TL/TC/TR/BL/BC/BR: referência vertical (borda do quadro ou barra adjacente)
   tickerSpeed: number       // px/seg, padrão 5
   tickerLoop:  boolean      // false = exibe uma vez e para
   rssUrl?:     string | null

@@ -6,8 +6,8 @@ import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
 import {
   graphicTemplatesApi,
-  type GraphicElement, type GraphicElementType, type GraphicPosition,
-  POSITION_LABELS, ELEMENT_TYPE_LABELS,
+  type GraphicElement, type GraphicElementType, type GraphicPosition, type GraphicAnchorRef,
+  POSITION_LABELS, ELEMENT_TYPE_LABELS, ANCHOR_REF_LABELS,
 } from '../../api/graphic-templates.api'
 import { api } from '../../api/client'
 import { Button } from '../../components/ui/Button'
@@ -29,6 +29,7 @@ const emptyElement: Omit<GraphicElement, 'id' | 'templateId' | 'createdAt' | 'up
   imageUrl: null, text: '', subtitle: null,
   fontColor: '#FFFFFF', bgColor: null, fontSize: 32,
   opacity: 1, bold: false, width: null, height: null, padding: 10,
+  marginX: 20, marginY: 20, anchorRef: 'FRAME',
   tickerSpeed: 5, tickerLoop: true, rssUrl: null,
   active: true, order: 0,
 }
@@ -355,6 +356,33 @@ export default function GraphicTemplateEditorPage() {
             </div>
           )}
 
+          {/* Margens + ancoragem */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Margem horizontal (px)</label>
+              <input type="number" value={form.marginX} onChange={e => setForm(v => ({ ...v, marginX: +e.target.value }))}
+                min={0} max={400}
+                className="w-full rounded-lg bg-gray-800 border border-gray-700 text-white text-sm px-3 py-2 focus:outline-none focus:border-brand-500" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Margem vertical (px)</label>
+              <input type="number" value={form.marginY} onChange={e => setForm(v => ({ ...v, marginY: +e.target.value }))}
+                min={0} max={400}
+                className="w-full rounded-lg bg-gray-800 border border-gray-700 text-white text-sm px-3 py-2 focus:outline-none focus:border-brand-500" />
+            </div>
+            {['TL', 'TC', 'TR', 'BL', 'BC', 'BR'].includes(form.position) && (
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Ancorar posição vertical em</label>
+                <select value={form.anchorRef} onChange={e => setForm(v => ({ ...v, anchorRef: e.target.value as GraphicAnchorRef }))}
+                  className="w-full rounded-lg bg-gray-800 border border-gray-700 text-white text-sm px-3 py-2 focus:outline-none focus:border-brand-500">
+                  {(Object.keys(ANCHOR_REF_LABELS) as GraphicAnchorRef[]).map(ref => (
+                    <option key={ref} value={ref}>{ANCHOR_REF_LABELS[ref]}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+
           <label className="flex items-center gap-3 cursor-pointer select-none">
             <input type="checkbox" checked={form.active} onChange={e => setForm(v => ({ ...v, active: e.target.checked }))}
               className="h-4 w-4 rounded border-gray-700 bg-gray-800 text-brand-600 focus:ring-brand-500" />
@@ -487,22 +515,79 @@ function PositionCell({ pos, elements, onAdd, onEdit, onToggle, onDelete, onMove
 }
 
 // ─── Preview visual do template (simulação CSS 16:9) ─────────────────────────
-const POS_STYLE: Record<GraphicPosition, React.CSSProperties> = {
-  TL: { top: 8, left: 8 },
-  TC: { top: 8, left: '50%', transform: 'translateX(-50%)' },
-  TR: { top: 8, right: 8 },
-  ML: { top: '50%', left: 8, transform: 'translateY(-50%)' },
-  MC: { top: '50%', left: '50%', transform: 'translate(-50%,-50%)' },
-  MR: { top: '50%', right: 8, transform: 'translateY(-50%)' },
-  BL: { bottom: 8, left: 8 },
-  BC: { bottom: 8, left: '50%', transform: 'translateX(-50%)' },
-  BR: { bottom: 8, right: 8 },
-  BAR_TOP:    { top: 0, left: 0, right: 0 },
-  BAR_BOTTOM: { bottom: 0, left: 0, right: 0 },
+// Algoritmo de layout — MANTER EM SINCRONIA com backend/src/services/graphicLayout.ts
+// (mesmas constantes BAR_GAP e fórmulas de altura, escaladas por PREVIEW_SCALE para o canvas reduzido)
+const PREVIEW_SCALE   = 0.35
+const PREVIEW_BAR_GAP = 4
+
+function previewElementHeight(el: GraphicElement): number {
+  if (el.type === 'LOGO') return (el.height ?? 60) * PREVIEW_SCALE
+  if (el.type === 'LOWER_THIRD' && el.subtitle?.trim()) {
+    return (2 * el.fontSize + 8 + 2 * el.padding) * PREVIEW_SCALE
+  }
+  return (el.fontSize * 1.3 + 2 * el.padding) * PREVIEW_SCALE
+}
+
+type PreviewBar = { totalHeight: number; offsets: Map<string, number> }
+
+// Empilha os membros ativos de uma barra e calcula sua altura total — espelha computeBarLayout()
+function computePreviewBar(members: GraphicElement[]): PreviewBar | null {
+  const active = members.filter(m => m.active).sort((a, b) => a.order - b.order)
+  if (!active.length) return null
+  const offsets = new Map<string, number>()
+  const outerMargin = (active[0].marginY ?? 20) * PREVIEW_SCALE
+  let cursor = outerMargin
+  for (const el of active) {
+    offsets.set(el.id, cursor)
+    cursor += previewElementHeight(el) + PREVIEW_BAR_GAP
+  }
+  return { totalHeight: cursor - PREVIEW_BAR_GAP, offsets }
+}
+
+// Calcula o estilo de posição (top/bottom/left/right) considerando margens, ancoragem
+// e altura das barras adjacentes — espelha computeElementXY()
+function computePreviewPosition(
+  el: GraphicElement,
+  ctx: { topBar: PreviewBar | null; bottomBar: PreviewBar | null },
+): React.CSSProperties {
+  const mx = (el.marginX ?? 20) * PREVIEW_SCALE
+  const my = (el.marginY ?? 20) * PREVIEW_SCALE
+
+  if (el.position === 'BAR_TOP' || el.position === 'BAR_BOTTOM') {
+    const bar = el.position === 'BAR_TOP' ? ctx.topBar : ctx.bottomBar
+    const offset = bar?.offsets.get(el.id) ?? my
+    return el.position === 'BAR_TOP'
+      ? { top: offset, left: 0, right: 0 }
+      : { bottom: offset, left: 0, right: 0 }
+  }
+
+  const style: React.CSSProperties = {}
+  const transforms: string[] = []
+
+  if (el.position.endsWith('L')) style.left = mx
+  else if (el.position.endsWith('R')) style.right = mx
+  else { style.left = '50%'; transforms.push('translateX(-50%)') }
+
+  if (el.position.startsWith('T')) {
+    const useBar = el.anchorRef === 'BAR' && !!ctx.topBar && ctx.topBar.totalHeight > 0
+    style.top = useBar ? ctx.topBar!.totalHeight + my : my
+  } else if (el.position.startsWith('B')) {
+    const useBar = el.anchorRef === 'BAR' && !!ctx.bottomBar && ctx.bottomBar.totalHeight > 0
+    style.bottom = useBar ? ctx.bottomBar!.totalHeight + my : my
+  } else {
+    style.top = '50%'
+    transforms.push('translateY(-50%)')
+  }
+
+  if (transforms.length) style.transform = transforms.join(' ')
+  return style
 }
 
 function TemplatePreview({ elements }: { elements: GraphicElement[] }) {
   const active = elements.filter(el => el.active)
+  const topBar    = computePreviewBar(active.filter(el => el.position === 'BAR_TOP'))
+  const bottomBar = computePreviewBar(active.filter(el => el.position === 'BAR_BOTTOM'))
+  const barCtx = { topBar, bottomBar }
 
   // Busca títulos RSS para cada ticker com rssUrl
   const [rssTexts, setRssTexts] = useState<Record<string, string>>({})
@@ -523,7 +608,7 @@ function TemplatePreview({ elements }: { elements: GraphicElement[] }) {
         <span className="text-gray-700 text-xs uppercase tracking-widest">Vídeo</span>
       </div>
       {active.map((el) => {
-        const posStyle = POS_STYLE[el.position] ?? { top: 8, left: 8 }
+        const posStyle = computePreviewPosition(el, barCtx)
         const isBar = el.position.startsWith('BAR')
         const fs = Math.max(7, Math.round((el.fontSize ?? 32) * 0.35))
         const base: React.CSSProperties = {
@@ -558,12 +643,11 @@ function TemplatePreview({ elements }: { elements: GraphicElement[] }) {
             const tickerText = el.rssUrl
               ? (rssTexts[el.id] ?? '⏳ carregando RSS...')
               : (el.text ?? 'Ticker...')
-            const isBot = el.position.startsWith('B')
-            const isBar = el.position === 'BAR_BOTTOM' || el.position === 'BAR_TOP'
+            const tickerPos = computePreviewPosition(el, barCtx)
             return (
               <div key={el.id} style={{
                 position: 'absolute', left: 0, right: 0,
-                ...(isBot ? { bottom: isBar ? 0 : 8 } : { top: isBar ? 0 : 8 }),
+                ...tickerPos,
                 overflow: 'hidden', zIndex: 10,
                 backgroundColor: el.bgColor ?? undefined,
                 opacity: el.opacity ?? 1,

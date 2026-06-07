@@ -7,6 +7,7 @@ import { config } from '../config'
 import { tickerFilePath } from './ticker.service'
 import * as tsProxy from './ts-proxy.service'
 import { buildBreakPackets } from './scte35.service'
+import { computeBarLayout, computeElementXY, type BarLayout, type LayoutElement } from './graphicLayout'
 
 // Hook registrado pelo camera.service para parar câmera quando qualquer
 // operação de streaming iniciar — evita dois FFmpeg escrevendo na mesma saída.
@@ -31,6 +32,10 @@ export type GraphicElementConfig = {
   width?:       number | null
   height?:      number | null
   padding:      number
+  marginX?:     number | null  // px — distância da borda esquerda/direita do quadro
+  marginY?:     number | null  // px — distância da borda superior/inferior (ou deslocamento da barra)
+  anchorRef?:   'FRAME' | 'BAR' | null  // TL/TC/TR/BL/BC/BR: referência vertical
+  order?:       number         // ordem de empilhamento dentro da barra
   tickerSpeed?: number | null  // pixels/segundo (default 5)
   tickerLoop?:  boolean | null // false = exibe uma vez e para (default true)
   rssUrl?:      string | null  // feed RSS — usa textfile quando preenchido
@@ -419,44 +424,6 @@ function buildVideoFilter(
 }
 
 // ─── Template filter builder ──────────────────────────────────────────────────
-// Calcula a expressão FFmpeg de posição para drawtext (texto)
-function drawtextXY(pos: string, pad: number, _w?: number | null, _h?: number | null): string {
-  switch (pos) {
-    case 'TL': return `x=${pad}:y=${pad}`
-    case 'TC': return `x=(W-tw)/2:y=${pad}`
-    case 'TR': return `x=W-tw-${pad}:y=${pad}`
-    case 'ML': return `x=${pad}:y=(H-th)/2`
-    case 'MC': return `x=(W-tw)/2:y=(H-th)/2`
-    case 'MR': return `x=W-tw-${pad}:y=(H-th)/2`
-    case 'BL': return `x=${pad}:y=H-th-${pad}`
-    case 'BC': return `x=(W-tw)/2:y=H-th-${pad}`
-    case 'BR': return `x=W-tw-${pad}:y=H-th-${pad}`
-    case 'BAR_TOP':    return `x=0:y=0`
-    case 'BAR_BOTTOM': return `x=0:y=H-th`
-    default: return `x=${pad}:y=${pad}`
-  }
-}
-
-// Calcula a expressão FFmpeg de posição para overlay de imagem
-function overlayXY(pos: string, pad: number, w?: number | null, h?: number | null): string {
-  const ow = w ? String(w) : 'overlay_w'
-  const oh = h ? String(h) : 'overlay_h'
-  switch (pos) {
-    case 'TL': return `${pad}:${pad}`
-    case 'TC': return `(W-${ow})/2:${pad}`
-    case 'TR': return `W-${ow}-${pad}:${pad}`
-    case 'ML': return `${pad}:(H-${oh})/2`
-    case 'MC': return `(W-${ow})/2:(H-${oh})/2`
-    case 'MR': return `W-${ow}-${pad}:(H-${oh})/2`
-    case 'BL': return `${pad}:H-${oh}-${pad}`
-    case 'BC': return `(W-${ow})/2:H-${oh}-${pad}`
-    case 'BR': return `W-${ow}-${pad}:H-${oh}-${pad}`
-    case 'BAR_TOP': return `0:0`
-    case 'BAR_BOTTOM': return `0:H-${oh}`
-    default: return `${pad}:${pad}`
-  }
-}
-
 // Constrói filter_complex a partir dos elementos de um GraphicTemplate
 // Retorna { extraInputs, filterArgs, mapArgs }
 export function buildTemplateFilter(
@@ -469,6 +436,11 @@ export function buildTemplateFilter(
 
   const logos = active.filter(el => el.type === 'LOGO' && el.imageUrl)
   const texts  = active.filter(el => el.type !== 'LOGO')
+
+  // Passo 1 — calcula altura/empilhamento das barras (evita sobreposição entre seus membros)
+  const topBar    = computeBarLayout(active.filter(el => el.position === 'BAR_TOP') as LayoutElement[])
+  const bottomBar = computeBarLayout(active.filter(el => el.position === 'BAR_BOTTOM') as LayoutElement[])
+  const barCtx = { topBar, bottomBar }
 
   const segs: string[] = []
   const extraInputs: string[] = []
@@ -492,7 +464,8 @@ export function buildTemplateFilter(
       segs.push(`[${inputIdx}:v]scale${wFilter}${hFilter}${sOut}`)
       logoSrc = sOut
     }
-    const xy  = overlayXY(logo.position, logo.padding ?? 10, logo.width, logo.height)
+    const pos = computeElementXY(logo as LayoutElement, barCtx, 'overlay', logo.width, logo.height)
+    const xy  = `${pos.x}:${pos.y}`
     const o   = nxt()
     segs.push(`${cur}${logoSrc}overlay=${xy}${o}`)
     cur = o
@@ -504,9 +477,9 @@ export function buildTemplateFilter(
     const bg   = el.bgColor ? `box=1:boxcolor=${el.bgColor}:boxborderw=${el.padding ?? 10}:` : ''
     const bold = el.bold ? ':style=Bold' : ''
     const fs   = el.fontSize ?? 32
-    const pad  = el.padding ?? 10
     const font = `${DRAWTEXT_FONT}`
-    const xy   = drawtextXY(el.position, pad, el.width, el.height)
+    const pos  = computeElementXY(el as LayoutElement, barCtx, 'drawtext')
+    const xy   = `${pos.x}:${pos.y}`
 
     const makeDrawtext = (txt: string, yOff = 0) => {
       const xyAdj = yOff !== 0 ? xy.replace(/y=([^:]+)/, `y=$1+${yOff}`) : xy
@@ -527,10 +500,7 @@ export function buildTemplateFilter(
         // t = tempo em segundos (framerate-independent); speed em px/seg
         const speed    = Math.max(1, Math.min(400, el.tickerSpeed ?? 5))
         const loop     = el.tickerLoop !== false   // default true
-        const tickerY  = el.position === 'BAR_BOTTOM' ? `H-th`
-                       : el.position === 'BAR_TOP'    ? `0`
-                       : el.position.startsWith('B')  ? `H-th-${pad}`
-                       : `${pad}`
+        const tickerY  = pos.y.replace(/^y=/, '')
         // loop=true: mod (cicla); loop=false: max(-tw, ...) (para ao sair)
         const scrollX  = loop
           ? `x=w-mod(t*${speed}\\,w+tw):y=${tickerY}`
