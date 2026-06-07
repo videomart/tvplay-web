@@ -98,6 +98,41 @@ const worker = new Worker(
 )
 
 worker.on('completed', (job) => console.log(`[Transcode] Job ${job.id} concluído`))
-worker.on('failed', (job, err) => console.error(`[Transcode] Job ${job?.id} falhou:`, err.message))
+worker.on('failed', (job, err) => {
+  console.error(`[Transcode] Job ${job?.id} falhou:`, err.message)
+  // Cobre o caso de job "stalled" (worker reiniciado/crashou) marcado como falho pelo BullMQ
+  // sem reexecutar o handler — sem isso o registro fica preso em PROCESSING indefinidamente.
+  const mediaId = job?.data?.mediaId
+  if (mediaId) {
+    prisma.mediaFile.updateMany({
+      where: { id: mediaId, ingestStatus: { in: ['PENDING', 'PROCESSING'] } },
+      data: { ingestStatus: 'ERROR', errorMsg: err.message || 'Falha no processamento (job interrompido)' },
+    }).catch(() => {})
+  }
+})
+
+// Recuperação na inicialização: registros presos em PROCESSING sem job ativo/aguardando
+// correspondente no BullMQ (ex.: container morreu antes do BullMQ marcar o job como stalled).
+async function recoverOrphanedProcessing() {
+  const stuck = await prisma.mediaFile.findMany({
+    where: { ingestStatus: 'PROCESSING' },
+    select: { id: true, originalName: true },
+  })
+  if (!stuck.length) return
+
+  const active  = await transcodeQueue.getJobs(['active', 'waiting', 'delayed'])
+  const liveIds = new Set(active.map((j) => j.data?.mediaId).filter(Boolean))
+
+  const orphans = stuck.filter((m) => !liveIds.has(m.id))
+  if (!orphans.length) return
+
+  await prisma.mediaFile.updateMany({
+    where: { id: { in: orphans.map((m) => m.id) } },
+    data: { ingestStatus: 'ERROR', errorMsg: 'Processo interrompido (worker reiniciado) — reenvie o arquivo' },
+  })
+  console.warn(`[Transcode] Recuperados ${orphans.length} registro(s) órfão(s) em PROCESSING: ${orphans.map((m) => m.originalName).join(', ')}`)
+}
+
+recoverOrphanedProcessing().catch((err) => console.error('[Transcode] Falha na recuperação de órfãos:', err.message))
 
 export default worker
