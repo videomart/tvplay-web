@@ -1383,8 +1383,8 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
       {/* ── Saídas de streaming ───────────────────────────────────────────── */}
       {outputs.length > 0 && (() => {
         const sorted   = [...outputs].sort((a, b) => (a.outputNumber ?? 999) - (b.outputNumber ?? 999))
-        const primary  = sorted[0]
-        const rest     = sorted.slice(1)
+        const primary  = sorted.find((o) => o.active) ?? sorted[0]
+        const rest     = sorted.filter((o) => o.id !== primary.id)
         return (
           <div className="border-b border-gray-800/60 bg-gray-900/20">
             {/* Linha fixa: saída primária + toggle */}
