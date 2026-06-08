@@ -19,3 +19,10 @@ youtube-cookies.txt
 
 # Pasta de cookies (contém credenciais — nunca commitar)
 cookies/
+
+# Arquivos gerados pelo TypeScript e npm
+frontend/package-lock.json
+frontend/tsconfig.tsbuildinfo
+
+# Repositório git aninhado (projeto interno)
+tvplay-web/
