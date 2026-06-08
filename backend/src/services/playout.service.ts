@@ -256,6 +256,8 @@ export interface PlayoutState {
   activeGraphic: ActiveGraphic | null
   // Rastreia o sinal atualmente no ar (para iluminação do switcher)
   activeCut: { type: 'INPUT_SOURCE' | 'BLACK' | 'COLORBARS'; sourceId?: string | null } | null
+  scteEnabled: boolean
+  scteLastEvent: { outOfNetwork: boolean; sentAt: number } | null
 }
 
 export interface CurrentItem {
@@ -334,6 +336,8 @@ function defaultState(channelId: string): PlayoutState {
     updatedAt: Date.now(),
     activeGraphic: null,
     activeCut: null,
+    scteEnabled: false,
+    scteLastEvent: null,
   }
 }
 
@@ -806,8 +810,11 @@ function startTimer(channelId: string) {
             state.activeGraphic = newGraphic
 
             if (next.item.isBreak) {
-              // SCTE-35: sinaliza início do intervalo (saída da rede)
-              streamService.injectScte35(channelId, true, next.item.maxDuration ?? undefined)
+              // SCTE-35: sinaliza início do intervalo (saída da rede) — apenas se habilitado no canal
+              if (state.scteEnabled) {
+                streamService.injectScte35(channelId, true, next.item.maxDuration ?? undefined)
+                state.scteLastEvent = { outOfNetwork: true, sentAt: Date.now() }
+              }
               // BREAK: switch to fallback/input, keep timer running so maxDuration is respected
               streamService.clearConcatRun(channelId)
               console.log(`[playout] BREAK ch=${channelId} — comutando para fallback/entrada`)
@@ -821,9 +828,10 @@ function startTimer(channelId: string) {
                 })
                 .catch(() => streamService.startStreamingFromFallback(channelId, 'BLACK').catch(() => {}))
             } else {
-              // SCTE-35: retorno da programação (se veio de um BREAK)
-              if (state.currentItem?.isBreak) {
+              // SCTE-35: retorno da programação (se veio de um BREAK) — apenas se habilitado no canal
+              if (state.scteEnabled && state.currentItem?.isBreak) {
                 streamService.injectScte35(channelId, false)
+                state.scteLastEvent = { outOfNetwork: false, sentAt: Date.now() }
               }
               const concatEnd = streamService.getConcatRunEnd(channelId)
               const isInsideConcat = !isLoopRestart
@@ -919,9 +927,10 @@ export async function play(channelId: string, playlistId: string, startItemId?: 
     if (idx >= 0) fromIndex = idx
   }
 
-  const [firstReady, { totalDuration, count }] = await Promise.all([
+  const [firstReady, { totalDuration, count }, chSettings] = await Promise.all([
     findNextReadyFrom(playlistId, fromIndex),
     computePlaylistMeta(playlistId),
+    prisma.channel.findUnique({ where: { id: channelId }, select: { scteEnabled: true } }),
   ])
   const startIndex = firstReady?.index ?? fromIndex
   const firstItem  = firstReady?.item ?? await loadItem(playlistId, fromIndex)
@@ -942,6 +951,8 @@ export async function play(channelId: string, playlistId: string, startItemId?: 
     updatedAt: Date.now(),
     activeGraphic,
     activeCut: null,
+    scteEnabled: chSettings?.scteEnabled ?? false,
+    scteLastEvent: null,
   }
   states.set(channelId, state)
   await prisma.channel.update({ where: { id: channelId }, data: { status: 'PLAYING' } }).catch(() => {})
@@ -1045,7 +1056,11 @@ async function restartFromIndex(channelId: string, index: number, playlistId: st
   if (!item) return
 
   if (item.isBreak) {
-    streamService.injectScte35(channelId, true, item.maxDuration ?? undefined)
+    const s = states.get(channelId)
+    if (s?.scteEnabled) {
+      streamService.injectScte35(channelId, true, item.maxDuration ?? undefined)
+      s.scteLastEvent = { outOfNetwork: true, sentAt: Date.now() }
+    }
     console.log(`[playout] BREAK manual ch=${channelId} — comutando para fallback/entrada`)
     const ch = await prisma.channel.findUnique({ where: { id: channelId }, include: { fallbackSource: true } }).catch(() => null)
     if (ch?.fallbackType === 'INPUT_SOURCE' && ch.fallbackSource) {
@@ -1424,7 +1439,7 @@ export async function setFallback(
 export async function initFromDb(): Promise<void> {
   const channels = await prisma.channel.findMany({
     where: { status: { in: ['PLAYING', 'PAUSED'] } },
-    select: { id: true, status: true, activePlaylistId: true, playlistIndex: true },
+    select: { id: true, status: true, activePlaylistId: true, playlistIndex: true, scteEnabled: true },
   })
 
   for (const ch of channels) {
@@ -1463,6 +1478,8 @@ export async function initFromDb(): Promise<void> {
       updatedAt: Date.now(),
       activeGraphic,
       activeCut: null,
+      scteEnabled: ch.scteEnabled ?? false,
+      scteLastEvent: null,
     }
     states.set(ch.id, state)
 

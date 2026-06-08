@@ -292,7 +292,7 @@ function PlaylistItemRow({
   loopPending, clipPlayPending, clipStopPending, deletePending,
   timerEditId, timerEditVal, setTimerEditId, setTimerEditVal, commitTimer,
   onDragStart, onDragOver, onDragEnd, onDrop,
-  liveElapsed, breakIndex,
+  liveElapsed, breakIndex, scteEnabled, scteLastEvent,
 }: {
   item: PlaylistItemRow
   isCurrent: boolean
@@ -325,6 +325,8 @@ function PlaylistItemRow({
   onDrop: () => void
   liveElapsed?: number | null
   breakIndex?: number
+  scteEnabled?: boolean
+  scteLastEvent?: { outOfNetwork: boolean; sentAt: number } | null
 }) {
   // Drag só começa a partir do grip handle — evita interceptar clicks em botões
   const fromHandle = useRef(false)
@@ -364,6 +366,14 @@ function PlaylistItemRow({
         </span>
         <span className="flex-1 text-center text-xs font-bold text-white tracking-widest uppercase">
           ⏸ BREAK{breakIndex != null ? ` #${breakIndex}` : ''}
+          {isCurrent && scteEnabled && scteLastEvent && (
+            <span className={clsx(
+              'ml-1.5 inline-flex items-center px-1 py-0.5 rounded text-[9px] font-bold tracking-wider',
+              scteLastEvent.outOfNetwork ? 'bg-amber-500/20 text-amber-300' : 'bg-emerald-500/20 text-emerald-300'
+            )}>
+              SCTE {scteLastEvent.outOfNetwork ? 'OUT' : 'IN'} ✓
+            </span>
+          )}
         </span>
         {timerEditId === item.id ? (
           <input
@@ -1722,6 +1732,8 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                           onDrop={() => handleDrop(idx)}
                           liveElapsed={idx === currentIndex && pi.sourceType === 'URL' ? position : null}
                           breakIndex={breakIndexOf.get(pi.id)}
+                          scteEnabled={state?.scteEnabled}
+                          scteLastEvent={idx === currentIndex ? state?.scteLastEvent : null}
                         />
 
                       </div>

@@ -12,6 +12,7 @@ const channelSchema = z.object({
   fallbackType: z.nativeEnum(FallbackType).optional(),
   fallbackSourceId: z.string().optional().nullable(),
   graphicTemplateId: z.string().optional().nullable(),
+  scteEnabled: z.boolean().optional(),
 })
 
 const include = {

@@ -136,6 +136,8 @@ model Channel {
   activePlaylistId String?
   playlistIndex    Int     @default(0)
 
+  scteEnabled      Boolean @default(false)  // habilita injeção SCTE-35 nos breaks
+
   graphicTemplateId String?
   graphicTemplate   GraphicTemplate? @relation(fields: [graphicTemplateId], references: [id])
 

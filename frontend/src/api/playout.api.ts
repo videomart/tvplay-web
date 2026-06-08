@@ -66,6 +66,8 @@ export interface PlayoutState {
   updatedAt: number
   activeGraphic: ActiveGraphic | null
   activeCut: { type: 'INPUT_SOURCE' | 'BLACK' | 'COLORBARS'; sourceId?: string | null } | null
+  scteEnabled: boolean
+  scteLastEvent: { outOfNetwork: boolean; sentAt: number } | null
 }
 
 export interface PlaylistItemRow {

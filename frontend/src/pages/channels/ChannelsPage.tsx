@@ -10,7 +10,7 @@ import { Modal } from '../../components/ui/Modal'
 import { Table, Thead, Th, Tbody, Tr, Td } from '../../components/ui/Table'
 import { StatusBadge } from '../../components/ui/Badge'
 
-const empty = { name: '', number: '' as any, description: '', graphicTemplateId: '' }
+const empty = { name: '', number: '' as any, description: '', graphicTemplateId: '', scteEnabled: false }
 
 export default function ChannelsPage() {
   const qc = useQueryClient()
@@ -27,6 +27,7 @@ export default function ChannelsPage() {
         ...form,
         number: Number(form.number),
         graphicTemplateId: form.graphicTemplateId || null,
+        scteEnabled: form.scteEnabled,
       }
       return editing ? channelsApi.update(editing.id, payload) : channelsApi.create(payload)
     },
@@ -46,7 +47,7 @@ export default function ChannelsPage() {
   function openNew() { setEditing(null); setForm(empty); setOpen(true) }
   function openEdit(ch: Channel) {
     setEditing(ch)
-    setForm({ name: ch.name, number: ch.number as any, description: ch.description ?? '', graphicTemplateId: (ch as any).graphicTemplateId ?? '' })
+    setForm({ name: ch.name, number: ch.number as any, description: ch.description ?? '', graphicTemplateId: (ch as any).graphicTemplateId ?? '', scteEnabled: ch.scteEnabled ?? false })
     setOpen(true)
   }
 
@@ -118,6 +119,21 @@ export default function ChannelsPage() {
               ))}
             </select>
             <p className="text-[11px] text-gray-600">Menor prioridade — sobrescrito por gráficos de clipe, saída, entrada ou roteiro.</p>
+          </div>
+
+          {/* SCTE-35 */}
+          <div className="flex items-center justify-between rounded-lg bg-gray-800/60 px-3 py-2.5">
+            <div>
+              <p className="text-sm font-medium text-gray-200">SCTE-35</p>
+              <p className="text-[11px] text-gray-500">Injeta splice_insert nos breaks para sinalização de inserção publicitária</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setForm((f) => ({ ...f, scteEnabled: !f.scteEnabled }))}
+              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0 ml-4 ${form.scteEnabled ? 'bg-brand-600' : 'bg-gray-700'}`}
+            >
+              <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${form.scteEnabled ? 'translate-x-4' : 'translate-x-0.5'}`} />
+            </button>
           </div>
 
           <div className="flex gap-3 justify-end pt-2">

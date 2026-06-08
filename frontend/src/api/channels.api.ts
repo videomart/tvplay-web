@@ -13,6 +13,7 @@ export interface Channel {
   fallbackType: FallbackType
   fallbackSourceId?: string | null
   fallbackSource?: { id: string; name: string; type: string; url?: string }
+  scteEnabled?: boolean
   createdAt: string
 }
 
