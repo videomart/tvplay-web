@@ -17,7 +17,7 @@ import { VideoPlayer } from '../../components/ui/VideoPlayer'
 // IP e YOUTUBE são unificados na UI como "URL" — YOUTUBE fica como legado no banco
 const SELECTABLE_TYPES: InputSourceType[] = ['IP', 'SRT', 'SDI', 'CLIP', 'WEBCAM']
 
-const empty = { name: '', type: 'IP' as InputSourceType, url: '', device: '', channelId: '', clipId: '', graphicId: '', inputNumber: '' }
+const empty = { name: '', type: 'IP' as InputSourceType, url: '', device: '', channelId: '', clipId: '', graphicId: '', inputNumber: '', scteWatchEnabled: false, scteAction: 'LOG' as 'LOG' | 'BREAK' }
 type SrtConfig = { host: string; port: string; mode: 'caller' | 'listener' }
 type UdpConfig = { address: string; port: string }
 type LocalDeviceConfig = {
@@ -275,9 +275,11 @@ export default function InputSourcesPage() {
         deviceName:   isLocal ? localDeviceCfg.deviceName || undefined : undefined,
         serverIp:     isLocal ? localDeviceCfg.serverIp || undefined : undefined,
         clipId:       isClip ? (selectedClip?.id || form.clipId || undefined) : null,
-        channelId:    form.channelId || undefined,
-        graphicId:    form.graphicId || null,
-        inputNumber:  form.inputNumber ? parseInt(form.inputNumber, 10) : null,
+        channelId:        form.channelId || undefined,
+        graphicId:        form.graphicId || null,
+        inputNumber:      form.inputNumber ? parseInt(form.inputNumber, 10) : null,
+        scteWatchEnabled: form.scteWatchEnabled,
+        scteAction:       form.scteAction,
       }
       return editing ? inputSourcesApi.update(editing.id, payload) : inputSourcesApi.create(payload)
     },
@@ -307,7 +309,7 @@ export default function InputSourcesPage() {
     setEditing(s)
     // YOUTUBE legado → exibe como IP na UI (URL unificada)
     const uiType: InputSourceType = s.type === 'YOUTUBE' ? 'IP' : s.type
-    setForm({ name: s.name, type: uiType, url: s.url ?? '', device: s.device ?? '', channelId: s.channelId ?? '', clipId: s.clipId ?? '', graphicId: (s as any).graphicId ?? '', inputNumber: s.inputNumber != null ? String(s.inputNumber) : '' })
+    setForm({ name: s.name, type: uiType, url: s.url ?? '', device: s.device ?? '', channelId: s.channelId ?? '', clipId: s.clipId ?? '', graphicId: (s as any).graphicId ?? '', inputNumber: s.inputNumber != null ? String(s.inputNumber) : '', scteWatchEnabled: s.scteWatchEnabled ?? false, scteAction: (s.scteAction as 'LOG' | 'BREAK') ?? 'LOG' })
     if (s.type === 'SRT' && s.url) setSrtCfg(parseSrtUrl(s.url))
     else setSrtCfg(emptySrt)
     setUdpCfg(emptyUdp)
@@ -474,9 +476,16 @@ export default function InputSourcesPage() {
                 </Td>
                 <Td>{s.channel ? `Canal ${s.channel.number} — ${s.channel.name}` : <span className="text-gray-600">Todos</span>}</Td>
                 <Td>
-                  <button onClick={() => toggle.mutate(s)} className="focus:outline-none">
-                    <StatusBadge active={s.active} />
-                  </button>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <button onClick={() => toggle.mutate(s)} className="focus:outline-none">
+                      <StatusBadge active={s.active} />
+                    </button>
+                    {s.scteWatchEnabled && (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/15 text-amber-400 tracking-wider">
+                        SCTE
+                      </span>
+                    )}
+                  </div>
                 </Td>
                 <Td className="text-right">
                   <div className="flex items-center justify-end gap-1">
@@ -829,6 +838,41 @@ export default function InputSourcesPage() {
               <p className="font-medium text-gray-400">Sobre o modo SRT</p>
               <p><span className="text-gray-300">Caller</span>: o servidor conecta ativamente ao endereço informado. Use quando há um encoder/servidor SRT esperando conexão.</p>
               <p><span className="text-gray-300">Listener</span>: o servidor aguarda conexão de entrada na porta indicada. Use quando o encoder é quem vai conectar aqui.</p>
+            </div>
+          )}
+
+          {/* SCTE-35 watch — apenas para fontes de stream ao vivo */}
+          {['IP', 'SRT', 'RTSP'].includes(form.type) && (
+            <div className="space-y-2 border border-gray-700/60 rounded-lg p-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-200">Monitorar SCTE-35</p>
+                  <p className="text-[11px] text-gray-500">Detecta splice_insert nesta entrada e exibe status em tempo real</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setForm((f) => ({ ...f, scteWatchEnabled: !f.scteWatchEnabled }))}
+                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0 ml-4 ${form.scteWatchEnabled ? 'bg-amber-500' : 'bg-gray-700'}`}
+                >
+                  <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${form.scteWatchEnabled ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                </button>
+              </div>
+              {form.scteWatchEnabled && (
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Ação ao detectar cue</label>
+                  <select
+                    value={form.scteAction}
+                    onChange={(e) => setForm((f) => ({ ...f, scteAction: e.target.value as 'LOG' | 'BREAK' }))}
+                    className="w-full rounded-lg bg-gray-800 border border-gray-700 text-gray-100 text-sm px-3 py-2 focus:outline-none focus:border-brand-500"
+                  >
+                    <option value="LOG">Apenas registrar (sem ação automática)</option>
+                    <option value="BREAK">BREAK automático — avança para o próximo bloco de break do roteiro</option>
+                  </select>
+                  {form.scteAction === 'BREAK' && (
+                    <p className="text-[11px] text-amber-500/80">SCTE OUT → pula para o próximo BREAK do roteiro ativo · SCTE IN → retoma após o BREAK</p>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

@@ -18,6 +18,8 @@ export interface InputSource {
   channel?: { id: string; name: string; number: number }
   active: boolean
   inputNumber?: number | null
+  scteWatchEnabled?: boolean
+  scteAction?: 'LOG' | 'BREAK'
   createdAt: string
 }
 
@@ -51,6 +53,8 @@ export const inputSourcesApi = {
     api.post<{ streamUrl: string; isHls: boolean }>('/input-sources/resolve-youtube', { url }).then((r) => r.data),
   listDevices: () =>
     api.get<{ devices: { path: string; name: string }[] }>('/input-sources/devices').then((r) => r.data),
+  getScteStatus: (id: string) =>
+    api.get<{ outOfNetwork?: boolean; durationSecs?: number; eventId?: number; detectedAt?: number; detected?: boolean }>(`/input-sources/${id}/scte-status`).then((r) => r.data),
   startPreview: (id: string) =>
     api.post<{ hlsUrl: string }>(`/input-sources/${id}/preview/start`).then((r) => r.data),
   stopPreview: (id: string) =>

@@ -1156,6 +1156,23 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
         </div>
       </div>
 
+      {/* ── SCTE input event strip ────────────────────────────────────────── */}
+      {(() => {
+        const ev = state?.scteInputLastEvent
+        if (!ev || Date.now() - ev.sentAt >= 30_000) return null
+        const srcName = availableSources.find((s) => s.id === ev.sourceId)?.name ?? 'entrada'
+        return (
+          <div className="flex items-center gap-2 px-3 py-1 bg-amber-950/30 border-b border-amber-800/20">
+            <span className={clsx(
+              'text-[9px] font-bold tracking-wider px-1.5 py-0.5 rounded',
+              ev.outOfNetwork ? 'bg-amber-500/20 text-amber-300' : 'bg-emerald-500/20 text-emerald-300'
+            )}>
+              SCTE {ev.outOfNetwork ? 'OUT' : 'IN'}
+            </span>
+            <span className="text-[10px] text-gray-400 truncate">{srcName}</span>
+          </div>
+        )
+      })()}
 
       {/* ── Monitor de vídeo ──────────────────────────────────────────────── */}
       {monitorOpen && (

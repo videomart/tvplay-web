@@ -12,14 +12,16 @@ import { spawn, ChildProcess } from 'child_process'
 import fs from 'fs'
 import path from 'path'
 import { config } from '../config'
+import * as scteWatcher from './scte35-watcher.service'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
 export type InputSourceMeta = {
-  id:     string
-  type:   string
-  url:    string | null
-  device: string | null
+  id:              string
+  type:            string
+  url:             string | null
+  device:          string | null
+  scteWatchEnabled?: boolean
 }
 
 // Resolver de URL injetado de fora para evitar dependência circular com playout.service
@@ -44,7 +46,7 @@ const MAX_RETRY       = 60_000
 
 // ─── FFmpeg ───────────────────────────────────────────────────────────────────
 
-function buildArgs(inputUrl: string, outputDir: string): string[] {
+function buildArgs(inputUrl: string, outputDir: string, scteWatch: boolean): string[] {
   const hlsPath = path.join(outputDir, 'index.m3u8')
   const segPat  = path.join(outputDir, 'seg%03d.ts')
   const lo = inputUrl.toLowerCase()
@@ -63,6 +65,9 @@ function buildArgs(inputUrl: string, outputDir: string): string[] {
     ...(isRtsp ? ['-rtsp_transport', 'tcp', '-stimeout', '15000000'] : []),
     ...(isHls  ? ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5', '-timeout', '30000000'] : []),
     '-i', url,
+    // Quando SCTE-35 watch está habilitado: usa -copy_unknown -map 0 para preservar o
+    // PID 0x0500 (SCTE-35) nos segmentos HLS gerados — necessário para detecção downstream.
+    ...(scteWatch ? ['-copy_unknown', '-map', '0'] : []),
     // Usa copy em todos os casos — streams broadcast (SRT/RTMP/RTSP) já vêm em H.264/AAC.
     // Re-encodar com ultrafast causava dupla compressão e degradação severa de qualidade.
     // Se o codec da fonte for incompatível com MPEG-TS, o processo sai com erro e reinicia.
@@ -89,10 +94,15 @@ async function launchSession(source: InputSourceMeta, session: Session): Promise
   }
 
   fs.mkdirSync(session.outputDir, { recursive: true })
-  const args = buildArgs(url, session.outputDir)
+  const args = buildArgs(url, session.outputDir, source.scteWatchEnabled ?? false)
   const proc = spawn(config.ffmpeg.path, args, { stdio: ['ignore', 'pipe', 'pipe'] })
   session.proc = proc
   session.retryDelay = INITIAL_RETRY   // reset backoff após sucesso na resolução
+
+  // Inicia watcher SCTE-35 após o diretório HLS estar pronto
+  if (source.scteWatchEnabled) {
+    scteWatcher.startWatcher(source.id, session.outputDir)
+  }
 
   proc.stderr?.on('data', (d: Buffer) => {
     const msg = d.toString().trim()
@@ -138,7 +148,14 @@ export function deactivateInput(sourceId: string): void {
   try { s.proc?.kill('SIGTERM') } catch {}
   try { fs.rmSync(s.outputDir, { recursive: true, force: true }) } catch {}
   sessions.delete(sourceId)
+  scteWatcher.stopWatcher(sourceId)
   console.log(`[active-input/${sourceId}] Sessão encerrada`)
+}
+
+/** Reinicia o relay de uma fonte (aplicando novas configurações como scteWatchEnabled). */
+export async function restartInput(source: InputSourceMeta): Promise<void> {
+  deactivateInput(source.id)
+  await activateInput(source)
 }
 
 /** Retorna o diretório HLS se a sessão existe (independente de estar pronta). */

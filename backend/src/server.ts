@@ -5,9 +5,10 @@ import { config } from './config'
 import authPlugin from './plugins/auth.plugin'
 import corsPlugin from './plugins/cors.plugin'
 import { registerRoutes } from './routes'
-import { initFromDb, handleStreamFailure, resolveSourceUrl } from './services/playout.service'
+import { initFromDb, handleStreamFailure, resolveSourceUrl, handleScteInputEvent } from './services/playout.service'
 import { setStreamFailureCallback, setClockOffsetHours, startRelayCycleWatcher } from './services/stream.service'
 import { setUrlResolver, initActiveInputs } from './services/active-inputs.service'
+import { onScteInputEvent } from './services/scte35-watcher.service'
 import { startScheduler } from './services/scheduler.service'
 import { prisma } from './lib/prisma'
 
@@ -47,6 +48,16 @@ async function bootstrap() {
 
   await initFromDb()
   await initActiveInputs()
+
+  // Registra callback para eventos SCTE-35 detectados nas entradas monitoradas
+  onScteInputEvent(async (sourceId, ev) => {
+    const src = await prisma.inputSource.findUnique({
+      where: { id: sourceId },
+      select: { scteAction: true },
+    }).catch(() => null)
+    handleScteInputEvent(sourceId, ev.outOfNetwork, ev.durationSecs, src?.scteAction ?? 'LOG').catch(() => {})
+  })
+
   startScheduler()
   startRelayCycleWatcher()
 }

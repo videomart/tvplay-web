@@ -8,6 +8,7 @@ import { promisify } from 'util'
 import { prisma } from '../lib/prisma'
 import * as previewService from '../services/preview.service'
 import * as activeInputsService from '../services/active-inputs.service'
+import { getLastEvent } from '../services/scte35-watcher.service'
 
 const execFileAsync = promisify(execFile)
 
@@ -22,8 +23,10 @@ const schema = z.object({
   serverIp:     z.string().optional().nullable(),
   clipId:       z.string().optional().nullable(),
   channelId:    z.string().optional().nullable(),
-  active:       z.boolean().optional(),
-  inputNumber:  z.number().int().positive().optional().nullable(),
+  active:           z.boolean().optional(),
+  inputNumber:      z.number().int().positive().optional().nullable(),
+  scteWatchEnabled: z.boolean().optional(),
+  scteAction:       z.enum(['LOG', 'BREAK']).optional(),
 })
 
 // Garante unicidade de inputNumber por canal: se houver conflito, move o existente
@@ -258,10 +261,22 @@ export default async function inputSourceRoutes(app: FastifyInstance) {
       include,
     }).catch(() => null)
     if (!source) return reply.status(404).send({ error: 'Fonte não encontrada' })
-    // Gerencia relay ativo ao mudar campo active
-    if (body.data.active === true)  activeInputsService.activateInput(source).catch(() => {})
-    if (body.data.active === false) activeInputsService.deactivateInput(source.id)
+    // Gerencia relay ativo ao mudar campo active ou scteWatchEnabled
+    if (body.data.active === false) {
+      activeInputsService.deactivateInput(source.id)
+    } else if (body.data.active === true) {
+      activeInputsService.activateInput(source).catch(() => {})
+    } else if (body.data.scteWatchEnabled !== undefined && activeInputsService.isActive(source.id)) {
+      // Reinicia relay para aplicar -copy_unknown -map 0 (ou removê-los)
+      activeInputsService.restartInput(source).catch(() => {})
+    }
     return source
+  })
+
+  // Status do último evento SCTE-35 detectado nesta entrada
+  app.get('/:id/scte-status', auth, async (request: any) => {
+    const ev = getLastEvent(request.params.id)
+    return ev ?? { detected: false }
   })
 
   app.delete('/:id', auth, async (request: any, reply) => {

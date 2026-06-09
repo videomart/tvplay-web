@@ -258,6 +258,7 @@ export interface PlayoutState {
   activeCut: { type: 'INPUT_SOURCE' | 'BLACK' | 'COLORBARS'; sourceId?: string | null } | null
   scteEnabled: boolean
   scteLastEvent: { outOfNetwork: boolean; sentAt: number } | null
+  scteInputLastEvent: { sourceId: string; outOfNetwork: boolean; sentAt: number } | null
 }
 
 export interface CurrentItem {
@@ -338,6 +339,7 @@ function defaultState(channelId: string): PlayoutState {
     activeCut: null,
     scteEnabled: false,
     scteLastEvent: null,
+    scteInputLastEvent: null,
   }
 }
 
@@ -953,6 +955,7 @@ export async function play(channelId: string, playlistId: string, startItemId?: 
     activeCut: null,
     scteEnabled: chSettings?.scteEnabled ?? false,
     scteLastEvent: null,
+    scteInputLastEvent: null,
   }
   states.set(channelId, state)
   await prisma.channel.update({ where: { id: channelId }, data: { status: 'PLAYING' } }).catch(() => {})
@@ -1480,6 +1483,7 @@ export async function initFromDb(): Promise<void> {
       activeCut: null,
       scteEnabled: ch.scteEnabled ?? false,
       scteLastEvent: null,
+      scteInputLastEvent: null,
     }
     states.set(ch.id, state)
 
@@ -1514,5 +1518,78 @@ export async function initFromDb(): Promise<void> {
   }).catch(() => [] as any[])
   for (const ch of fallbackChannels) {
     if (ch.fallbackSource) preFetchFallbackUrl(ch.fallbackSource)
+  }
+}
+
+// ─── SCTE-35 input actions ────────────────────────────────────────────────────
+
+/** Busca o índice do próximo item BREAK após currentIndex na playlist. */
+async function findNextBreakIndex(playlistId: string, fromIndex: number): Promise<number | null> {
+  const items = await prisma.playlistItem.findMany({
+    where: { playlistId },
+    orderBy: { order: 'asc' },
+    select: { id: true, order: true },
+  })
+  for (let i = fromIndex + 1; i < items.length; i++) {
+    const row = await prisma.playlistItem.findUnique({ where: { id: items[i].id }, select: { breakNum: true } })
+    if (row && row.breakNum > 0) return i
+  }
+  return null
+}
+
+/** Busca o próximo item não-BREAK após o currentIndex. */
+async function findNextNonBreakIndex(playlistId: string, fromIndex: number): Promise<number | null> {
+  const items = await prisma.playlistItem.findMany({
+    where: { playlistId },
+    orderBy: { order: 'asc' },
+    select: { id: true },
+  })
+  for (let i = fromIndex + 1; i < items.length; i++) {
+    const row = await prisma.playlistItem.findUnique({ where: { id: items[i].id }, select: { breakNum: true } })
+    if (row && row.breakNum === 0) return i
+  }
+  return null
+}
+
+/**
+ * Chamado pelo scte35-watcher quando splice_insert é detectado em uma InputSource monitorada.
+ * Aplica a ação configurada nos canais que estão exibindo esta entrada ou em playlist.
+ */
+export async function handleScteInputEvent(
+  sourceId: string,
+  outOfNetwork: boolean,
+  durationSecs: number | undefined,
+  action: string,
+): Promise<void> {
+  // Registra o evento em todos os canais que têm esta fonte como activeCut
+  for (const [channelId, state] of states.entries()) {
+    state.scteInputLastEvent = { sourceId, outOfNetwork, sentAt: Date.now() }
+    broadcast(channelId, state)
+  }
+
+  if (action !== 'BREAK') return
+
+  for (const [channelId, state] of states.entries()) {
+    if (!state.playlistId) continue
+
+    if (outOfNetwork) {
+      // SCTE OUT: avança para o próximo BREAK do canal (inserção de conteúdo local)
+      if (state.status !== 'PLAYING' || state.currentItem?.isBreak) continue
+      const breakIdx = await findNextBreakIndex(state.playlistId, state.currentIndex).catch(() => null)
+      if (breakIdx == null) continue
+      console.log(`[playout/scte-in] ch=${channelId} — SCTE OUT (src=${sourceId}) → jumping to BREAK #${breakIdx}`)
+      jumpTo(channelId, breakIdx).catch((err) =>
+        console.error(`[playout/scte-in] Falha ao pular para BREAK: ${err.message}`)
+      )
+    } else {
+      // SCTE IN: retorna à programação normal (sai do BREAK atual)
+      if (!state.currentItem?.isBreak) continue
+      const nextIdx = await findNextNonBreakIndex(state.playlistId, state.currentIndex).catch(() => null)
+      if (nextIdx == null) continue
+      console.log(`[playout/scte-in] ch=${channelId} — SCTE IN (src=${sourceId}) → resuming at #${nextIdx}`)
+      jumpTo(channelId, nextIdx).catch((err) =>
+        console.error(`[playout/scte-in] Falha ao retomar após BREAK: ${err.message}`)
+      )
+    }
   }
 }
