@@ -11,7 +11,6 @@
 
 import fs from 'fs'
 import path from 'path'
-import { SCTE35_PID } from './scte35.service'
 
 const TS_PACKET_SIZE = 188
 const SYNC_BYTE = 0x47
@@ -37,17 +36,14 @@ function emit(sourceId: string, ev: ScteInputEvent): void {
 }
 
 /**
- * Escaneia um buffer MPEG-TS em busca de pacotes SCTE-35 (PID 0x0500, table_id 0xFC).
- * Espera o formato gerado pelo scte35.service.ts do TVPlay-web (sem adaptation field,
- * PUSI set no primeiro pacote).
+ * Escaneia um buffer MPEG-TS em busca de pacotes SCTE-35 (table_id 0xFC).
+ * Não filtra por PID fixo — o relay FFmpeg pode reatribuir o PID 0x0500 no output.
+ * PUSI=1 obrigatório; verifica table_id=0xFC e splice_command_type=0x05.
  */
 export function scanTsBuffer(buf: Buffer): ScteInputEvent | null {
   let i = 0
   while (i + TS_PACKET_SIZE <= buf.length) {
     if (buf[i] !== SYNC_BYTE) { i++; continue }
-
-    const pid = ((buf[i + 1] & 0x1F) << 8) | buf[i + 2]
-    if (pid !== SCTE35_PID) { i += TS_PACKET_SIZE; continue }
 
     const pusi               = (buf[i + 1] & 0x40) !== 0
     const adaptCtrl          = (buf[i + 3] & 0x30) >> 4

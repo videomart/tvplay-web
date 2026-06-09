@@ -42,7 +42,7 @@ interface Session {
 const sessions = new Map<string, Session>()        // sourceId → session
 const BASE_DIR        = '/tmp/tvplay-active-inputs'
 const INITIAL_RETRY   = 5_000
-const MAX_RETRY       = 60_000
+const MAX_RETRY       = 300_000   // 5 min — evita martelar YouTube durante rate-limit de 1h
 
 // ─── FFmpeg ───────────────────────────────────────────────────────────────────
 
