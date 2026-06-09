@@ -65,8 +65,8 @@ export function scanTsBuffer(buf: Buffer): ScteInputEvent | null {
     if (buf[section] !== 0xFC) { i += TS_PACKET_SIZE; continue } // table_id
 
     // Verifica splice_command_type = 0x05 (splice_insert)
-    // header (3) + body: protocol_version(1)+pts_adj(5)+cw_index(1)+tier+cmdlen(3)+cmd_type(1) = 11 bytes + 3 = offset 14
-    const cmdTypeOff = section + 3 + 11
+    // header (3) + body: protocol_version(1)+pts_adj(5)+cw_index(1)+tier+cmdlen(3) = 10 bytes → cmd_type em +13
+    const cmdTypeOff = section + 3 + 10
     if (cmdTypeOff >= buf.length || buf[cmdTypeOff] !== 0x05) { i += TS_PACKET_SIZE; continue }
 
     // Parse splice_insert: eventId(4) + cancel+reserved(1) + flags(1) ...
