@@ -115,7 +115,9 @@ interface ProxyEntry {
   pmtLogged: boolean  // loga apenas na primeira modificação de PMT
 }
 
-const proxies = new Map<string, ProxyEntry>()
+const proxies        = new Map<string, ProxyEntry>()
+// Pacotes SCTE-35 pendentes sobrevivem ao restart do proxy (ex: transição para BREAK)
+const savedPending   = new Map<string, Buffer[]>()
 
 let nextProxyPort = 14100
 
@@ -135,7 +137,10 @@ export function startProxy(channelId: string, listenPort: number, relayPort: num
   stopProxy(channelId)
 
   const socket = dgram.createSocket('udp4')
-  const entry: ProxyEntry = { socket, relayPort, pending: [], pmtLogged: false }
+  // Restaura pacotes SCTE-35 que ficaram pendentes no proxy anterior (ex: transição para BREAK)
+  const restored = savedPending.get(channelId) ?? []
+  savedPending.delete(channelId)
+  const entry: ProxyEntry = { socket, relayPort, pending: restored, pmtLogged: false }
   proxies.set(channelId, entry)
 
   socket.on('message', (msg) => {
@@ -191,6 +196,8 @@ export function injectPackets(channelId: string, tsPackets: Buffer): void {
 export function stopProxy(channelId: string): void {
   const entry = proxies.get(channelId)
   if (!entry) return
+  // Preserva pacotes pendentes para o próximo proxy com a mesma chave
+  if (entry.pending.length > 0) savedPending.set(channelId, [...entry.pending])
   try { entry.socket.close() } catch {}
   proxies.delete(channelId)
   console.log(`[ts-proxy/${channelId}] Proxy encerrado`)
@@ -198,6 +205,7 @@ export function stopProxy(channelId: string): void {
 
 export function stopAllProxies(): void {
   for (const [id] of proxies) stopProxy(id)
+  savedPending.clear()
 }
 
 export function isProxyActive(channelId: string): boolean {
