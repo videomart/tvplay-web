@@ -27,6 +27,9 @@ const watchers   = new Map<string, fs.FSWatcher>()
 const callbacks  = new Set<(sourceId: string, ev: ScteInputEvent) => void>()
 const rawBuffers = new Map<string, Buffer>()   // buffer de alinhamento para feedRawBuffer
 
+interface DiagState { pidsDone: boolean; pid0500Seen: boolean; totalBytes: number }
+const diagState  = new Map<string, DiagState>()
+
 export function onScteInputEvent(cb: (sourceId: string, ev: ScteInputEvent) => void): void {
   callbacks.add(cb)
 }
@@ -98,12 +101,42 @@ export function scanTsBuffer(buf: Buffer): ScteInputEvent | null {
  */
 export function feedRawBuffer(sourceId: string, chunk: Buffer): void {
   const existing = rawBuffers.get(sourceId)
-  if (!existing) console.log(`[scte35-watcher/${sourceId}] pipe ativo — recebendo TS bruto (primeiro chunk: ${chunk.length} bytes)`)
+  if (!existing) {
+    console.log(`[scte35-watcher/${sourceId}] pipe ativo — recebendo TS bruto (primeiro chunk: ${chunk.length} bytes)`)
+    diagState.set(sourceId, { pidsDone: false, pid0500Seen: false, totalBytes: 0 })
+  }
   let buf = existing ?? Buffer.alloc(0)
   buf = Buffer.concat([buf, chunk])
   const aligned = Math.floor(buf.length / TS_PACKET_SIZE) * TS_PACKET_SIZE
   if (aligned === 0) { rawBuffers.set(sourceId, buf); return }
-  const ev = scanTsBuffer(buf.slice(0, aligned))
+  const slice = buf.slice(0, aligned)
+
+  // Diagnóstico: lista de PIDs e detecção de PID 0x0500
+  const ds = diagState.get(sourceId) ?? { pidsDone: false, pid0500Seen: false, totalBytes: 0 }
+  ds.totalBytes += slice.length
+  let found0500 = false
+  if (!ds.pidsDone && ds.totalBytes >= 100 * TS_PACKET_SIZE) {
+    ds.pidsDone = true
+    const pids = new Set<number>()
+    for (let i = 0; i + TS_PACKET_SIZE <= slice.length; i += TS_PACKET_SIZE) {
+      if (slice[i] !== SYNC_BYTE) continue
+      const pid = ((slice[i + 1] & 0x1F) << 8) | slice[i + 2]
+      pids.add(pid)
+      if (pid === 0x0500) found0500 = true
+    }
+    console.log(`[scte35-watcher/${sourceId}] PIDs no pipe: ${[...pids].map(p => '0x' + p.toString(16).padStart(4, '0')).join(', ')}`)
+  } else {
+    for (let i = 0; !found0500 && i + TS_PACKET_SIZE <= slice.length; i += TS_PACKET_SIZE) {
+      if (slice[i] !== SYNC_BYTE) continue
+      if ((((slice[i + 1] & 0x1F) << 8) | slice[i + 2]) === 0x0500) found0500 = true
+    }
+  }
+  if (found0500 && !ds.pid0500Seen) {
+    ds.pid0500Seen = true
+    console.log(`[scte35-watcher/${sourceId}] PID 0x0500 (SCTE-35) detectado no pipe`)
+  }
+
+  const ev = scanTsBuffer(slice)
   rawBuffers.set(sourceId, buf.slice(aligned))
   if (!ev) return
   const last = lastEvent.get(sourceId)
@@ -154,6 +187,7 @@ export function stopWatcher(sourceId: string): void {
   if (w) { w.close(); watchers.delete(sourceId) }
   lastEvent.delete(sourceId)
   rawBuffers.delete(sourceId)
+  diagState.delete(sourceId)
 }
 
 export function getLastEvent(sourceId: string): ScteInputEvent | null {
