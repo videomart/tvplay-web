@@ -68,12 +68,20 @@ function buildArgs(inputUrl: string, outputDir: string, scteWatch: boolean): str
   ]
 
   if (scteWatch) {
-    // Tee muxer: HLS limpo (só vídeo+áudio) para playback + TS bruto no stdout para detecção SCTE-35.
-    // Separar as saídas evita incluir bin_data (PID 0x0500) no HLS, o que causava descontinuidades
-    // de DTS e degradação de qualidade. SCTE-35 é detectado via feedRawBuffer() em tempo real.
-    const hlsOpts = `select=v,a:f=hls:hls_time=2:hls_list_size=6:hls_flags=delete_segments+append_list:hls_segment_filename=${segPat}`
-    const teeDest = `[${hlsOpts}]${hlsPath}|[f=mpegts]pipe:1`
-    return [...base, '-map', '0', '-copy_unknown', '-c', 'copy', '-f', 'tee', teeDest]
+    // Dois outputs em passagem única:
+    //   Saída 1 (HLS): só vídeo+áudio — sem bin_data, sem degradação de qualidade
+    //   Saída 2 (pipe:1): todos os PIDs com -copy_unknown → Node.js lê stdout → feedRawBuffer
+    // Abordagem dois-outputs é mais confiável que tee muxer (evita escape de sintaxe e
+    // variações de comportamento por versão do FFmpeg).
+    return [
+      ...base,
+      '-map', '0:v', '-map', '0:a', '-c', 'copy',
+      '-f', 'hls', '-hls_time', '2', '-hls_list_size', '6',
+      '-hls_flags', 'delete_segments+append_list',
+      '-hls_segment_filename', segPat,
+      hlsPath,
+      '-map', '0', '-copy_unknown', '-c', 'copy', '-f', 'mpegts', 'pipe:1',
+    ]
   }
 
   // Streams broadcast (SRT/RTMP/RTSP) já vêm em H.264/AAC — copy direto.
@@ -109,7 +117,7 @@ async function launchSession(source: InputSourceMeta, session: Session): Promise
   session.retryDelay = INITIAL_RETRY   // reset backoff após sucesso na resolução
 
   if (scteEnabled) {
-    // Tee muxer escreve TS bruto (todos os PIDs) no stdout — alimenta scanner em tempo real.
+    // Saída 2 do FFmpeg (pipe:1) escreve TS bruto com todos os PIDs — alimenta scanner em tempo real.
     proc.stdout?.on('data', (chunk: Buffer) => scteWatcher.feedRawBuffer(source.id, chunk))
   } else {
     proc.stdout?.on('data', () => {})  // drena stdout para não bloquear FFmpeg

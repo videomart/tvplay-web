@@ -97,7 +97,9 @@ export function scanTsBuffer(buf: Buffer): ScteInputEvent | null {
  * Usado quando active-inputs configura tee muxer com pipe:1.
  */
 export function feedRawBuffer(sourceId: string, chunk: Buffer): void {
-  let buf = rawBuffers.get(sourceId) ?? Buffer.alloc(0)
+  const existing = rawBuffers.get(sourceId)
+  if (!existing) console.log(`[scte35-watcher/${sourceId}] pipe ativo — recebendo TS bruto (primeiro chunk: ${chunk.length} bytes)`)
+  let buf = existing ?? Buffer.alloc(0)
   buf = Buffer.concat([buf, chunk])
   const aligned = Math.floor(buf.length / TS_PACKET_SIZE) * TS_PACKET_SIZE
   if (aligned === 0) { rawBuffers.set(sourceId, buf); return }
