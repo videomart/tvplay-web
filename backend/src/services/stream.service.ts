@@ -129,20 +129,23 @@ function buildRelayArgs(output: OutputConfig, port: number): string[] | null {
   const udpUrl    = `udp://0.0.0.0:${port}?fifo_size=1000000&overrun_nonfatal=1&timeout=3000000`
   const inputArgs = ['-hide_banner', '-loglevel', 'warning', '-stats', '-re', '-f', 'mpegts', '-i', udpUrl]
   const codec     = ['-c', 'copy']
+  // -copy_unknown -map 0: preserva PIDs privados (incluindo SCTE-35 PID 0x0500) em containers mpegts
+  const copyAll   = ['-copy_unknown', '-map', '0']
   switch (output.type) {
     case 'RTMP': {
       if (!output.url) return null
       const dest = output.streamKey ? `${output.url}/${output.streamKey}` : output.url
       // UDP input does not support -reconnect flags — reconnect is handled at app level (exit handler)
+      // RTMP/FLV não suporta PIDs privados — sem copyAll (FLV container rejeitaria streams desconhecidos)
       return [...inputArgs, ...codec, '-f', 'flv', dest]
     }
     case 'SRT': {
       if (!output.url) return null
-      return [...inputArgs, ...codec, '-f', 'mpegts', appendSrtPassphrase(output.url, output.streamKey)]
+      return [...inputArgs, ...copyAll, ...codec, '-f', 'mpegts', appendSrtPassphrase(output.url, output.streamKey)]
     }
     case 'LOCAL_DEVICE': {
       if (!output.url) return null
-      return [...inputArgs, ...codec, '-f', 'mpegts', appendSrtPassphrase(output.url, output.streamKey)]
+      return [...inputArgs, ...copyAll, ...codec, '-f', 'mpegts', appendSrtPassphrase(output.url, output.streamKey)]
     }
     default:
       return null
