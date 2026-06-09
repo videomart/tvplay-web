@@ -59,18 +59,26 @@ function buildArgs(inputUrl: string, outputDir: string, scteWatch: boolean): str
   let url = inputUrl
   if (isSrt && !lo.includes('timeout=')) url += (lo.includes('?') ? '&' : '?') + 'timeout=30000000'
 
-  return [
+  const base = [
     '-hide_banner', '-loglevel', 'warning',
     ...(isRtmp ? ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5'] : []),
     ...(isRtsp ? ['-rtsp_transport', 'tcp', '-stimeout', '15000000'] : []),
     ...(isHls  ? ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5', '-timeout', '30000000'] : []),
     '-i', url,
-    // Quando SCTE-35 watch está habilitado: usa -copy_unknown -map 0 para preservar o
-    // PID 0x0500 (SCTE-35) nos segmentos HLS gerados — necessário para detecção downstream.
-    ...(scteWatch ? ['-copy_unknown', '-map', '0'] : []),
-    // Usa copy em todos os casos — streams broadcast (SRT/RTMP/RTSP) já vêm em H.264/AAC.
-    // Re-encodar com ultrafast causava dupla compressão e degradação severa de qualidade.
-    // Se o codec da fonte for incompatível com MPEG-TS, o processo sai com erro e reinicia.
+  ]
+
+  if (scteWatch) {
+    // Tee muxer: HLS limpo (só vídeo+áudio) para playback + TS bruto no stdout para detecção SCTE-35.
+    // Separar as saídas evita incluir bin_data (PID 0x0500) no HLS, o que causava descontinuidades
+    // de DTS e degradação de qualidade. SCTE-35 é detectado via feedRawBuffer() em tempo real.
+    const hlsOpts = `select=v,a:f=hls:hls_time=2:hls_list_size=6:hls_flags=delete_segments+append_list:hls_segment_filename=${segPat}`
+    const teeDest = `[${hlsOpts}]${hlsPath}|[f=mpegts]pipe:1`
+    return [...base, '-map', '0', '-copy_unknown', '-c', 'copy', '-f', 'tee', teeDest]
+  }
+
+  // Streams broadcast (SRT/RTMP/RTSP) já vêm em H.264/AAC — copy direto.
+  return [
+    ...base,
     '-c', 'copy',
     '-f', 'hls',
     '-hls_time', '2',
@@ -94,14 +102,17 @@ async function launchSession(source: InputSourceMeta, session: Session): Promise
   }
 
   fs.mkdirSync(session.outputDir, { recursive: true })
-  const args = buildArgs(url, session.outputDir, source.scteWatchEnabled ?? false)
+  const scteEnabled = source.scteWatchEnabled ?? false
+  const args = buildArgs(url, session.outputDir, scteEnabled)
   const proc = spawn(config.ffmpeg.path, args, { stdio: ['ignore', 'pipe', 'pipe'] })
   session.proc = proc
   session.retryDelay = INITIAL_RETRY   // reset backoff após sucesso na resolução
 
-  // Inicia watcher SCTE-35 após o diretório HLS estar pronto
-  if (source.scteWatchEnabled) {
-    scteWatcher.startWatcher(source.id, session.outputDir)
+  if (scteEnabled) {
+    // Tee muxer escreve TS bruto (todos os PIDs) no stdout — alimenta scanner em tempo real.
+    proc.stdout?.on('data', (chunk: Buffer) => scteWatcher.feedRawBuffer(source.id, chunk))
+  } else {
+    proc.stdout?.on('data', () => {})  // drena stdout para não bloquear FFmpeg
   }
 
   proc.stderr?.on('data', (d: Buffer) => {

@@ -1,12 +1,12 @@
 /**
  * SCTE-35 input watcher — detecta splice_insert em streams recebidos.
  *
- * Estratégia: o active-inputs relay já grava segmentos MPEG-TS em disco
- * (/tmp/tvplay-active-inputs/{sourceId}/seg*.ts). Monitoramos esse diretório
- * com fs.watch e escaneamos cada novo segmento em busca do PID 0x0500 (SCTE-35).
- *
- * Requer que o relay use -copy_unknown -map 0 para preservar o PID 0x0500.
- * Latência: ~1 segmento HLS (2 s). Aceitável para pré-sinalização de break.
+ * Dois modos:
+ *   1. Pipe (feedRawBuffer): ativo quando active-inputs usa tee muxer.
+ *      FFmpeg escreve TS bruto (todos os PIDs) no stdout; Node.js alimenta
+ *      feedRawBuffer() com cada chunk. Latência ≈ 0. Preferido.
+ *   2. File (startWatcher): fallback legado — monitora seg*.ts via fs.watch.
+ *      Requer -copy_unknown -map 0 no FFmpeg. Latência ~1 segmento (2 s).
  */
 
 import fs from 'fs'
@@ -22,9 +22,10 @@ export interface ScteInputEvent {
   detectedAt: number
 }
 
-const lastEvent = new Map<string, ScteInputEvent>()
-const watchers  = new Map<string, fs.FSWatcher>()
-const callbacks = new Set<(sourceId: string, ev: ScteInputEvent) => void>()
+const lastEvent  = new Map<string, ScteInputEvent>()
+const watchers   = new Map<string, fs.FSWatcher>()
+const callbacks  = new Set<(sourceId: string, ev: ScteInputEvent) => void>()
+const rawBuffers = new Map<string, Buffer>()   // buffer de alinhamento para feedRawBuffer
 
 export function onScteInputEvent(cb: (sourceId: string, ev: ScteInputEvent) => void): void {
   callbacks.add(cb)
@@ -89,6 +90,26 @@ export function scanTsBuffer(buf: Buffer): ScteInputEvent | null {
   return null
 }
 
+/**
+ * Alimenta o scanner com um chunk bruto de MPEG-TS vindo do stdout do FFmpeg.
+ * Acumula bytes até completar pacotes de 188 bytes, depois escaneia e dispara
+ * callbacks se um splice_insert for encontrado.
+ * Usado quando active-inputs configura tee muxer com pipe:1.
+ */
+export function feedRawBuffer(sourceId: string, chunk: Buffer): void {
+  let buf = rawBuffers.get(sourceId) ?? Buffer.alloc(0)
+  buf = Buffer.concat([buf, chunk])
+  const aligned = Math.floor(buf.length / TS_PACKET_SIZE) * TS_PACKET_SIZE
+  if (aligned === 0) { rawBuffers.set(sourceId, buf); return }
+  const ev = scanTsBuffer(buf.slice(0, aligned))
+  rawBuffers.set(sourceId, buf.slice(aligned))
+  if (!ev) return
+  const last = lastEvent.get(sourceId)
+  if (last && last.eventId === ev.eventId && last.outOfNetwork === ev.outOfNetwork) return
+  console.log(`[scte35-watcher/${sourceId}] splice_insert out_of_network=${ev.outOfNetwork} eventId=${ev.eventId}${ev.durationSecs ? ` dur=${ev.durationSecs.toFixed(1)}s` : ''}`)
+  emit(sourceId, ev)
+}
+
 /** Inicia monitoramento do diretório HLS de uma entrada. */
 export function startWatcher(sourceId: string, hlsDir: string): void {
   if (watchers.has(sourceId)) return
@@ -128,10 +149,9 @@ export function startWatcher(sourceId: string, hlsDir: string): void {
 
 export function stopWatcher(sourceId: string): void {
   const w = watchers.get(sourceId)
-  if (!w) return
-  w.close()
-  watchers.delete(sourceId)
+  if (w) { w.close(); watchers.delete(sourceId) }
   lastEvent.delete(sourceId)
+  rawBuffers.delete(sourceId)
 }
 
 export function getLastEvent(sourceId: string): ScteInputEvent | null {
