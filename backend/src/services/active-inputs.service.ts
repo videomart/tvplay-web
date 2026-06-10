@@ -61,6 +61,10 @@ function buildArgs(inputUrl: string, outputDir: string, scteWatch: boolean): str
 
   const base = [
     '-hide_banner', '-loglevel', 'warning',
+    // Descarta pacotes corrompidos em vez de abortar com "I/O error" — entradas SRT/RTMP
+    // sofrem perda/jitter ocasional e o demuxer não deve derrubar o processo por isso.
+    '-err_detect', 'ignore_err',
+    '-fflags', '+discardcorrupt+genpts',
     ...(isRtmp ? ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5'] : []),
     ...(isRtsp ? ['-rtsp_transport', 'tcp', '-stimeout', '15000000'] : []),
     ...(isHls  ? ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5', '-timeout', '30000000'] : []),
