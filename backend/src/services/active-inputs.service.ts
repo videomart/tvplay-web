@@ -46,7 +46,7 @@ const MAX_RETRY       = 300_000   // 5 min — evita martelar YouTube durante ra
 
 // ─── FFmpeg ───────────────────────────────────────────────────────────────────
 
-function buildArgs(inputUrl: string, outputDir: string, scteWatch: boolean): string[] {
+function buildArgs(inputUrl: string, outputDir: string): string[] {
   const hlsPath = path.join(outputDir, 'index.m3u8')
   const segPat  = path.join(outputDir, 'seg%03d.ts')
   const lo = inputUrl.toLowerCase()
@@ -70,23 +70,6 @@ function buildArgs(inputUrl: string, outputDir: string, scteWatch: boolean): str
     ...(isHls  ? ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5', '-timeout', '30000000'] : []),
     '-i', url,
   ]
-
-  if (scteWatch) {
-    // Dois outputs em passagem única:
-    //   Saída 1 (HLS): só vídeo+áudio — sem bin_data, sem degradação de qualidade
-    //   Saída 2 (pipe:1): todos os PIDs com -copy_unknown → Node.js lê stdout → feedRawBuffer
-    // Abordagem dois-outputs é mais confiável que tee muxer (evita escape de sintaxe e
-    // variações de comportamento por versão do FFmpeg).
-    return [
-      ...base,
-      '-map', '0:v', '-map', '0:a', '-c', 'copy',
-      '-f', 'hls', '-hls_time', '2', '-hls_list_size', '6',
-      '-hls_flags', 'delete_segments+append_list',
-      '-hls_segment_filename', segPat,
-      hlsPath,
-      '-map', '0', '-copy_unknown', '-c', 'copy', '-f', 'mpegts', 'pipe:1',
-    ]
-  }
 
   // Streams broadcast (SRT/RTMP/RTSP) já vêm em H.264/AAC — copy direto.
   return [
@@ -114,18 +97,12 @@ async function launchSession(source: InputSourceMeta, session: Session): Promise
   }
 
   fs.mkdirSync(session.outputDir, { recursive: true })
-  const scteEnabled = source.scteWatchEnabled ?? false
-  const args = buildArgs(url, session.outputDir, scteEnabled)
+  const args = buildArgs(url, session.outputDir)
   const proc = spawn(config.ffmpeg.path, args, { stdio: ['ignore', 'pipe', 'pipe'] })
   session.proc = proc
   session.retryDelay = INITIAL_RETRY   // reset backoff após sucesso na resolução
 
-  if (scteEnabled) {
-    // Saída 2 do FFmpeg (pipe:1) escreve TS bruto com todos os PIDs — alimenta scanner em tempo real.
-    proc.stdout?.on('data', (chunk: Buffer) => scteWatcher.feedRawBuffer(source.id, chunk))
-  } else {
-    proc.stdout?.on('data', () => {})  // drena stdout para não bloquear FFmpeg
-  }
+  proc.stdout?.on('data', () => {})  // drena stdout para não bloquear FFmpeg
 
   proc.stderr?.on('data', (d: Buffer) => {
     const msg = d.toString().trim()
