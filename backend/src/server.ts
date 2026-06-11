@@ -46,8 +46,10 @@ async function bootstrap() {
   // Injeta resolver de URL no serviço de entradas ativas (quebra dep. circular)
   setUrlResolver(resolveSourceUrl)
 
-  await initFromDb()
+  // Sobe os relays de entradas ativas primeiro — dá tempo do HLS ficar pronto
+  // antes de canais cortados (cut-to-input) tentarem resolver suas fontes.
   await initActiveInputs()
+  await initFromDb()
 
   // Registra callback para eventos SCTE-35 detectados nas entradas monitoradas
   onScteInputEvent(async (sourceId, ev) => {

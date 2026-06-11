@@ -81,15 +81,39 @@ async function activateFallbackSource(
 ): Promise<void> {
   previewService.stopPreview(source.id)
 
-  if (activeInputs.isReady(source.id)) {
-    const hlsUrl = `http://localhost:${config.port}/api/input-sources/${source.id}/active-stream/index.m3u8`
-    console.log(`[playout] Fallback ch=${channelId} — relay ativo disponível: ${source.id}`)
-    streamService.startStreamingFromUrl(channelId, hlsUrl, graphic).catch(() => {})
-    return
+  if (activeInputs.isActive(source.id)) {
+    // Relay ativo configurado para esta fonte — espera o primeiro segmento HLS
+    // (evita conectar direto na URL crua, que pode conflitar com a porta usada
+    // pelo relay, ex.: SRT mode=listener só aceita um listener por porta).
+    const ready = activeInputs.isReady(source.id) || await activeInputs.waitUntilReady(source.id)
+    if (ready) {
+      const hlsUrl = `http://localhost:${config.port}/api/input-sources/${source.id}/active-stream/index.m3u8`
+      console.log(`[playout] Fallback ch=${channelId} — relay ativo disponível: ${source.id}`)
+      streamService.startStreamingFromUrl(channelId, hlsUrl, graphic).catch(() => {})
+      return
+    }
+    console.warn(`[playout] Fallback ch=${channelId} — relay ativo de ${source.id} não ficou pronto a tempo, usando URL direta`)
   }
 
   const url = await resolveFallbackUrl(source).catch(() => null)
   if (url) streamService.startStreamingFromUrl(channelId, url, graphic).catch(() => {})
+}
+
+/**
+ * Re-resolve a fonte de conteúdo dos canais atualmente cortados (CUT) para
+ * `sourceId`, após essa InputSource ser ativada/desativada como entrada ativa
+ * (relay). Permite migrar entre URL direta e HLS do relay sem exigir um novo
+ * cut-to-input manual.
+ */
+export async function refreshInputSourceConsumers(sourceId: string): Promise<void> {
+  for (const [channelId, state] of states.entries()) {
+    if (state.activeCut?.type !== 'INPUT_SOURCE' || state.activeCut.sourceId !== sourceId) continue
+    const source = await prisma.inputSource.findUnique({ where: { id: sourceId } }).catch(() => null)
+    if (!source) continue
+    const graphic = await resolveGraphic(null, null, channelId).catch(() => null)
+    console.log(`[playout] Re-resolvendo fonte ${sourceId} para ch=${channelId} (relay ativo mudou)`)
+    activateFallbackSource(channelId, source, graphic).catch(() => {})
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -8,6 +8,7 @@ import { promisify } from 'util'
 import { prisma } from '../lib/prisma'
 import * as previewService from '../services/preview.service'
 import * as activeInputsService from '../services/active-inputs.service'
+import { refreshInputSourceConsumers } from '../services/playout.service'
 import { getLastEvent } from '../services/scte35-watcher.service'
 
 const execFileAsync = promisify(execFile)
@@ -264,11 +265,16 @@ export default async function inputSourceRoutes(app: FastifyInstance) {
     // Gerencia relay ativo ao mudar campo active ou scteWatchEnabled
     if (body.data.active === false) {
       activeInputsService.deactivateInput(source.id)
+      refreshInputSourceConsumers(source.id).catch(() => {})
     } else if (body.data.active === true) {
-      activeInputsService.activateInput(source).catch(() => {})
+      activeInputsService.activateInput(source)
+        .then(() => refreshInputSourceConsumers(source.id))
+        .catch(() => {})
     } else if (body.data.scteWatchEnabled !== undefined && activeInputsService.isActive(source.id)) {
       // Reinicia relay para aplicar -copy_unknown -map 0 (ou removê-los)
-      activeInputsService.restartInput(source).catch(() => {})
+      activeInputsService.restartInput(source)
+        .then(() => refreshInputSourceConsumers(source.id))
+        .catch(() => {})
     }
     return source
   })

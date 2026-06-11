@@ -257,6 +257,21 @@ export function isReady(sourceId: string): boolean {
   return fs.existsSync(path.join(s.outputDir, 'index.m3u8'))
 }
 
+/**
+ * Aguarda até `timeoutMs` por `isReady(sourceId)` (poll a cada 500ms).
+ * Usado por consumidores (ex.: cut-to-input) que preferem o HLS do relay ativo
+ * em vez de conectar direto na fonte, mas o relay acabou de subir e ainda não
+ * gerou o primeiro segmento.
+ */
+export async function waitUntilReady(sourceId: string, timeoutMs = 15_000): Promise<boolean> {
+  const start = Date.now()
+  while (Date.now() - start < timeoutMs) {
+    if (isReady(sourceId)) return true
+    await new Promise(r => setTimeout(r, 500))
+  }
+  return isReady(sourceId)
+}
+
 export function isActive(sourceId: string): boolean {
   return sessions.has(sourceId)
 }
