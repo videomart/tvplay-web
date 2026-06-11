@@ -1521,15 +1521,23 @@ export async function initFromDb(): Promise<void> {
         const clipUrl = item.sourceUrl
         console.log(`[playout] Restauracao URL clip ch=${ch.id} — resolvendo: ${clipUrl}`)
         resolveInputUrl({ type: 'YOUTUBE', url: clipUrl, device: null })
-          .then((url) => {
+          .then(async (url) => {
             if (url) {
               console.log(`[playout] Restauracao URL clip ch=${ch.id} — iniciando streaming: ${url.slice(0, 80)}`)
               streamService.startStreamingFromUrlReencode(ch.id, url, activeGraphic).catch(() => {})
             } else {
-              console.warn(`[playout] Restauracao URL clip ch=${ch.id} — yt-dlp nao retornou URL`)
+              console.warn(`[playout] Restauracao URL clip ch=${ch.id} — yt-dlp nao retornou URL, ativando fallback`)
+              const chFb = await prisma.channel.findUnique({
+                where: { id: ch.id },
+                select: { fallbackType: true },
+              }).catch(() => null)
+              streamService.startStreamingFromFallback(ch.id, chFb?.fallbackType ?? 'BLACK').catch(() => {})
             }
           })
-          .catch((err) => console.error(`[playout] Restauracao URL clip ch=${ch.id} — erro:`, err))
+          .catch((err) => {
+            console.error(`[playout] Restauracao URL clip ch=${ch.id} — erro:`, err)
+            streamService.startStreamingFromFallback(ch.id, 'BLACK').catch(() => {})
+          })
       } else {
         streamService.startStreaming(ch.id, item?.mediaId ?? null, item?.cueIn ?? 0, activeGraphic).catch(() => {})
       }
