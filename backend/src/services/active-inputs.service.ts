@@ -68,6 +68,21 @@ function releasePortPair(ports: { hls: number; scte: number } | null): void {
   usedPorts.delete(ports.scte)
 }
 
+/**
+ * Envia SIGTERM e aguarda o processo sair; escala para SIGKILL após `escalateMs`
+ * se ele não responder. Necessário porque FFmpeg bloqueado em recvfrom() numa UDP
+ * sem dados pode ignorar SIGTERM indefinidamente, deixando um processo órfão
+ * segurando a porta e quebrando o próximo bind (EADDRINUSE em loop).
+ */
+function killAndWait(p: ChildProcess | null, escalateMs = 2_000): Promise<void> {
+  if (!p || p.exitCode !== null || p.signalCode !== null) return Promise.resolve()
+  return new Promise((resolve) => {
+    const t = setTimeout(() => { try { p.kill('SIGKILL') } catch {} }, escalateMs)
+    p.once('exit', () => { clearTimeout(t); resolve() })
+    try { p.kill('SIGTERM') } catch { clearTimeout(t); resolve() }
+  })
+}
+
 // ─── FFmpeg ───────────────────────────────────────────────────────────────────
 
 /** Garante parâmetro timeout para SRT listener (aguarda sender reconectar). */
@@ -146,6 +161,7 @@ async function launchSession(source: InputSourceMeta, session: Session): Promise
   const url = await urlResolver(source).catch(() => null)
   if (!url) {
     console.warn(`[active-input/${source.id}] Não foi possível resolver URL — tentando novamente em ${session.retryDelay / 1000}s`)
+    session.retryDelay = Math.min(session.retryDelay * 2, MAX_RETRY)
     scheduleRetry(source, session)
     return
   }
@@ -175,7 +191,8 @@ async function launchSession(source: InputSourceMeta, session: Session): Promise
   session.proc = proc
   session.relayProc = relayProc
   session.ports = ports
-  session.retryDelay = INITIAL_RETRY   // reset backoff após sucesso na resolução
+
+  const startedAt = Date.now()
 
   proc.stdout?.on('data', () => {})  // drena stdout para não bloquear FFmpeg
 
@@ -189,11 +206,18 @@ async function launchSession(source: InputSourceMeta, session: Session): Promise
   const restart = (origin: string, code: number | string | null) => {
     if (session.stopped || restarted) return
     restarted = true
+    // Backoff só reseta se rodou tempo suficiente para considerar "saudável";
+    // falha imediata (ex.: EADDRINUSE) cresce o atraso em vez de martelar a cada 5s.
+    const ranLongEnough = Date.now() - startedAt > 10_000
+    session.retryDelay = ranLongEnough ? INITIAL_RETRY : Math.min(session.retryDelay * 2, MAX_RETRY)
     console.log(`[active-input/${source.id}] ${origin} saiu (code=${code ?? 'signal'}) — reiniciando em ${session.retryDelay / 1000}s`)
-    if (relayProc && !relayProc.killed) { try { relayProc.kill('SIGTERM') } catch {} }
-    if (!proc.killed) { try { proc.kill('SIGTERM') } catch {} }
     if (ports) { releasePortPair(ports); scteWatcher.stopUdpWatcher(source.id) }
-    scheduleRetry(source, session)
+    // Aguarda os dois processos saírem de fato (com SIGKILL se necessário) antes de
+    // relançar — evita que um FFmpeg preso em recvfrom() sem dados fique órfão
+    // segurando a porta UDP/SRT e quebre o próximo bind em loop.
+    Promise.all([killAndWait(relayProc), killAndWait(proc)]).then(() => {
+      scheduleRetry(source, session)
+    })
   }
 
   proc.on('exit', (code) => restart('processo principal', code))
@@ -208,7 +232,6 @@ function scheduleRetry(source: InputSourceMeta, session: Session): void {
     session.retryTimer = null
     launchSession(source, session)
   }, session.retryDelay)
-  session.retryDelay = Math.min(session.retryDelay * 2, MAX_RETRY)
 }
 
 // ─── API pública ──────────────────────────────────────────────────────────────
@@ -222,25 +245,28 @@ export async function activateInput(source: InputSourceMeta): Promise<void> {
   await launchSession(source, session)
 }
 
-/** Para e remove a sessão relay da fonte. */
-export function deactivateInput(sourceId: string): void {
+/**
+ * Para e remove a sessão relay da fonte. Aguarda os processos saírem de fato
+ * (com SIGKILL se necessário) para que as portas UDP/SRT fiquem livres antes de
+ * retornar — essencial para `restartInput`, que reativa em seguida.
+ */
+export async function deactivateInput(sourceId: string): Promise<void> {
   const s = sessions.get(sourceId)
   if (!s) return
   s.stopped = true
   if (s.retryTimer) { clearTimeout(s.retryTimer); s.retryTimer = null }
-  try { s.proc?.kill('SIGTERM') } catch {}
-  try { s.relayProc?.kill('SIGTERM') } catch {}
   if (s.ports) releasePortPair(s.ports)
-  try { fs.rmSync(s.outputDir, { recursive: true, force: true }) } catch {}
   sessions.delete(sourceId)
   scteWatcher.stopWatcher(sourceId)
   scteWatcher.stopUdpWatcher(sourceId)
+  await Promise.all([killAndWait(s.proc), killAndWait(s.relayProc)])
+  try { fs.rmSync(s.outputDir, { recursive: true, force: true }) } catch {}
   console.log(`[active-input/${sourceId}] Sessão encerrada`)
 }
 
 /** Reinicia o relay de uma fonte (aplicando novas configurações como scteWatchEnabled). */
 export async function restartInput(source: InputSourceMeta): Promise<void> {
-  deactivateInput(source.id)
+  await deactivateInput(source.id)
   await activateInput(source)
 }
 

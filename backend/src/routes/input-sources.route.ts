@@ -265,7 +265,8 @@ export default async function inputSourceRoutes(app: FastifyInstance) {
     // Gerencia relay ativo ao mudar campo active ou scteWatchEnabled
     if (body.data.active === false) {
       activeInputsService.deactivateInput(source.id)
-      refreshInputSourceConsumers(source.id).catch(() => {})
+        .then(() => refreshInputSourceConsumers(source.id))
+        .catch(() => {})
     } else if (body.data.active === true) {
       activeInputsService.activateInput(source)
         .then(() => refreshInputSourceConsumers(source.id))
@@ -287,7 +288,7 @@ export default async function inputSourceRoutes(app: FastifyInstance) {
 
   app.delete('/:id', auth, async (request: any, reply) => {
     previewService.stopPreview(request.params.id)
-    activeInputsService.deactivateInput(request.params.id)
+    await activeInputsService.deactivateInput(request.params.id)
     await prisma.inputSource.delete({ where: { id: request.params.id } }).catch(() => null)
     return reply.status(204).send()
   })
