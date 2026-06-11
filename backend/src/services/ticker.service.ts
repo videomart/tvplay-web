@@ -1,4 +1,4 @@
-import { writeFileSync, mkdirSync } from 'fs'
+import { writeFileSync, mkdirSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -74,6 +74,13 @@ async function fetchAndWrite(elementId: string, rssUrl: string): Promise<void> {
     console.log(`[ticker/${elementId}] RSS atualizado — ${titles.length} manchetes`)
   } catch (err: any) {
     console.warn(`[ticker/${elementId}] Falha ao buscar RSS (${rssUrl}): ${err.message}`)
+    // Garante que o textfile do drawtext exista mesmo com falha no fetch —
+    // sua ausência quebra o filter_complex inteiro do FFmpeg (Error initializing filters)
+    try {
+      mkdirSync(FEED_DIR, { recursive: true })
+      const path = tickerFilePath(elementId)
+      if (!existsSync(path)) writeFileSync(path, `[RSS indisponível: ${rssUrl}]`, 'utf8')
+    } catch {}
   }
 }
 

@@ -1513,6 +1513,9 @@ export async function initFromDb(): Promise<void> {
 
     if (ch.status === 'PLAYING') {
       startTimer(ch.id)
+      // Garante o textfile do ticker ANTES de spawnar o FFmpeg — sua ausência
+      // (ex.: /tmp limpo num rebuild) quebra o filter_complex inteiro (código 254 em loop)
+      await startTickerFeeds(activeGraphic)
       // Trata URL clips corretamente — caso contrario, startStreaming(null) nao faz nada
       if (isUrlClip(item?.sourceType, item?.sourceUrl) && item?.sourceUrl) {
         const clipUrl = item.sourceUrl
