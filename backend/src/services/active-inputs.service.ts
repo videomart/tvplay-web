@@ -33,6 +33,8 @@ export function setUrlResolver(fn: UrlResolver) { urlResolver = fn }
 
 interface Session {
   proc:       ChildProcess | null
+  relayProc:  ChildProcess | null
+  ports:      { hls: number; scte: number } | null
   outputDir:  string
   stopped:    boolean
   retryTimer: ReturnType<typeof setTimeout> | null
@@ -44,20 +46,48 @@ const BASE_DIR        = '/tmp/tvplay-active-inputs'
 const INITIAL_RETRY   = 5_000
 const MAX_RETRY       = 300_000   // 5 min — evita martelar YouTube durante rate-limit de 1h
 
+// ─── Portas UDP locais para o relay SCTE-35 (loopback, par hls/scte por fonte) ─
+
+const UDP_PORT_BASE = 20000
+const UDP_PORT_MAX  = 20998
+const usedPorts = new Set<number>()
+
+function allocatePortPair(): { hls: number; scte: number } {
+  for (let p = UDP_PORT_BASE; p <= UDP_PORT_MAX; p += 2) {
+    if (!usedPorts.has(p) && !usedPorts.has(p + 1)) {
+      usedPorts.add(p); usedPorts.add(p + 1)
+      return { hls: p, scte: p + 1 }
+    }
+  }
+  throw new Error('[active-inputs] Sem portas UDP locais disponíveis para relay SCTE-35')
+}
+
+function releasePortPair(ports: { hls: number; scte: number } | null): void {
+  if (!ports) return
+  usedPorts.delete(ports.hls)
+  usedPorts.delete(ports.scte)
+}
+
 // ─── FFmpeg ───────────────────────────────────────────────────────────────────
+
+/** Garante parâmetro timeout para SRT listener (aguarda sender reconectar). */
+function withSrtTimeout(url: string): string {
+  const lo = url.toLowerCase()
+  if (lo.startsWith('srt://') && !lo.includes('timeout=')) {
+    return url + (lo.includes('?') ? '&' : '?') + 'timeout=30000000'
+  }
+  return url
+}
 
 function buildArgs(inputUrl: string, outputDir: string): string[] {
   const hlsPath = path.join(outputDir, 'index.m3u8')
   const segPat  = path.join(outputDir, 'seg%03d.ts')
   const lo = inputUrl.toLowerCase()
-  const isSrt  = lo.startsWith('srt://')
   const isRtmp = lo.startsWith('rtmp://')
   const isRtsp = lo.startsWith('rtsp://')
   const isHls  = lo.includes('.m3u8') || lo.includes('/api/media/') || lo.includes('/api/input-sources/')
 
-  // Garante parâmetro timeout para SRT listener (aguarda sender reconectar)
-  let url = inputUrl
-  if (isSrt && !lo.includes('timeout=')) url += (lo.includes('?') ? '&' : '?') + 'timeout=30000000'
+  const url = withSrtTimeout(inputUrl)
 
   const base = [
     '-hide_banner', '-loglevel', 'warning',
@@ -84,6 +114,30 @@ function buildArgs(inputUrl: string, outputDir: string): string[] {
   ]
 }
 
+/**
+ * Args do relay dedicado para entradas SRT com SCTE-35 habilitado.
+ *
+ * `-map 0 -copy_unknown` ao vivo a partir de SRT com bin_data (PID 0x0500) é
+ * estável em saída ÚNICA e contínua (sem `-t`), mas crasha quando combinado
+ * num mesmo processo com um segundo muxer HLS (dois-outputs, v1.0.53/55).
+ * Por isso este processo faz SOMENTE a leitura do SRT + replicação via `tee`
+ * para dois destinos UDP locais (loopback): um para o FFmpeg do active-input
+ * (HLS, mapeamento padrão — descarta bin_data) e outro para o scte35-watcher
+ * (Node, lê bin_data via dgram).
+ */
+function buildRelayArgs(srtUrl: string, ports: { hls: number; scte: number }): string[] {
+  return [
+    '-hide_banner', '-loglevel', 'warning',
+    '-err_detect', 'ignore_err',
+    '-fflags', '+discardcorrupt+genpts',
+    '-i', withSrtTimeout(srtUrl),
+    '-map', '0', '-copy_unknown',
+    '-c', 'copy',
+    '-f', 'tee',
+    `[f=mpegts]udp://127.0.0.1:${ports.hls}|[f=mpegts]udp://127.0.0.1:${ports.scte}`,
+  ]
+}
+
 // ─── Ciclo de vida da sessão ──────────────────────────────────────────────────
 
 async function launchSession(source: InputSourceMeta, session: Session): Promise<void> {
@@ -97,9 +151,30 @@ async function launchSession(source: InputSourceMeta, session: Session): Promise
   }
 
   fs.mkdirSync(session.outputDir, { recursive: true })
-  const args = buildArgs(url, session.outputDir)
+
+  const useRelay = url.toLowerCase().startsWith('srt://') && !!source.scteWatchEnabled
+
+  let mainInputUrl = url
+  let relayProc: ChildProcess | null = null
+  let ports: { hls: number; scte: number } | null = null
+
+  if (useRelay) {
+    ports = allocatePortPair()
+    relayProc = spawn(config.ffmpeg.path, buildRelayArgs(url, ports), { stdio: ['ignore', 'pipe', 'pipe'] })
+    relayProc.stdout?.on('data', () => {})
+    relayProc.stderr?.on('data', (d: Buffer) => {
+      const msg = d.toString().trim()
+      if (msg) console.log(`[active-input/${source.id}/relay] ${msg}`)
+    })
+    mainInputUrl = `udp://127.0.0.1:${ports.hls}?overrun_nonfatal=1&fifo_size=10000000`
+    scteWatcher.startUdpWatcher(source.id, ports.scte)
+  }
+
+  const args = buildArgs(mainInputUrl, session.outputDir)
   const proc = spawn(config.ffmpeg.path, args, { stdio: ['ignore', 'pipe', 'pipe'] })
   session.proc = proc
+  session.relayProc = relayProc
+  session.ports = ports
   session.retryDelay = INITIAL_RETRY   // reset backoff após sucesso na resolução
 
   proc.stdout?.on('data', () => {})  // drena stdout para não bloquear FFmpeg
@@ -109,14 +184,22 @@ async function launchSession(source: InputSourceMeta, session: Session): Promise
     if (msg) console.log(`[active-input/${source.id}] ${msg}`)
   })
 
-  proc.on('exit', (code) => {
-    if (!session.stopped) {
-      console.log(`[active-input/${source.id}] Saiu (code=${code ?? 'signal'}) — reiniciando em ${session.retryDelay / 1000}s`)
-      scheduleRetry(source, session)
-    }
-  })
+  // proc principal e relay (se houver) formam uma unidade — se um cair, reinicia os dois juntos
+  let restarted = false
+  const restart = (origin: string, code: number | string | null) => {
+    if (session.stopped || restarted) return
+    restarted = true
+    console.log(`[active-input/${source.id}] ${origin} saiu (code=${code ?? 'signal'}) — reiniciando em ${session.retryDelay / 1000}s`)
+    if (relayProc && !relayProc.killed) { try { relayProc.kill('SIGTERM') } catch {} }
+    if (!proc.killed) { try { proc.kill('SIGTERM') } catch {} }
+    if (ports) { releasePortPair(ports); scteWatcher.stopUdpWatcher(source.id) }
+    scheduleRetry(source, session)
+  }
 
-  console.log(`[active-input/${source.id}] Relay iniciado → ${session.outputDir}`)
+  proc.on('exit', (code) => restart('processo principal', code))
+  if (relayProc) relayProc.on('exit', (code) => restart('relay SRT', code))
+
+  console.log(`[active-input/${source.id}] Relay iniciado → ${session.outputDir}${useRelay ? ' (com relay SCTE-35 via UDP local)' : ''}`)
 }
 
 function scheduleRetry(source: InputSourceMeta, session: Session): void {
@@ -134,7 +217,7 @@ function scheduleRetry(source: InputSourceMeta, session: Session): void {
 export async function activateInput(source: InputSourceMeta): Promise<void> {
   if (sessions.has(source.id)) return
   const outputDir = path.join(BASE_DIR, source.id)
-  const session: Session = { proc: null, outputDir, stopped: false, retryTimer: null, retryDelay: INITIAL_RETRY }
+  const session: Session = { proc: null, relayProc: null, ports: null, outputDir, stopped: false, retryTimer: null, retryDelay: INITIAL_RETRY }
   sessions.set(source.id, session)
   await launchSession(source, session)
 }
@@ -146,9 +229,12 @@ export function deactivateInput(sourceId: string): void {
   s.stopped = true
   if (s.retryTimer) { clearTimeout(s.retryTimer); s.retryTimer = null }
   try { s.proc?.kill('SIGTERM') } catch {}
+  try { s.relayProc?.kill('SIGTERM') } catch {}
+  if (s.ports) releasePortPair(s.ports)
   try { fs.rmSync(s.outputDir, { recursive: true, force: true }) } catch {}
   sessions.delete(sourceId)
   scteWatcher.stopWatcher(sourceId)
+  scteWatcher.stopUdpWatcher(sourceId)
   console.log(`[active-input/${sourceId}] Sessão encerrada`)
 }
 

@@ -11,6 +11,7 @@
 
 import fs from 'fs'
 import path from 'path'
+import dgram from 'dgram'
 
 const TS_PACKET_SIZE = 188
 const SYNC_BYTE = 0x47
@@ -24,6 +25,7 @@ export interface ScteInputEvent {
 
 const lastEvent  = new Map<string, ScteInputEvent>()
 const watchers   = new Map<string, fs.FSWatcher>()
+const udpSockets = new Map<string, dgram.Socket>()
 const callbacks  = new Set<(sourceId: string, ev: ScteInputEvent) => void>()
 const rawBuffers = new Map<string, Buffer>()   // buffer de alinhamento para feedRawBuffer
 
@@ -188,6 +190,28 @@ export function stopWatcher(sourceId: string): void {
   lastEvent.delete(sourceId)
   rawBuffers.delete(sourceId)
   diagState.delete(sourceId)
+}
+
+/**
+ * Inicia monitoramento via UDP local (relay dedicado de active-inputs faz
+ * `tee` do TS bruto, incluindo bin_data, para 127.0.0.1:port).
+ */
+export function startUdpWatcher(sourceId: string, port: number): void {
+  if (udpSockets.has(sourceId)) return
+  const sock = dgram.createSocket('udp4')
+  sock.on('message', (msg) => feedRawBuffer(sourceId, msg))
+  sock.on('error', (err) => {
+    console.warn(`[scte35-watcher/${sourceId}] erro UDP: ${err.message}`)
+  })
+  sock.bind(port, '127.0.0.1', () => {
+    console.log(`[scte35-watcher/${sourceId}] ouvindo UDP local 127.0.0.1:${port}`)
+  })
+  udpSockets.set(sourceId, sock)
+}
+
+export function stopUdpWatcher(sourceId: string): void {
+  const sock = udpSockets.get(sourceId)
+  if (sock) { try { sock.close() } catch {}; udpSockets.delete(sourceId) }
 }
 
 export function getLastEvent(sourceId: string): ScteInputEvent | null {
