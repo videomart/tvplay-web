@@ -123,11 +123,15 @@ function isRelayCapable(type: string): boolean {
 
 function buildRelayArgs(output: OutputConfig, port: number): string[] | null {
   if (!isRelayCapable(output.type)) return null
-  // -re: lê o buffer UDP na taxa nativa do stream (evita burst ao vivo para YouTube/RTMP)
+  // -re: lê o buffer UDP na taxa nativa do stream (evita burst ao vivo para o YouTube/RTMP).
+  // Restrito a RTMP — em relays SRT/LOCAL_DEVICE de longa duração, pequena diferença de
+  // clock entre encoder e relay (~rate 1.05x observado) acumula drift até estourar o fifo
+  // e derrubar pacotes, gerando discontinuidades de timestamp propagadas a quem recebe o stream.
   // fifo_size reduzido: menos acúmulo de buffer entre troca de clipes
   // timeout=3s: relay sai rápido se o content process morrer, evitando 30s de silêncio no RTMP
   const udpUrl    = `udp://0.0.0.0:${port}?fifo_size=1000000&overrun_nonfatal=1&timeout=3000000`
-  const inputArgs = ['-hide_banner', '-loglevel', 'warning', '-stats', '-re', '-f', 'mpegts', '-i', udpUrl]
+  const readRate  = output.type === 'RTMP' ? ['-re'] : []
+  const inputArgs = ['-hide_banner', '-loglevel', 'warning', '-stats', ...readRate, '-f', 'mpegts', '-i', udpUrl]
   const codec     = ['-c', 'copy']
   // -copy_unknown -map 0: preserva PIDs privados (incluindo SCTE-35 PID 0x0500) em containers mpegts
   const copyAll   = ['-copy_unknown', '-map', '0']
