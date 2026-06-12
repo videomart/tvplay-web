@@ -129,7 +129,9 @@ function buildRelayArgs(output: OutputConfig, port: number): string[] | null {
   // e derrubar pacotes, gerando discontinuidades de timestamp propagadas a quem recebe o stream.
   // fifo_size reduzido: menos acúmulo de buffer entre troca de clipes
   // timeout=3s: relay sai rápido se o content process morrer, evitando 30s de silêncio no RTMP
-  const udpUrl    = `udp://0.0.0.0:${port}?fifo_size=1000000&overrun_nonfatal=1&timeout=3000000`
+  // buffer_size: aumenta o SO_RCVBUF do socket (padrão do kernel ~208KB) para o
+  // máximo permitido (net.core.rmem_max) — reduz descarte de datagramas em picos
+  const udpUrl    = `udp://0.0.0.0:${port}?fifo_size=1000000&overrun_nonfatal=1&timeout=3000000&buffer_size=4194304`
   const readRate  = output.type === 'RTMP' ? ['-re'] : []
   const inputArgs = ['-hide_banner', '-loglevel', 'warning', '-stats', ...readRate, '-f', 'mpegts', '-i', udpUrl]
   const codec     = ['-c', 'copy']

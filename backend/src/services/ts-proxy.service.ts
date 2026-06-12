@@ -171,6 +171,16 @@ export function startProxy(channelId: string, listenPort: number, relayPort: num
   })
 
   socket.bind(listenPort, '0.0.0.0', () => {
+    // Buffer padrão do OS (~208KB) sofre overflow silencioso em picos de
+    // burst (ex.: catch-up do -re após lag), descartando datagramas e
+    // gerando "Packet corrupt"/discontinuity contínuos no relay — aumenta
+    // para o máximo permitido pelo kernel (net.core.rmem_max/wmem_max)
+    try {
+      socket.setRecvBufferSize(4 * 1024 * 1024)
+      socket.setSendBufferSize(4 * 1024 * 1024)
+    } catch (err: any) {
+      console.warn(`[ts-proxy/${channelId}] Falha ao ajustar buffer UDP: ${err.message}`)
+    }
     console.log(`[ts-proxy/${channelId}] Proxy TS ativo: 0.0.0.0:${listenPort} → 127.0.0.1:${relayPort}`)
   })
 }
