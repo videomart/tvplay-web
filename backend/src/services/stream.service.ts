@@ -953,7 +953,9 @@ function buildConcatArgs(
   if (useTemplate && templateResult) {
     videoCodec = [
       ...templateResult.filterArgs,
-      '-c:v', 'libx264', '-preset', 'veryfast', '-profile:v', 'high',
+      // ultrafast: concat lê fontes 1080p e reescala — em VPS de 1 vCPU o decode
+      // já consome a maior parte da CPU, veryfast fazia o lag de -re crescer continuamente
+      '-c:v', 'libx264', '-preset', 'ultrafast', '-profile:v', 'high',
       ...videoBitrateArgs,
       '-g', '60', '-keyint_min', '60', '-sc_threshold', '0',
       '-c:a', 'aac', '-ar', '44100', '-b:a', `${aBitrate}k`,
@@ -963,7 +965,7 @@ function buildConcatArgs(
     const { filterArgs, mapArgs } = buildVideoFilter(output.videoResolution, resolvedGraphic, !!logoUrl)
     videoCodec = [
       ...filterArgs,
-      '-c:v', 'libx264', '-preset', 'veryfast', '-profile:v', 'high',
+      '-c:v', 'libx264', '-preset', 'ultrafast', '-profile:v', 'high',
       ...videoBitrateArgs,
       '-g', '60', '-keyint_min', '60', '-sc_threshold', '0',
       '-c:a', 'aac', '-ar', '44100', '-b:a', `${aBitrate}k`,
