@@ -729,20 +729,30 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
     }
   }, [item?.clipId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Preview server-side para fontes ao vivo (fallback quando parado)
+  // Preview server-side: fontes ao vivo (fallback quando parado) OU item atual da
+  // playlist quando é um clipe URL/YouTube ao vivo sem hlsPath (sem embed disponível)
   useEffect(() => {
     const src = channel.fallbackSource
     const isIdle = status === 'IDLE' || status === 'STOPPED'
-    const needsServerPreview =
+    const isPlaying = status === 'PLAYING' || status === 'PAUSED'
+
+    const needsFallbackPreview =
       monitorOpen && isIdle &&
       channel.fallbackType === 'INPUT_SOURCE' && src &&
       (src.type === 'YOUTUBE' || src.type === 'SRT' || src.type === 'SDI' || src.type === 'USB' ||
        src.type === 'CLIP' ||
        (src.type === 'IP' && src.url && !src.url.match(/\.m3u8/i)))
 
-    if (!needsServerPreview) {
+    const needsCurrentItemPreview =
+      monitorOpen && isPlaying && !item?.isBreak &&
+      item?.sourceType === 'URL' && !item?.hlsPath && !!item?.sourceUrl &&
+      !embedUrlForMonitor(item.sourceUrl)
+
+    if (!needsFallbackPreview && !needsCurrentItemPreview) {
       if (activeServerPreviewId.current) {
-        inputSourcesApi.stopPreview(activeServerPreviewId.current).catch(() => {})
+        const id = activeServerPreviewId.current
+        if (id.startsWith('playout_')) playoutApi.stopCurrentPreview(channel.id).catch(() => {})
+        else inputSourcesApi.stopPreview(id).catch(() => {})
         activeServerPreviewId.current = null
       }
       setServerPreviewUrl(null)
@@ -750,11 +760,28 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
       return
     }
 
-    const sourceId = src!.id
-    activeServerPreviewId.current = sourceId
     setServerPreviewLoading(true)
     setServerPreviewError(null)
     setServerPreviewUrl(null)
+
+    if (needsCurrentItemPreview) {
+      activeServerPreviewId.current = `playout_${channel.id}`
+      playoutApi.previewCurrent(channel.id)
+        .then(({ hlsUrl }) => setServerPreviewUrl(hlsUrl))
+        .catch((e: any) => {
+          const d = e.response?.data
+          setServerPreviewError(d?.detail ? `${d.error}: ${d.detail}` : d?.error ?? 'Falha ao iniciar preview')
+        })
+        .finally(() => setServerPreviewLoading(false))
+
+      return () => {
+        playoutApi.stopCurrentPreview(channel.id).catch(() => {})
+        activeServerPreviewId.current = null
+      }
+    }
+
+    const sourceId = src!.id
+    activeServerPreviewId.current = sourceId
 
     inputSourcesApi.startPreview(sourceId)
       .then(({ hlsUrl }) => setServerPreviewUrl(hlsUrl))
@@ -768,7 +795,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
       inputSourcesApi.stopPreview(sourceId).catch(() => {})
       activeServerPreviewId.current = null
     }
-  }, [monitorOpen, channel.fallbackSourceId, status]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [monitorOpen, channel.fallbackSourceId, status, item?.clipId, item?.sourceType, item?.hlsPath, item?.sourceUrl, item?.isBreak]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function toggleMonitor() {
     if (monitorOpen) {
@@ -1204,10 +1231,23 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                           )}
                           {state?.activeGraphic && <GraphicOverlay graphic={state.activeGraphic} />}
                         </>
+                      ) : serverPreviewUrl ? (
+                        <>
+                          <VideoPlayer src={serverPreviewUrl} autoPlay muted className="w-full h-full" />
+                          {streamingUp && (
+                            <div className="absolute top-2 right-2 flex items-center gap-1 bg-emerald-600/80 backdrop-blur-sm px-1.5 py-0.5 rounded text-[9px] font-bold text-white">
+                              <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
+                              ON AIR
+                            </div>
+                          )}
+                          {state?.activeGraphic && <GraphicOverlay graphic={state.activeGraphic} />}
+                        </>
                       ) : (
                         <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-black">
                           <Antenna className="h-5 w-5 text-sky-500 animate-pulse" />
-                          <p className="text-xs text-sky-400 font-medium">Streaming via yt-dlp</p>
+                          <p className="text-xs text-sky-400 font-medium">
+                            {serverPreviewLoading ? 'Resolvendo via yt-dlp...' : serverPreviewError ?? 'Streaming via yt-dlp'}
+                          </p>
                           {item.sourceUrl && (
                             <p className="text-[10px] text-gray-500 truncate max-w-[90%] text-center">{item.sourceUrl}</p>
                           )}

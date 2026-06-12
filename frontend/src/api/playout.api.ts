@@ -155,4 +155,8 @@ export const playoutApi = {
     api.post<PlayoutState>(`/playout/${channelId}/cut-to-camera`).then((r) => r.data),
   cutToType: (channelId: string, type: 'BLACK' | 'COLORBARS') =>
     api.post(`/playout/${channelId}/cut-to-type`, { type }).then((r) => r.data),
+  previewCurrent: (channelId: string) =>
+    api.post<{ hlsUrl: string }>(`/playout/${channelId}/preview-current`).then((r) => r.data),
+  stopCurrentPreview: (channelId: string) =>
+    api.delete(`/playout/${channelId}/preview-current`).then((r) => r.data),
 }

@@ -1,7 +1,14 @@
 import { FastifyInstance } from 'fastify'
+import fs from 'fs'
+import path from 'path'
+import { execFile } from 'child_process'
+import { promisify } from 'util'
 import * as playout from '../services/playout.service'
 import * as streamService from '../services/stream.service'
+import * as previewService from '../services/preview.service'
 import { prisma } from '../lib/prisma'
+
+const execFileAsync = promisify(execFile)
 
 async function getOrCreateAutoSave(channelId: string): Promise<{ id: string; name: string }> {
   const existing = await prisma.playlist.findFirst({
@@ -49,6 +56,54 @@ export default async function playoutRoutes(app: FastifyInstance) {
   app.get('/:channelId/state', auth, async (request: any) =>
     playout.getState(request.params.channelId)
   )
+
+  // Preview HLS do item atual (clipe URL/YouTube sem hlsPath) — usado pelo monitor da UI
+  app.post('/:channelId/preview-current', auth, async (request: any, reply) => {
+    const { channelId } = request.params
+    const item = playout.getState(channelId).currentItem
+    if (!item || item.sourceType !== 'URL' || !item.sourceUrl) {
+      return reply.status(400).send({ error: 'Item atual não é um clipe URL' })
+    }
+
+    const previewId = `playout_${channelId}`
+    const sourceUrl = item.sourceUrl
+    let resolvedUrl: string | null = sourceUrl
+
+    if (/^srt:|^rtmps?:|^rtsp:/i.test(sourceUrl)) {
+      // SRT/RTMP/RTSP: usa a URL diretamente (yt-dlp não suporta esses protocolos)
+    } else if (/youtube\.com|youtu\.be|twitch\.tv/i.test(sourceUrl)) {
+      const base = ['--no-playlist', '-g', '--socket-timeout', '15', '--no-warnings']
+      const fmt  = 'best[protocol=m3u8_native]/best[height<=720]/best'
+      const tryYt = async (...extra: string[]): Promise<string | null> => {
+        try {
+          const { stdout } = await execFileAsync('yt-dlp', [...base, '-f', fmt, ...extra, sourceUrl], { timeout: 35000 })
+          return stdout.trim().split('\n')[0] || null
+        } catch { return null }
+      }
+      resolvedUrl = await tryYt('--extractor-args', 'youtube:player_client=android') || await tryYt()
+      if (!resolvedUrl) return reply.status(422).send({ error: 'Não foi possível resolver a URL do clipe.' })
+    }
+
+    previewService.startPreview(previewId, resolvedUrl!)
+
+    const hlsFile = path.join('/tmp/tvplay-previews', previewId, 'index.m3u8')
+    for (let i = 0; i < 40; i++) {
+      if (fs.existsSync(hlsFile)) break
+      if (previewService.hasPreviewFailed(previewId)) break
+      await new Promise((r) => setTimeout(r, 500))
+    }
+    if (!fs.existsSync(hlsFile)) {
+      previewService.stopPreview(previewId)
+      return reply.status(504).send({ error: 'Timeout ao iniciar preview do clipe.' })
+    }
+    return { hlsUrl: `/api/input-sources/${previewId}/preview/stream/index.m3u8` }
+  })
+
+  // Para o preview do item atual
+  app.delete('/:channelId/preview-current', auth, async (request: any, reply) => {
+    previewService.stopPreview(`playout_${request.params.channelId}`)
+    return reply.status(204).send()
+  })
 
   // Play — startItemId opcional: inicia a partir do item selecionado
   app.post('/:channelId/play', auth, async (request: any, reply) => {
