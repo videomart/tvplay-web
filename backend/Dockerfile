@@ -1,6 +1,6 @@
 FROM mwader/static-ffmpeg:latest AS ffmpeg-static
 
-FROM node:20-alpine
+FROM node:22-alpine
 
 COPY --from=ffmpeg-static /ffmpeg /usr/local/bin/ffmpeg
 COPY --from=ffmpeg-static /ffprobe /usr/local/bin/ffprobe
