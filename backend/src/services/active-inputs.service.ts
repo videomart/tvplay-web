@@ -83,6 +83,38 @@ function killAndWait(p: ChildProcess | null, escalateMs = 2_000): Promise<void> 
   })
 }
 
+// ─── Watchdog de memória ───────────────────────────────────────────────────────
+
+const MEM_CHECK_INTERVAL = 30_000
+// ~300MB — reinicia a sessão preventivamente antes que o OOM killer derrube
+// processos aleatórios e cause swap thrashing (observado v1.0.66: o par
+// relay+HLS de uma fonte SRT com SCTE-35 vazou até ~900MB em ~30min e foi
+// morto pelo OOM, travando o host inteiro de 1-2GB de RAM).
+const MEM_LIMIT_KB = 300_000
+
+function readRssKb(pid: number | undefined | null): number {
+  if (!pid) return 0
+  try {
+    const status = fs.readFileSync(`/proc/${pid}/status`, 'utf8')
+    const m = status.match(/VmRSS:\s+(\d+)\s+kB/)
+    return m ? parseInt(m[1], 10) : 0
+  } catch {
+    return 0
+  }
+}
+
+setInterval(() => {
+  for (const [sourceId, session] of sessions) {
+    if (session.stopped) continue
+    const rss = readRssKb(session.proc?.pid) + readRssKb(session.relayProc?.pid)
+    if (rss > MEM_LIMIT_KB) {
+      console.warn(`[active-input/${sourceId}] RSS ${Math.round(rss / 1024)}MB acima do limite (${Math.round(MEM_LIMIT_KB / 1024)}MB) — reiniciando preventivamente`)
+      session.proc?.kill('SIGTERM')
+      session.relayProc?.kill('SIGTERM')
+    }
+  }
+}, MEM_CHECK_INTERVAL)
+
 // ─── FFmpeg ───────────────────────────────────────────────────────────────────
 
 /** Garante parâmetro timeout para SRT listener (aguarda sender reconectar). */
