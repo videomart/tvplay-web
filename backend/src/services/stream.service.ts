@@ -128,10 +128,15 @@ function buildRelayArgs(output: OutputConfig, port: number): string[] | null {
   // clock entre encoder e relay (~rate 1.05x observado) acumula drift até estourar o fifo
   // e derrubar pacotes, gerando discontinuidades de timestamp propagadas a quem recebe o stream.
   // fifo_size reduzido: menos acúmulo de buffer entre troca de clipes
-  // timeout=3s: relay sai rápido se o content process morrer, evitando 30s de silêncio no RTMP
+  // timeout=15s: ao trocar para um clip URL/YouTube, o processo concat encerra e
+  // o yt-dlp leva alguns segundos para resolver a nova URL antes do próximo processo
+  // retomar a escrita no UDP. Um timeout curto (3s, valor anterior) fazia o relay
+  // RTMP sair e reabrir uma NOVA conexão com o YouTube nessa janela — o YouTube
+  // interpretava isso como fim da transmissão a cada troca de clipe. 15s cobre essa
+  // janela de resolução sem deixar o relay "pendurado" por muito tempo em caso de crash real.
   // buffer_size: aumenta o SO_RCVBUF do socket (padrão do kernel ~208KB) para o
   // máximo permitido (net.core.rmem_max) — reduz descarte de datagramas em picos
-  const udpUrl    = `udp://0.0.0.0:${port}?fifo_size=1000000&overrun_nonfatal=1&timeout=3000000&buffer_size=4194304`
+  const udpUrl    = `udp://0.0.0.0:${port}?fifo_size=1000000&overrun_nonfatal=1&timeout=15000000&buffer_size=4194304`
   const readRate  = output.type === 'RTMP' ? ['-re'] : []
   const inputArgs = ['-hide_banner', '-loglevel', 'warning', '-stats', ...readRate, '-f', 'mpegts', '-i', udpUrl]
   const codec     = ['-c', 'copy']
