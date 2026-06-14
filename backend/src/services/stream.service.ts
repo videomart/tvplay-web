@@ -855,14 +855,32 @@ export function stopAllStreaming(channelId: string) {
  * @param outOfNetwork true = início do break (saída da rede), false = retorno
  * @param durationSecs duração do break em segundos (opcional)
  */
+// Repete a injeção do mesmo pacote (mesmo eventId) algumas vezes ao longo de
+// ~2s — o link de relay (SRT/UDP) pode descartar pacotes isolados em rajadas
+// de corrupção, e um cue SCTE-35 one-shot perdido nunca é recuperado. O
+// watcher do lado receptor deduplica por eventId+outOfNetwork, então as
+// repetições não geram eventos duplicados.
+const SCTE35_REPEATS       = 8
+const SCTE35_REPEAT_GAP_MS = 250
+
 export function injectScte35(channelId: string, outOfNetwork: boolean, durationSecs?: number): void {
   const outputs = channelProcs.get(channelId)
   if (!outputs?.size) return
   const packets = buildBreakPackets(outOfNetwork, durationSecs)
-  for (const outputId of outputs.keys()) {
-    tsProxy.injectPackets(proxyKey(channelId, outputId), packets)
+
+  const send = () => {
+    const current = channelProcs.get(channelId)
+    if (!current?.size) return
+    for (const outputId of current.keys()) {
+      tsProxy.injectPackets(proxyKey(channelId, outputId), packets)
+    }
   }
-  console.log(`[scte35/${channelId}] splice_insert out_of_network=${outOfNetwork}${durationSecs ? ` dur=${durationSecs}s` : ''}`)
+
+  send()
+  for (let n = 1; n < SCTE35_REPEATS; n++) {
+    setTimeout(send, n * SCTE35_REPEAT_GAP_MS)
+  }
+  console.log(`[scte35/${channelId}] splice_insert out_of_network=${outOfNetwork}${durationSecs ? ` dur=${durationSecs}s` : ''} (${SCTE35_REPEATS}x)`)
 }
 
 export async function restartStreaming(
