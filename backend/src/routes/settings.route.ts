@@ -162,13 +162,14 @@ export default async function settingsRoutes(app: FastifyInstance) {
     return { ok: true, cookies: dataLines.length }
   })
 
-  // Status das cookies do YouTube
+  // Status das cookies do YouTube + se a resolução yt-dlp está habilitada neste servidor
   app.get('/youtube-cookies-status', auth, async () => {
+    const enabled = config.ytdlp.enabled
     const cookiesPath = config.ytdlp?.cookiesFile
-    if (!cookiesPath || !fs.existsSync(cookiesPath)) return { exists: false, lines: 0, updatedAt: null }
+    if (!cookiesPath || !fs.existsSync(cookiesPath)) return { exists: false, lines: 0, updatedAt: null, enabled }
     const stat = fs.statSync(cookiesPath)
     const content = fs.readFileSync(cookiesPath, 'utf-8')
     const lines = content.split('\n').filter((l: string) => l.trim() && !l.startsWith('#')).length
-    return { exists: true, lines, updatedAt: stat.mtime.toISOString() }
+    return { exists: true, lines, updatedAt: stat.mtime.toISOString(), enabled }
   })
 }

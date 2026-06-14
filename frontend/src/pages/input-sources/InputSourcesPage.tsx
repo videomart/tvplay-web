@@ -4,6 +4,7 @@ import { Plus, Pencil, Trash2, Antenna, Play, Youtube, RefreshCw, ChevronDown, C
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
 import { inputSourcesApi, type InputSource, type InputSourceType, SOURCE_TYPE_LABELS, resolveSourceType, urlNeedsYtDlp } from '../../api/input-sources.api'
+import { useYoutubeEnabled } from '../../hooks/useYoutubeEnabled'
 import { clipsApi, type Clip, MODALITY_LABELS } from '../../api/clips.api'
 import { channelsApi } from '../../api/channels.api'
 import { graphicsApi } from '../../api/graphics.api'
@@ -217,6 +218,7 @@ const needsClip        = (t: InputSourceType) => t === 'CLIP'
 
 export default function InputSourcesPage() {
   const qc = useQueryClient()
+  const youtubeEnabled = useYoutubeEnabled()
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<InputSource | null>(null)
   const [form, setForm] = useState(empty)
@@ -814,6 +816,18 @@ export default function InputSourcesPage() {
                   {localDeviceCfg.driver === 'DECKLINK' && 'Para listar placas Decklink: ffmpeg -f decklink -list_devices 1 -i dummy'}
                 </p>
               </div>
+            </div>
+          )}
+
+          {/* Aviso: YouTube/Twitch desabilitado neste servidor (VPS) */}
+          {!youtubeEnabled && (ytDlpDetected || form.type === 'YOUTUBE') && (
+            <div className="p-3 bg-red-900/30 border border-red-700/50 rounded-lg text-xs text-red-300 space-y-1">
+              <p className="font-medium">⚠ YouTube/Twitch não disponível neste servidor</p>
+              <p className="text-red-300/80">
+                Este servidor (VPS) está com a resolução via yt-dlp desabilitada, pois o YouTube bloqueia
+                quase todas as requisições de IPs de datacenter. Esta entrada será salva, mas ficará em
+                fallback (preto) durante a transmissão. Use este tipo de fonte apenas em ambiente local.
+              </p>
             </div>
           )}
 

@@ -14,6 +14,7 @@ import { Table, Thead, Th, Tbody, Tr, Td } from '../../components/ui/Table'
 import { Badge, StatusBadge } from '../../components/ui/Badge'
 import { VideoPlayer } from '../../components/ui/VideoPlayer'
 import { GraphicOverlay } from '../../components/ui/GraphicOverlay'
+import { useYoutubeEnabled } from '../../hooks/useYoutubeEnabled'
 
 const emptyForm = {
   code: '', title: '', modality: 'CP' as ClipModality,
@@ -67,6 +68,7 @@ function formatDur(sec?: number) {
 
 export default function ClipsPage() {
   const qc = useQueryClient()
+  const youtubeEnabled = useYoutubeEnabled()
   const [searchParams, setSearchParams] = useSearchParams()
   const location = useLocation()
   const navigate = useNavigate()
@@ -594,6 +596,16 @@ export default function ClipsPage() {
                 </div>
               </div>
 
+              {form.sourceType === 'URL' && !youtubeEnabled && (
+                <div className="col-span-2 p-3 bg-red-900/30 border border-red-700/50 rounded-lg text-xs text-red-300 space-y-1">
+                  <p className="font-medium">⚠ YouTube/Twitch não disponível neste servidor</p>
+                  <p className="text-red-300/80">
+                    Este servidor (VPS) está com a resolução via yt-dlp desabilitada, pois o YouTube bloqueia
+                    quase todas as requisições de IPs de datacenter. Este clipe será salvo, mas ficará em
+                    fallback (preto) durante a transmissão. Use clipes do tipo URL apenas em ambiente local.
+                  </p>
+                </div>
+              )}
               {form.sourceType === 'URL' && (
                 <div className="col-span-2 space-y-1">
                   <Input

@@ -66,7 +66,7 @@ export default function SettingsPage() {
 
   const { data: cookiesStatus, refetch: refetchCookies } = useQuery({
     queryKey: ['youtube-cookies-status'],
-    queryFn: () => api.get('/settings/youtube-cookies-status').then(r => r.data as { exists: boolean; lines: number; updatedAt: string | null }),
+    queryFn: () => api.get('/settings/youtube-cookies-status').then(r => r.data as { exists: boolean; lines: number; updatedAt: string | null; enabled: boolean }),
     staleTime: 30_000,
   })
 
@@ -431,6 +431,17 @@ export default function SettingsPage() {
               Exporte as cookies do seu browser logado no YouTube usando a extensão
               <strong className="text-gray-400"> "Get cookies.txt LOCALLY"</strong> e faça upload aqui.
             </p>
+
+            {cookiesStatus && cookiesStatus.enabled === false && (
+              <div className="flex items-start gap-2 text-xs px-3 py-2 rounded-lg border bg-red-900/20 border-red-700/40 text-red-400">
+                <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                <span>
+                  Resolução via yt-dlp está <strong>desabilitada</strong> neste servidor (<code className="bg-gray-800 px-1 rounded">YTDLP_ENABLED=false</code>).
+                  Entradas e clipes do tipo YouTube/Twitch não funcionarão aqui — cookies não resolvem o bloqueio
+                  de IPs de datacenter do YouTube. Use esse tipo de conteúdo apenas em ambiente local.
+                </span>
+              </div>
+            )}
 
             {cookiesStatus && (
               <div className={clsx('flex items-center gap-2 text-xs px-3 py-2 rounded-lg border',

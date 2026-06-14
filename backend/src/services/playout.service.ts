@@ -156,6 +156,10 @@ function ytCookiesArgs(): string[] {
 // Verifica se URL YouTube/Twitch é stream ao vivo (true) ou VOD (false)
 // Retorna null se yt-dlp falhar
 export async function checkIsLive(url: string): Promise<{ isLive: boolean | null; title?: string; duration?: number }> {
+  if (!config.ytdlp.enabled) {
+    console.log(`[yt-dlp] desabilitado neste servidor (YTDLP_ENABLED=false) — pulando checkIsLive: ${url}`)
+    return { isLive: null }
+  }
   const base = ['--no-playlist', '--no-warnings', '--socket-timeout', '15', '--print', '%(is_live)s|%(title)s|%(duration)s']
   const cookies = ytCookiesArgs()
   for (const client of YT_CLIENTS) {
@@ -175,6 +179,10 @@ export async function checkIsLive(url: string): Promise<{ isLive: boolean | null
 
 // Resolve via yt-dlp — tenta múltiplos player_client para contornar bot-check do YouTube
 async function resolveViaYtDlp(rawUrl: string): Promise<string | null> {
+  if (!config.ytdlp.enabled) {
+    console.log(`[yt-dlp] desabilitado neste servidor (YTDLP_ENABLED=false) — não resolvendo: ${rawUrl}`)
+    return null
+  }
   const base = [
     '--no-playlist', '-g', '--no-warnings', '--socket-timeout', '15',
     '--js-runtimes', 'node',          // usa Node.js para resolver n-challenge do YouTube
