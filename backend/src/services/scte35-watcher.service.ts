@@ -29,8 +29,32 @@ const udpSockets = new Map<string, dgram.Socket>()
 const callbacks  = new Set<(sourceId: string, ev: ScteInputEvent) => void>()
 const rawBuffers = new Map<string, Buffer>()   // buffer de alinhamento para feedRawBuffer
 
-interface DiagState { pidsDone: boolean; pid0500Seen: boolean; totalBytes: number }
+interface DiagState { pidsDone: boolean; pid0500Seen: boolean; totalBytes: number; pid0500LogCount: number }
 const diagState  = new Map<string, DiagState>()
+
+/** Diagnóstico temporário: descreve um pacote TS no índice `i` que tem PID 0x0500. */
+function describePid0500Packet(buf: Buffer, i: number): string {
+  const pusi          = (buf[i + 1] & 0x40) !== 0
+  const adaptCtrl     = (buf[i + 3] & 0x30) >> 4
+  const hasAdaptation = adaptCtrl === 3 || adaptCtrl === 2
+  const hasPayload    = adaptCtrl === 3 || adaptCtrl === 1
+  let info = `pusi=${pusi} adaptCtrl=${adaptCtrl}`
+  if (pusi && hasPayload) {
+    const adaptLen = hasAdaptation ? (buf[i + 4] + 1) : 0
+    const payload  = i + 4 + adaptLen
+    const pf       = buf[payload]
+    const section  = payload + 1 + pf
+    if (section < buf.length) {
+      const tableId = buf[section]
+      info += ` table_id=0x${tableId.toString(16)}`
+      if (tableId === 0xFC && section + 13 < buf.length) {
+        const cmdType = buf[section + 3 + 10]
+        info += ` cmd_type=0x${cmdType.toString(16)}`
+      }
+    }
+  }
+  return info
+}
 
 export function onScteInputEvent(cb: (sourceId: string, ev: ScteInputEvent) => void): void {
   callbacks.add(cb)
@@ -105,7 +129,7 @@ export function feedRawBuffer(sourceId: string, chunk: Buffer): void {
   const existing = rawBuffers.get(sourceId)
   if (!existing) {
     console.log(`[scte35-watcher/${sourceId}] pipe ativo — recebendo TS bruto (primeiro chunk: ${chunk.length} bytes)`)
-    diagState.set(sourceId, { pidsDone: false, pid0500Seen: false, totalBytes: 0 })
+    diagState.set(sourceId, { pidsDone: false, pid0500Seen: false, totalBytes: 0, pid0500LogCount: 0 })
   }
   let buf = existing ?? Buffer.alloc(0)
   buf = Buffer.concat([buf, chunk])
@@ -114,7 +138,7 @@ export function feedRawBuffer(sourceId: string, chunk: Buffer): void {
   const slice = buf.slice(0, aligned)
 
   // Diagnóstico: lista de PIDs e detecção de PID 0x0500
-  const ds = diagState.get(sourceId) ?? { pidsDone: false, pid0500Seen: false, totalBytes: 0 }
+  const ds = diagState.get(sourceId) ?? { pidsDone: false, pid0500Seen: false, totalBytes: 0, pid0500LogCount: 0 }
   ds.totalBytes += slice.length
   let found0500 = false
   if (!ds.pidsDone && ds.totalBytes >= 100 * TS_PACKET_SIZE) {
@@ -124,13 +148,25 @@ export function feedRawBuffer(sourceId: string, chunk: Buffer): void {
       if (slice[i] !== SYNC_BYTE) continue
       const pid = ((slice[i + 1] & 0x1F) << 8) | slice[i + 2]
       pids.add(pid)
-      if (pid === 0x0500) found0500 = true
+      if (pid === 0x0500) {
+        found0500 = true
+        if (ds.pid0500LogCount < 8) {
+          ds.pid0500LogCount++
+          console.log(`[scte35-watcher/${sourceId}] pacote PID 0x0500: ${describePid0500Packet(slice, i)}`)
+        }
+      }
     }
     console.log(`[scte35-watcher/${sourceId}] PIDs no pipe: ${[...pids].map(p => '0x' + p.toString(16).padStart(4, '0')).join(', ')}`)
   } else {
-    for (let i = 0; !found0500 && i + TS_PACKET_SIZE <= slice.length; i += TS_PACKET_SIZE) {
+    for (let i = 0; i + TS_PACKET_SIZE <= slice.length; i += TS_PACKET_SIZE) {
       if (slice[i] !== SYNC_BYTE) continue
-      if ((((slice[i + 1] & 0x1F) << 8) | slice[i + 2]) === 0x0500) found0500 = true
+      if ((((slice[i + 1] & 0x1F) << 8) | slice[i + 2]) === 0x0500) {
+        found0500 = true
+        if (ds.pid0500LogCount < 8) {
+          ds.pid0500LogCount++
+          console.log(`[scte35-watcher/${sourceId}] pacote PID 0x0500: ${describePid0500Packet(slice, i)}`)
+        }
+      }
     }
   }
   if (found0500 && !ds.pid0500Seen) {
