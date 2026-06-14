@@ -127,7 +127,10 @@ function buildRelayArgs(output: OutputConfig, port: number): string[] | null {
   // Restrito a RTMP — em relays SRT/LOCAL_DEVICE de longa duração, pequena diferença de
   // clock entre encoder e relay (~rate 1.05x observado) acumula drift até estourar o fifo
   // e derrubar pacotes, gerando discontinuidades de timestamp propagadas a quem recebe o stream.
-  // fifo_size reduzido: menos acúmulo de buffer entre troca de clipes
+  // fifo_size NÃO especificado: é em pacotes de 188 bytes (default ffmpeg = 28672 ≈ 5.1MB),
+  // não em bytes. O valor anterior (1000000 = ~188MB) pretendia "reduzir" o buffer mas na
+  // verdade alocava 37x o default — mesma confusão de unidade do bug corrigido em
+  // active-inputs.service.ts. Sem o parâmetro, usa o default do ffmpeg.
   // timeout=15s: ao trocar para um clip URL/YouTube, o processo concat encerra e
   // o yt-dlp leva alguns segundos para resolver a nova URL antes do próximo processo
   // retomar a escrita no UDP. Um timeout curto (3s, valor anterior) fazia o relay
@@ -136,7 +139,7 @@ function buildRelayArgs(output: OutputConfig, port: number): string[] | null {
   // janela de resolução sem deixar o relay "pendurado" por muito tempo em caso de crash real.
   // buffer_size: aumenta o SO_RCVBUF do socket (padrão do kernel ~208KB) para o
   // máximo permitido (net.core.rmem_max) — reduz descarte de datagramas em picos
-  const udpUrl    = `udp://0.0.0.0:${port}?fifo_size=1000000&overrun_nonfatal=1&timeout=15000000&buffer_size=4194304`
+  const udpUrl    = `udp://0.0.0.0:${port}?overrun_nonfatal=1&timeout=15000000&buffer_size=4194304`
   const readRate  = output.type === 'RTMP' ? ['-re'] : []
   const inputArgs = ['-hide_banner', '-loglevel', 'warning', '-stats', ...readRate, '-f', 'mpegts', '-i', udpUrl]
   const codec     = ['-c', 'copy']

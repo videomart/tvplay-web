@@ -214,7 +214,11 @@ async function launchSession(source: InputSourceMeta, session: Session): Promise
       const msg = d.toString().trim()
       if (msg) console.log(`[active-input/${source.id}/relay] ${msg}`)
     })
-    mainInputUrl = `udp://127.0.0.1:${ports.hls}?overrun_nonfatal=1&fifo_size=10000000`
+    // fifo_size é em pacotes de 188 bytes (default ffmpeg = 28672 ≈ 5.1MB) — NÃO em bytes.
+    // Um valor de 10000000 aqui alocava ~1.8GB e era preenchido gradualmente até o
+    // watchdog de memória (300MB) matar o processo a cada ~2-3min, achando que era
+    // vazamento. Sem o parâmetro, usa o default do ffmpeg (suficiente p/ loopback local).
+    mainInputUrl = `udp://127.0.0.1:${ports.hls}?overrun_nonfatal=1`
     scteWatcher.startUdpWatcher(source.id, ports.scte)
   }
 
