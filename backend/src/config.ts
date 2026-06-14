@@ -27,12 +27,6 @@ export const config = {
     // Caminho para arquivo de cookies do YouTube (formato Netscape/cookies.txt)
     // Necessário em servidores cloud/VPS onde o YouTube bloqueia IPs de datacenter
     cookiesFile: process.env.YTDLP_COOKIES_FILE ?? '',
-    // YouTube bloqueia quase todas as requisições yt-dlp originadas de IPs de
-    // datacenter ("Sign in to confirm you're not a bot") — cookies não resolvem
-    // o problema de forma confiável. Em servidores VPS, defina YTDLP_ENABLED=false
-    // para pular as tentativas (evita timeouts de até 60s x 5 clients por chamada)
-    // e degradar direto para o fallback. Padrão: habilitado (uso local/desktop).
-    enabled: process.env.YTDLP_ENABLED !== 'false',
   },
 
   storage: {
@@ -42,6 +36,6 @@ export const config = {
 }
 
 // Mensagem exibida quando o usuário tenta usar/visualizar conteúdo YouTube/Twitch
-// num servidor com YTDLP_ENABLED=false (ex.: VPS).
+// num servidor com a opção "Conteúdo YouTube/Twitch" desligada em Configurações (ex.: VPS).
 export const YTDLP_DISABLED_ERROR =
   'Conteúdo do YouTube/Twitch não está disponível neste servidor — recurso restrito ao ambiente local (IPs de VPS são bloqueados pelo YouTube).'

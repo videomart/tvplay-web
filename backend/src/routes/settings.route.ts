@@ -4,6 +4,7 @@ import fs from 'fs'
 import { prisma } from '../lib/prisma'
 import { storageService } from '../services/storage.service'
 import { setClockOffsetHours } from '../services/stream.service'
+import { setYoutubeContentEnabled, isYoutubeContentEnabled } from '../services/playout.service'
 import { config } from '../config'
 
 export default async function settingsRoutes(app: FastifyInstance) {
@@ -23,6 +24,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
       defaultMonitorOpen, defaultFallbackOpen,
       defaultOutputsOpen, defaultPlaylistOpen,
       clockOffsetHours, defaultBreakDuration, defaultSlideDuration, defaultUrlDuration,
+      youtubeContentEnabled,
     } = request.body as {
       appTitle?: string
       companyName?: string
@@ -36,6 +38,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
       defaultBreakDuration?: number
       defaultSlideDuration?: number
       defaultUrlDuration?: number
+      youtubeContentEnabled?: boolean
     }
 
     const result = await prisma.systemSettings.upsert({
@@ -54,6 +57,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
         defaultBreakDuration: defaultBreakDuration ?? 300,
         defaultSlideDuration: defaultSlideDuration ?? 15,
         defaultUrlDuration:   defaultUrlDuration   ?? 0,
+        youtubeContentEnabled: youtubeContentEnabled ?? true,
       },
       update: {
         ...(appTitle              !== undefined && { appTitle }),
@@ -68,11 +72,14 @@ export default async function settingsRoutes(app: FastifyInstance) {
         ...(defaultBreakDuration  !== undefined && { defaultBreakDuration }),
         ...(defaultSlideDuration  !== undefined && { defaultSlideDuration }),
         ...(defaultUrlDuration    !== undefined && { defaultUrlDuration }),
+        ...(youtubeContentEnabled !== undefined && { youtubeContentEnabled }),
       },
     })
 
     // Aplica imediatamente no stream service (novos processos FFmpeg usarão o TZ atualizado)
     if (clockOffsetHours !== undefined) setClockOffsetHours(clockOffsetHours)
+    // Aplica imediatamente — sem rebuild/restart — nas rotas que verificam yt-dlp
+    if (youtubeContentEnabled !== undefined) setYoutubeContentEnabled(youtubeContentEnabled)
 
     return result
   })
@@ -164,7 +171,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
 
   // Status das cookies do YouTube + se a resolução yt-dlp está habilitada neste servidor
   app.get('/youtube-cookies-status', auth, async () => {
-    const enabled = config.ytdlp.enabled
+    const enabled = isYoutubeContentEnabled()
     const cookiesPath = config.ytdlp?.cookiesFile
     if (!cookiesPath || !fs.existsSync(cookiesPath)) return { exists: false, lines: 0, updatedAt: null, enabled }
     const stat = fs.statSync(cookiesPath)

@@ -8,9 +8,9 @@ import { promisify } from 'util'
 import { prisma } from '../lib/prisma'
 import * as previewService from '../services/preview.service'
 import * as activeInputsService from '../services/active-inputs.service'
-import { refreshInputSourceConsumers } from '../services/playout.service'
+import { refreshInputSourceConsumers, isYoutubeContentEnabled } from '../services/playout.service'
 import { getLastEvent } from '../services/scte35-watcher.service'
-import { config, YTDLP_DISABLED_ERROR } from '../config'
+import { YTDLP_DISABLED_ERROR } from '../config'
 
 const execFileAsync = promisify(execFile)
 
@@ -200,7 +200,7 @@ export default async function inputSourceRoutes(app: FastifyInstance) {
   app.post('/resolve-youtube', auth, async (request: any, reply) => {
     const { url } = request.body ?? {}
     if (!url) return reply.status(400).send({ error: 'URL obrigatória' })
-    if (!config.ytdlp.enabled) return reply.status(422).send({ error: YTDLP_DISABLED_ERROR })
+    if (!isYoutubeContentEnabled()) return reply.status(422).send({ error: YTDLP_DISABLED_ERROR })
 
     const base = ['--no-playlist', '-g', '--no-warnings', '--socket-timeout', '15']
 
@@ -347,7 +347,7 @@ export default async function inputSourceRoutes(app: FastifyInstance) {
       if (clip.sourceType === 'URL' && clip.sourceUrl) {
         const YT_PATTERN = /youtube\.com|youtu\.be|twitch\.tv/i
         const isYt = YT_PATTERN.test(clip.sourceUrl)
-        if (isYt && !config.ytdlp.enabled) return reply.status(422).send({ error: YTDLP_DISABLED_ERROR })
+        if (isYt && !isYoutubeContentEnabled()) return reply.status(422).send({ error: YTDLP_DISABLED_ERROR })
         const base = ['--no-playlist', '-g', '--socket-timeout', '15', '--no-warnings']
         const fmt  = 'best[protocol=m3u8_native]/best[height<=720]/best'
         let resolvedUrl: string | null = null
@@ -386,7 +386,7 @@ export default async function inputSourceRoutes(app: FastifyInstance) {
     const needsYtDlp = source.type === 'YOUTUBE' ||
       (source.url ? /youtube\.com|youtu\.be|twitch\.tv/i.test(source.url) : false)
 
-    if (needsYtDlp && !config.ytdlp.enabled) return reply.status(422).send({ error: YTDLP_DISABLED_ERROR })
+    if (needsYtDlp && !isYoutubeContentEnabled()) return reply.status(422).send({ error: YTDLP_DISABLED_ERROR })
 
     if (needsYtDlp) {
       const base = ['--no-playlist', '-g', '--socket-timeout', '15', '--no-warnings']

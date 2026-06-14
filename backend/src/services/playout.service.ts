@@ -120,6 +120,22 @@ export async function refreshInputSourceConsumers(sourceId: string): Promise<voi
 
 const execFileAsync = promisify(execFile)
 
+// Controle (via Configurações do sistema) se este servidor resolve fontes/clipes
+// YouTube/Twitch via yt-dlp. YouTube bloqueia quase todas as requisições de IPs de
+// datacenter ("Sign in to confirm you're not a bot") — em VPS, o operador desliga
+// este toggle para pular as tentativas (evita até 5min de timeouts fadados) e
+// degradar direto para fallback. Carregado do banco no boot (server.ts) e atualizado
+// ao salvar Configurações (settings.route.ts).
+let youtubeContentEnabled = true
+
+export function setYoutubeContentEnabled(v: boolean) {
+  youtubeContentEnabled = v
+}
+
+export function isYoutubeContentEnabled(): boolean {
+  return youtubeContentEnabled
+}
+
 const YT_DLP_PATTERN = /youtube\.com|youtu\.be|twitch\.tv/i
 
 // Detecta se uma URL deve ser resolvida via yt-dlp (YouTube, Twitch, etc.)
@@ -156,8 +172,8 @@ function ytCookiesArgs(): string[] {
 // Verifica se URL YouTube/Twitch é stream ao vivo (true) ou VOD (false)
 // Retorna null se yt-dlp falhar
 export async function checkIsLive(url: string): Promise<{ isLive: boolean | null; title?: string; duration?: number }> {
-  if (!config.ytdlp.enabled) {
-    console.log(`[yt-dlp] desabilitado neste servidor (YTDLP_ENABLED=false) — pulando checkIsLive: ${url}`)
+  if (!youtubeContentEnabled) {
+    console.log(`[yt-dlp] desabilitado nas Configurações deste servidor — pulando checkIsLive: ${url}`)
     return { isLive: null }
   }
   const base = ['--no-playlist', '--no-warnings', '--socket-timeout', '15', '--print', '%(is_live)s|%(title)s|%(duration)s']
@@ -179,8 +195,8 @@ export async function checkIsLive(url: string): Promise<{ isLive: boolean | null
 
 // Resolve via yt-dlp — tenta múltiplos player_client para contornar bot-check do YouTube
 async function resolveViaYtDlp(rawUrl: string): Promise<string | null> {
-  if (!config.ytdlp.enabled) {
-    console.log(`[yt-dlp] desabilitado neste servidor (YTDLP_ENABLED=false) — não resolvendo: ${rawUrl}`)
+  if (!youtubeContentEnabled) {
+    console.log(`[yt-dlp] desabilitado nas Configurações deste servidor — não resolvendo: ${rawUrl}`)
     return null
   }
   const base = [

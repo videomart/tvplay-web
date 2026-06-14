@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
 
-// YouTube/Twitch via yt-dlp é desabilitado em servidores VPS (YTDLP_ENABLED=false no
-// backend) — IPs de datacenter são bloqueados pelo YouTube quase universalmente.
-// Usado para avisar o operador antes de configurar uma entrada/clipe que não vai funcionar.
+// Conteúdo YouTube/Twitch pode ser desligado em Configurações (toggle "Conteúdo
+// YouTube/Twitch") em servidores VPS — IPs de datacenter são bloqueados pelo YouTube
+// quase universalmente. Usado para avisar o operador antes de configurar uma entrada/clipe
+// que não vai funcionar.
 export function useYoutubeEnabled(): boolean {
   const { data } = useQuery({
     queryKey: ['youtube-cookies-status'],

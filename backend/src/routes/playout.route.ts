@@ -7,7 +7,7 @@ import * as playout from '../services/playout.service'
 import * as streamService from '../services/stream.service'
 import * as previewService from '../services/preview.service'
 import { prisma } from '../lib/prisma'
-import { config, YTDLP_DISABLED_ERROR } from '../config'
+import { YTDLP_DISABLED_ERROR } from '../config'
 
 const execFileAsync = promisify(execFile)
 
@@ -73,7 +73,7 @@ export default async function playoutRoutes(app: FastifyInstance) {
     if (/^srt:|^rtmps?:|^rtsp:/i.test(sourceUrl)) {
       // SRT/RTMP/RTSP: usa a URL diretamente (yt-dlp não suporta esses protocolos)
     } else if (/youtube\.com|youtu\.be|twitch\.tv/i.test(sourceUrl)) {
-      if (!config.ytdlp.enabled) return reply.status(422).send({ error: YTDLP_DISABLED_ERROR })
+      if (!playout.isYoutubeContentEnabled()) return reply.status(422).send({ error: YTDLP_DISABLED_ERROR })
       const base = ['--no-playlist', '-g', '--socket-timeout', '15', '--no-warnings']
       const fmt  = 'best[protocol=m3u8_native]/best[height<=720]/best'
       const tryYt = async (...extra: string[]): Promise<string | null> => {

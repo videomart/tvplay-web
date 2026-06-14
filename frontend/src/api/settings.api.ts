@@ -14,6 +14,7 @@ export interface SystemSettings {
   defaultBreakDuration: number
   defaultSlideDuration: number
   defaultUrlDuration: number
+  youtubeContentEnabled: boolean
   updatedAt: string
 }
 

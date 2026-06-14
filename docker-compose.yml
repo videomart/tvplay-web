@@ -92,10 +92,6 @@ services:
       # Cookies do YouTube — necessário em IPs de datacenter/VPS
       # Coloque o arquivo em ./cookies/youtube-cookies.txt (pasta persistida fora do git)
       YTDLP_COOKIES_FILE: /app/cookies/youtube-cookies.txt
-      # YouTube bloqueia quase todas as requisições yt-dlp de IPs de datacenter
-      # ("Sign in to confirm you're not a bot") — em VPS, defina YTDLP_ENABLED=false
-      # no .env deste servidor (não commitado) para desabilitar e degradar para fallback.
-      YTDLP_ENABLED: ${YTDLP_ENABLED:-true}
     ports:
       - '3001:3001'
       - '4000:4000/udp'

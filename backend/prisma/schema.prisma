@@ -477,6 +477,12 @@ model SystemSettings {
   // Duração máxima padrão de clipes URL (YouTube/SRT) ao inserir na playlist (em segundos, 0 = sem limite)
   defaultUrlDuration   Int @default(0)
 
+  // Permite resolução de fontes/clipes YouTube/Twitch via yt-dlp neste servidor.
+  // YouTube bloqueia quase todas as requisições de IPs de datacenter — em VPS,
+  // o operador desliga este toggle para evitar tentativas fadadas e degradar
+  // direto para fallback (a UI também avisa onde essas fontes seriam cadastradas).
+  youtubeContentEnabled Boolean @default(true)
+
   updatedAt DateTime @updatedAt
 
   @@map("system_settings")

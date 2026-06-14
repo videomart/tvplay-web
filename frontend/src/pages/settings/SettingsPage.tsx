@@ -32,6 +32,7 @@ export default function SettingsPage() {
     onSuccess: () => {
       toast.success('Configurações salvas')
       qc.invalidateQueries({ queryKey: ['settings'] })
+      qc.invalidateQueries({ queryKey: ['youtube-cookies-status'] })
     },
     onError: () => toast.error('Erro ao salvar'),
   })
@@ -61,6 +62,7 @@ export default function SettingsPage() {
   const [defaultBreakDuration,  setDefaultBreakDuration]  = useState(300)
   const [defaultSlideDuration,  setDefaultSlideDuration]  = useState(15)
   const [defaultUrlDuration,    setDefaultUrlDuration]    = useState(0)
+  const [youtubeContentEnabled, setYoutubeContentEnabled] = useState(true)
   const [cookiesUploading,      setCookiesUploading]      = useState(false)
   const cookiesFileRef = useRef<HTMLInputElement>(null)
 
@@ -109,6 +111,7 @@ export default function SettingsPage() {
       setDefaultBreakDuration(settings.defaultBreakDuration ?? 300)
       setDefaultSlideDuration(settings.defaultSlideDuration ?? 15)
       setDefaultUrlDuration(settings.defaultUrlDuration ?? 0)
+      setYoutubeContentEnabled(settings.youtubeContentEnabled ?? true)
     }
   }, [settings])
 
@@ -420,9 +423,41 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* Cookies do YouTube */}
+          {/* Conteúdo YouTube/Twitch */}
           <div className="border-t border-gray-800 pt-4 space-y-3">
             <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+              <Tv2 className="h-4 w-4 text-red-400" />
+              Conteúdo YouTube / Twitch
+            </h3>
+            <p className="text-xs text-gray-500">
+              YouTube bloqueia quase todas as resoluções via yt-dlp feitas a partir de IPs de datacenter
+              ("Sign in to confirm you're not a bot") — cookies não resolvem esse bloqueio. Em servidores
+              VPS, desligue esta opção para impedir o cadastro/uso de entradas e clipes YouTube/Twitch
+              neste servidor e degradar direto para fallback. Em ambiente local, mantenha ligado.
+            </p>
+
+            <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg hover:bg-gray-800/30">
+              <span className="text-sm text-gray-300">Permitir conteúdo YouTube/Twitch neste servidor</span>
+              <button type="button" onClick={() => setYoutubeContentEnabled((v) => !v)}
+                className={clsx('relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0',
+                  youtubeContentEnabled ? 'bg-brand-600' : 'bg-gray-700')}>
+                <span className={clsx('inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform',
+                  youtubeContentEnabled ? 'translate-x-[18px]' : 'translate-x-0.5')} />
+              </button>
+            </div>
+
+            {cookiesStatus && cookiesStatus.enabled === false && (
+              <div className="flex items-start gap-2 text-xs px-3 py-2 rounded-lg border bg-red-900/20 border-red-700/40 text-red-400">
+                <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                <span>
+                  Conteúdo YouTube/Twitch está <strong>desabilitado</strong> neste servidor.
+                  Entradas e clipes do tipo YouTube/Twitch não funcionarão aqui. Use esse tipo de
+                  conteúdo apenas em ambiente local.
+                </span>
+              </div>
+            )}
+
+            <h3 className="text-sm font-semibold text-white flex items-center gap-2 pt-1">
               <RefreshCw className="h-4 w-4 text-red-400" />
               Cookies do YouTube
             </h3>
@@ -431,17 +466,6 @@ export default function SettingsPage() {
               Exporte as cookies do seu browser logado no YouTube usando a extensão
               <strong className="text-gray-400"> "Get cookies.txt LOCALLY"</strong> e faça upload aqui.
             </p>
-
-            {cookiesStatus && cookiesStatus.enabled === false && (
-              <div className="flex items-start gap-2 text-xs px-3 py-2 rounded-lg border bg-red-900/20 border-red-700/40 text-red-400">
-                <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
-                <span>
-                  Resolução via yt-dlp está <strong>desabilitada</strong> neste servidor (<code className="bg-gray-800 px-1 rounded">YTDLP_ENABLED=false</code>).
-                  Entradas e clipes do tipo YouTube/Twitch não funcionarão aqui — cookies não resolvem o bloqueio
-                  de IPs de datacenter do YouTube. Use esse tipo de conteúdo apenas em ambiente local.
-                </span>
-              </div>
-            )}
 
             {cookiesStatus && (
               <div className={clsx('flex items-center gap-2 text-xs px-3 py-2 rounded-lg border',
@@ -472,7 +496,7 @@ export default function SettingsPage() {
             <Button
               icon={<Save className="h-4 w-4" />}
               loading={saveMut.isPending}
-              onClick={() => saveMut.mutate({ ...playoutDefaults, clockOffsetHours, defaultBreakDuration, defaultSlideDuration, defaultUrlDuration })}
+              onClick={() => saveMut.mutate({ ...playoutDefaults, clockOffsetHours, defaultBreakDuration, defaultSlideDuration, defaultUrlDuration, youtubeContentEnabled })}
             >
               Salvar
             </Button>

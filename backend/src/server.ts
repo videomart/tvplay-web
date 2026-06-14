@@ -5,7 +5,7 @@ import { config } from './config'
 import authPlugin from './plugins/auth.plugin'
 import corsPlugin from './plugins/cors.plugin'
 import { registerRoutes } from './routes'
-import { initFromDb, handleStreamFailure, resolveSourceUrl, handleScteInputEvent } from './services/playout.service'
+import { initFromDb, handleStreamFailure, resolveSourceUrl, handleScteInputEvent, setYoutubeContentEnabled } from './services/playout.service'
 import { setStreamFailureCallback, setClockOffsetHours, startRelayCycleWatcher } from './services/stream.service'
 import { setUrlResolver, initActiveInputs } from './services/active-inputs.service'
 import { onScteInputEvent } from './services/scte35-watcher.service'
@@ -39,9 +39,10 @@ async function bootstrap() {
   setStreamFailureCallback(handleStreamFailure)
   // Câmera é fonte persistente — NÃO para ao trocar clipes ou comutar saídas
 
-  // Carrega offset do relógio das configurações do sistema
+  // Carrega offset do relógio e toggle de conteúdo YouTube/Twitch das configurações do sistema
   const sysSettings = await prisma.systemSettings.findUnique({ where: { id: 'singleton' } })
   if (sysSettings?.clockOffsetHours) setClockOffsetHours(sysSettings.clockOffsetHours)
+  if (sysSettings) setYoutubeContentEnabled(sysSettings.youtubeContentEnabled)
 
   // Injeta resolver de URL no serviço de entradas ativas (quebra dep. circular)
   setUrlResolver(resolveSourceUrl)
