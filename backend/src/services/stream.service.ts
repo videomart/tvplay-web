@@ -860,8 +860,12 @@ export function stopAllStreaming(channelId: string) {
 // de corrupção, e um cue SCTE-35 one-shot perdido nunca é recuperado. O
 // watcher do lado receptor deduplica por eventId+outOfNetwork, então as
 // repetições não geram eventos duplicados.
-const SCTE35_REPEATS       = 8
-const SCTE35_REPEAT_GAP_MS = 250
+// Janela alongada (~4.8s): a transição para BREAK reinicia todo o pipeline
+// de saída (fallback) na mesma janela da injeção — as primeiras repetições
+// caem durante essa instabilidade, mas as últimas alcançam o relay já
+// estabilizado no novo pipeline.
+const SCTE35_REPEATS       = 12
+const SCTE35_REPEAT_GAP_MS = 400
 
 export function injectScte35(channelId: string, outOfNetwork: boolean, durationSecs?: number): void {
   const outputs = channelProcs.get(channelId)
