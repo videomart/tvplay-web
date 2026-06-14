@@ -37,7 +37,7 @@ function describePid0500Packet(buf: Buffer, i: number): string {
   const pusi          = (buf[i + 1] & 0x40) !== 0
   const adaptCtrl     = (buf[i + 3] & 0x30) >> 4
   const hasAdaptation = adaptCtrl === 3 || adaptCtrl === 2
-  const hasPayload    = adaptCtrl === 3 || adaptCtrl === 1
+  const hasPayload    = adaptCtrl !== 2
   let info = `pusi=${pusi} adaptCtrl=${adaptCtrl}`
   if (pusi && hasPayload) {
     const adaptLen = hasAdaptation ? (buf[i + 4] + 1) : 0
@@ -78,7 +78,10 @@ export function scanTsBuffer(buf: Buffer): ScteInputEvent | null {
     const pusi               = (buf[i + 1] & 0x40) !== 0
     const adaptCtrl          = (buf[i + 3] & 0x30) >> 4
     const hasAdaptation      = adaptCtrl === 3 || adaptCtrl === 2
-    const hasPayload         = adaptCtrl === 3 || adaptCtrl === 1
+    // adaptCtrl=00 é reservado/inválido pela spec, mas o muxer mpegts do FFmpeg
+    // o produz ao reempacotar PIDs privados (-copy_unknown, ex.: PID 0x0500) —
+    // trata-se igual a 01 (payload a partir do byte 4, sem adaptation field).
+    const hasPayload         = adaptCtrl !== 2
 
     if (!hasPayload || !pusi) { i += TS_PACKET_SIZE; continue }
 
