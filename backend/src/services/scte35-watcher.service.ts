@@ -76,6 +76,7 @@ export function scanTsBuffer(buf: Buffer): ScteInputEvent | null {
     if (buf[i] !== SYNC_BYTE) { i++; continue }
 
     const pusi               = (buf[i + 1] & 0x40) !== 0
+    const pid                = ((buf[i + 1] & 0x1F) << 8) | buf[i + 2]
     const adaptCtrl          = (buf[i + 3] & 0x30) >> 4
     const hasAdaptation      = adaptCtrl === 3 || adaptCtrl === 2
     // adaptCtrl=00 é reservado/inválido pela spec, mas o muxer mpegts do FFmpeg
@@ -83,12 +84,23 @@ export function scanTsBuffer(buf: Buffer): ScteInputEvent | null {
     // trata-se igual a 01 (payload a partir do byte 4, sem adaptation field).
     const hasPayload         = adaptCtrl !== 2
 
-    if (!hasPayload || !pusi) { i += TS_PACKET_SIZE; continue }
+    if (!hasPayload) { i += TS_PACKET_SIZE; continue }
 
     const adaptLen  = hasAdaptation ? (buf[i + 4] + 1) : 0
     const payload   = i + 4 + adaptLen        // offset do início do payload no buffer
-    const pf        = buf[payload]             // pointer_field
-    const section   = payload + 1 + pf        // offset do início da seção PSI
+
+    let section: number
+    if (pusi) {
+      const pf = buf[payload]                 // pointer_field
+      section  = payload + 1 + pf             // offset do início da seção PSI
+    } else if (pid === 0x0500) {
+      // O remux duplo (relay M3 + active-input M1, ambos -copy_unknown) também
+      // zera o bit PUSI deste PID privado. Como só essa PID transporta SCTE-35
+      // aqui, assume seção sem pointer_field começando no início do payload.
+      section = payload
+    } else {
+      i += TS_PACKET_SIZE; continue
+    }
 
     if (section + 18 >= buf.length) { i += TS_PACKET_SIZE; continue }
     if (buf[section] !== 0xFC) { i += TS_PACKET_SIZE; continue } // table_id
