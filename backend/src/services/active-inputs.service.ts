@@ -174,7 +174,10 @@ function buildArgs(inputUrl: string, outputDir: string): string[] {
  */
 function buildRelayArgs(srtUrl: string, ports: { hls: number; scte: number }): string[] {
   return [
-    '-hide_banner', '-loglevel', 'warning',
+    // Diagnóstico temporário v1.0.80: "info" (acima de "warning") expõe o banner
+    // "Input #0"/"Stream mapping" do FFmpeg, permitindo confirmar se a PID 0x0500
+    // (stream_type 0x86 / SCTE-35) é detectada na entrada SRT recebida da M3.
+    '-hide_banner', '-loglevel', 'info',
     '-err_detect', 'ignore_err',
     '-fflags', '+discardcorrupt+genpts',
     '-i', withSrtTimeout(srtUrl),
