@@ -160,6 +160,16 @@ export default async function playoutRoutes(app: FastifyInstance) {
     )
   })
 
+  // Diagnóstico: injeta um splice_insert SCTE-35 sem disparar transição de
+  // item/restart do pipeline — permite testar a detecção do lado receptor
+  // numa janela estável do stream.
+  app.post('/:channelId/test-scte', auth, async (request: any, reply) => {
+    const { outOfNetwork, durationSecs } = request.body as { outOfNetwork: boolean; durationSecs?: number }
+    if (outOfNetwork == null) return reply.status(400).send({ error: 'outOfNetwork é obrigatório' })
+    streamService.injectScte35(request.params.channelId, outOfNetwork, durationSecs)
+    return { ok: true }
+  })
+
   // Corta imediatamente para uma fonte de entrada (interrompe playlist se ativa)
   app.post('/:channelId/cut-to-input', auth, async (request: any, reply) => {
     const { sourceId } = request.body as { sourceId: string }
