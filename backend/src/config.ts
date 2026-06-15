@@ -33,6 +33,15 @@ export const config = {
     hlsOutputPath: process.env.HLS_OUTPUT_PATH ?? './storage/hls',
     transcodeOutputPath: process.env.TRANSCODE_OUTPUT_PATH ?? './storage/transcoded',
   },
+
+  // Sinalização direta de eventos SCTE-35 para um receptor remoto (ex.: M1).
+  // Usado quando o relay FFmpeg não encaminha PID 0x0500 pelo container mpegts.
+  // Deixar em branco para desabilitar.
+  scteSignal: {
+    url:      process.env.SCTE_SIGNAL_URL       ?? '',  // Ex.: http://vps1.tvtupi.com.br:3001/api/input-sources/scte-signal
+    sourceId: process.env.SCTE_SIGNAL_SOURCE_ID ?? '',  // ID do InputSource no receptor remoto
+    secret:   process.env.SCTE_SIGNAL_SECRET    ?? '',  // Segredo compartilhado (header x-scte-secret)
+  },
 }
 
 // Mensagem exibida quando o usuário tenta usar/visualizar conteúdo YouTube/Twitch

@@ -8,9 +8,9 @@ import { promisify } from 'util'
 import { prisma } from '../lib/prisma'
 import * as previewService from '../services/preview.service'
 import * as activeInputsService from '../services/active-inputs.service'
-import { refreshInputSourceConsumers, isYoutubeContentEnabled } from '../services/playout.service'
+import { refreshInputSourceConsumers, isYoutubeContentEnabled, handleScteInputEvent } from '../services/playout.service'
 import { getLastEvent } from '../services/scte35-watcher.service'
-import { YTDLP_DISABLED_ERROR } from '../config'
+import { config, YTDLP_DISABLED_ERROR } from '../config'
 
 const execFileAsync = promisify(execFile)
 
@@ -484,5 +484,35 @@ export default async function inputSourceRoutes(app: FastifyInstance) {
     reply.header('Cache-Control', isPlaylist ? 'no-cache, no-store' : 'public, max-age=10')
     reply.header('Access-Control-Allow-Origin', '*')
     return reply.send(fs.createReadStream(filePath))
+  })
+
+  // Endpoint de sinalização direta de eventos SCTE-35 vindos de um emissor remoto (ex.: M3).
+  // Bypass do parsing MPEG-TS — usado quando o relay FFmpeg não encaminha PID 0x0500.
+  // Autenticado por segredo compartilhado (SCTE_SIGNAL_SECRET) no header x-scte-secret.
+  app.post('/scte-signal', async (request: any, reply) => {
+    const secret = config.scteSignal.secret
+    if (!secret) return reply.status(503).send({ error: 'SCTE_SIGNAL_SECRET não configurado neste servidor' })
+    if (request.headers['x-scte-secret'] !== secret) return reply.status(401).send({ error: 'Segredo inválido' })
+
+    const body = z.object({
+      sourceId:     z.string().min(1),
+      outOfNetwork: z.boolean(),
+      durationSecs: z.number().positive().optional(),
+      action:       z.enum(['LOG', 'BREAK']).optional(),
+    }).safeParse(request.body)
+    if (!body.success) return reply.status(400).send({ error: body.error.message })
+
+    const { sourceId, outOfNetwork, durationSecs, action: bodyAction } = body.data
+
+    const src = await prisma.inputSource.findUnique({
+      where: { id: sourceId },
+      select: { scteAction: true },
+    }).catch(() => null)
+
+    const action = bodyAction ?? src?.scteAction ?? 'LOG'
+    console.log(`[scte-signal] evento remoto sourceId=${sourceId} outOfNetwork=${outOfNetwork}${durationSecs ? ` dur=${durationSecs}s` : ''} action=${action}`)
+    handleScteInputEvent(sourceId, outOfNetwork, durationSecs, action).catch(() => {})
+
+    return reply.send({ ok: true })
   })
 }

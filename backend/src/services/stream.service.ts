@@ -905,6 +905,20 @@ export function injectScte35(channelId: string, outOfNetwork: boolean, durationS
     setTimeout(send, n * SCTE35_REPEAT_GAP_MS)
   }
   console.log(`[scte35/${channelId}] splice_insert out_of_network=${outOfNetwork}${durationSecs ? ` dur=${durationSecs}s` : ''} (${SCTE35_REPEATS}x)`)
+
+  signalRemoteScte35(outOfNetwork, durationSecs)
+}
+
+function signalRemoteScte35(outOfNetwork: boolean, durationSecs?: number): void {
+  const { url, sourceId, secret } = config.scteSignal
+  if (!url || !sourceId || !secret) return
+  fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-scte-secret': secret },
+    body: JSON.stringify({ sourceId, outOfNetwork, durationSecs }),
+  })
+    .then(res => { if (!res.ok) console.warn(`[scte-signal] resposta inesperada: ${res.status}`) })
+    .catch(err => console.warn(`[scte-signal] falha ao sinalizar remoto: ${err.message}`))
 }
 
 export async function restartStreaming(
