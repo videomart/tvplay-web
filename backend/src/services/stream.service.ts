@@ -223,19 +223,39 @@ async function ensureRelays(channelId: string, outputs: OutputConfig[]): Promise
 
     const relayPort = getOrAllocRelayPort(output.id)  // sempre aloca (idempotente)
 
-    // Inicia relay se não estiver ativo
-    const existing = relayMap.get(output.id)
-    if (!existing || existing.stopped || existing.proc.exitCode !== null) {
-      const relay = spawnRelay(channelId, output, relayPort)
-      if (relay) relayMap.set(output.id, relay)
-    }
-
-    // Proxy SCTE-35: sempre verifica — fora do guard do relay
-    // Garante que proxyPortMap tem a porta mesmo quando relay já estava ativo
+    // Proxy SCTE-35 ANTES do relay: o relay roda `-map 0 -c copy` e faz o probe
+    // de streams UMA ÚNICA VEZ na abertura — se essa abertura ocorrer (ou já
+    // tiver ocorrido) antes do proxy estar reescrevendo o PMT para incluir o
+    // PID 0x0500/0x86, o relay trava nos PIDs originais do conteúdo para sempre
+    // e o SCTE-35 nunca chega ao destino (causa raiz v1.0.80).
     const key = proxyKey(channelId, output.id)
-    if (!tsProxy.isProxyActive(key)) {
+    const proxyWasActive = tsProxy.isProxyActive(key)
+    if (!proxyWasActive) {
       const proxyPort = getOrAllocProxyPort(output.id)
       tsProxy.startProxy(key, proxyPort, relayPort)
+    }
+
+    const existing = relayMap.get(output.id)
+    const relayAlive = !!existing && !existing.stopped && existing.proc.exitCode === null
+
+    if (!relayAlive) {
+      const relay = spawnRelay(channelId, output, relayPort)
+      if (relay) relayMap.set(output.id, relay)
+    } else if (!proxyWasActive) {
+      // Relay já estava rodando com o probe feito antes do proxy existir —
+      // reinicia para reprovar os streams com o PMT já reescrito (0x0500/0x86)
+      // desde o primeiro pacote. SIGTERM não dispara auto-respawn (isError
+      // exige code !== null), então o respawn é feito explicitamente aqui.
+      console.log(`[relay/${channelId}/${output.name}] Proxy SCTE-35 (re)ativado — reiniciando relay para reprovar PIDs com PMT reescrito`)
+      const oldProc = existing.proc
+      existing.stopped = true
+      try { oldProc.kill('SIGTERM') } catch {}
+      setTimeout(() => {
+        const current = relayMap.get(output.id)
+        if (current && current.proc !== oldProc) return // já substituído por outra via
+        const relay = spawnRelay(channelId, output, relayPort)
+        if (relay) relayMap.set(output.id, relay)
+      }, 1500)
     }
   }
 }
