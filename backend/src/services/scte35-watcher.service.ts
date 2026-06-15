@@ -39,11 +39,12 @@ function describePid0500Packet(buf: Buffer, i: number): string {
   const hasAdaptation = adaptCtrl === 3 || adaptCtrl === 2
   const hasPayload    = adaptCtrl !== 2
   let info = `pusi=${pusi} adaptCtrl=${adaptCtrl}`
-  if (pusi && hasPayload) {
+  if (hasPayload) {
     const adaptLen = hasAdaptation ? (buf[i + 4] + 1) : 0
     const payload  = i + 4 + adaptLen
     const pf       = buf[payload]
     const section  = payload + 1 + pf
+    info += ` pf=0x${pf.toString(16)}`
     if (section < buf.length) {
       const tableId = buf[section]
       info += ` table_id=0x${tableId.toString(16)}`
@@ -52,6 +53,8 @@ function describePid0500Packet(buf: Buffer, i: number): string {
         info += ` cmd_type=0x${cmdType.toString(16)}`
       }
     }
+    const end = Math.min(payload + 20, buf.length)
+    info += ` payload=${buf.slice(payload, end).toString('hex')}`
   }
   return info
 }
@@ -166,7 +169,7 @@ export function feedRawBuffer(sourceId: string, chunk: Buffer): void {
       pids.add(pid)
       if (pid === 0x0500) {
         found0500 = true
-        if (ds.pid0500LogCount < 8) {
+        if (ds.pid0500LogCount < 40) {
           ds.pid0500LogCount++
           console.log(`[scte35-watcher/${sourceId}] pacote PID 0x0500: ${describePid0500Packet(slice, i)}`)
         }
@@ -178,7 +181,7 @@ export function feedRawBuffer(sourceId: string, chunk: Buffer): void {
       if (slice[i] !== SYNC_BYTE) continue
       if ((((slice[i + 1] & 0x1F) << 8) | slice[i + 2]) === 0x0500) {
         found0500 = true
-        if (ds.pid0500LogCount < 8) {
+        if (ds.pid0500LogCount < 40) {
           ds.pid0500LogCount++
           console.log(`[scte35-watcher/${sourceId}] pacote PID 0x0500: ${describePid0500Packet(slice, i)}`)
         }
