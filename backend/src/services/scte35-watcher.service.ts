@@ -67,8 +67,9 @@ function emit(sourceId: string, ev: ScteInputEvent): void {
 
 /**
  * Escaneia um buffer MPEG-TS em busca de pacotes SCTE-35 (table_id 0xFC).
- * Não filtra por PID fixo — o relay FFmpeg pode reatribuir o PID 0x0500 no output.
- * PUSI=1 obrigatório; verifica table_id=0xFC e splice_command_type=0x05.
+ * PUSI=1 obrigatório, exceto para PID 0x0500 (o duplo remux do pipeline pode
+ * zerar o bit PUSI desse PID privado, mas preserva o pointer_field do payload).
+ * Verifica table_id=0xFC e splice_command_type=0x05.
  */
 export function scanTsBuffer(buf: Buffer): ScteInputEvent | null {
   let i = 0
@@ -90,14 +91,14 @@ export function scanTsBuffer(buf: Buffer): ScteInputEvent | null {
     const payload   = i + 4 + adaptLen        // offset do início do payload no buffer
 
     let section: number
-    if (pusi) {
+    if (pusi || pid === 0x0500) {
+      // O remux duplo (relay M3 + active-input M1, ambos -copy_unknown) zera o
+      // bit PUSI deste PID privado, mas preserva os bytes do payload — que
+      // continuam começando pelo pointer_field original (0x00) seguido do
+      // table_id. Por isso aplica-se a mesma fórmula independente do PUSI
+      // quando o PID é 0x0500 (única PID que transporta SCTE-35 aqui).
       const pf = buf[payload]                 // pointer_field
       section  = payload + 1 + pf             // offset do início da seção PSI
-    } else if (pid === 0x0500) {
-      // O remux duplo (relay M3 + active-input M1, ambos -copy_unknown) também
-      // zera o bit PUSI deste PID privado. Como só essa PID transporta SCTE-35
-      // aqui, assume seção sem pointer_field começando no início do payload.
-      section = payload
     } else {
       i += TS_PACKET_SIZE; continue
     }
