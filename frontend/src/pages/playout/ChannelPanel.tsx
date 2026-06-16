@@ -350,8 +350,8 @@ function PlaylistItemRow({
           isCurrent
             ? 'bg-[rgb(110_16_16)] ring-2 ring-white/60 shadow-[inset_3px_0_0_0_rgb(255_255_255)]'
             : isPlayed
-              ? 'bg-[rgb(65_9_9)] opacity-60 hover:bg-[rgb(80_12_12)]'
-              : 'bg-[rgb(65_9_9)] hover:bg-[rgb(80_12_12)]',
+              ? 'bg-[rgb(65_9_9)] opacity-60 hover:bg-violet-700'
+              : 'bg-[rgb(65_9_9)] hover:bg-violet-700',
           isDragging ? 'opacity-30' : '',
           isDragOver ? 'border-t-2 border-brand-400' : '',
         )}
