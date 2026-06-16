@@ -306,7 +306,7 @@ export interface PlayoutState {
   activeCut: { type: 'INPUT_SOURCE' | 'BLACK' | 'COLORBARS'; sourceId?: string | null } | null
   scteEnabled: boolean
   scteLastEvent: { outOfNetwork: boolean; sentAt: number } | null
-  scteInputLastEvent: { sourceId: string; outOfNetwork: boolean; sentAt: number } | null
+  scteInputLastEvent: { sourceId: string; outOfNetwork: boolean; durationSecs?: number; sentAt: number } | null
 }
 
 export interface CurrentItem {
@@ -1622,7 +1622,7 @@ export async function handleScteInputEvent(
 ): Promise<void> {
   // Registra o evento em todos os canais que têm esta fonte como activeCut
   for (const [channelId, state] of states.entries()) {
-    state.scteInputLastEvent = { sourceId, outOfNetwork, sentAt: Date.now() }
+    state.scteInputLastEvent = { sourceId, outOfNetwork, durationSecs, sentAt: Date.now() }
     broadcast(channelId, state)
   }
 
