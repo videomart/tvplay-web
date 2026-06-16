@@ -346,10 +346,12 @@ function PlaylistItemRow({
         onDragEnd={() => { fromHandle.current = false; onDragEnd() }}
         onDrop={(e) => { e.preventDefault(); onDrop() }}
         className={clsx(
-          'relative flex items-center gap-1.5 px-2 py-1 rounded transition-all bg-[rgb(68_74_114)]',
+          'relative flex items-center gap-1.5 px-2 py-1 rounded transition-all',
           isCurrent
-            ? 'ring-2 ring-white/60 shadow-[inset_3px_0_0_0_rgb(255_255_255)]'
-            : 'hover:bg-[rgb(80_87_132)]',
+            ? 'bg-violet-700 ring-2 ring-white/60 shadow-[inset_3px_0_0_0_rgb(255_255_255)]'
+            : isPlayed
+              ? 'bg-violet-950 opacity-60 hover:bg-violet-900'
+              : 'bg-violet-900 hover:bg-violet-800',
           isDragging ? 'opacity-30' : '',
           isDragOver ? 'border-t-2 border-brand-400' : '',
         )}
@@ -370,7 +372,7 @@ function PlaylistItemRow({
         </span>
         <span className={clsx(
           'flex-1 text-center text-xs font-bold tracking-widest uppercase relative',
-          isCurrent ? 'text-amber-200' : 'text-white'
+          isCurrent ? 'text-amber-200' : isPlayed ? 'text-white/50 line-through' : 'text-white'
         )}>
           ⏸ BREAK{breakIndex != null ? ` #${breakIndex}` : ''}
           {isCurrent && scteEnabled && scteLastEvent && (
