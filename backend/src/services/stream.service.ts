@@ -888,6 +888,9 @@ const SCTE35_REPEATS       = 12
 const SCTE35_REPEAT_GAP_MS = 400
 
 export function injectScte35(channelId: string, outOfNetwork: boolean, durationSecs?: number): void {
+  // Sinalização HTTP direta ao receptor remoto — independente de ter relay ativo
+  signalRemoteScte35(outOfNetwork, durationSecs)
+
   const outputs = channelProcs.get(channelId)
   if (!outputs?.size) return
   const packets = buildBreakPackets(outOfNetwork, durationSecs)
@@ -905,8 +908,6 @@ export function injectScte35(channelId: string, outOfNetwork: boolean, durationS
     setTimeout(send, n * SCTE35_REPEAT_GAP_MS)
   }
   console.log(`[scte35/${channelId}] splice_insert out_of_network=${outOfNetwork}${durationSecs ? ` dur=${durationSecs}s` : ''} (${SCTE35_REPEATS}x)`)
-
-  signalRemoteScte35(outOfNetwork, durationSecs)
 }
 
 function signalRemoteScte35(outOfNetwork: boolean, durationSecs?: number): void {
