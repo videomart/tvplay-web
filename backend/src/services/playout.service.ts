@@ -1587,11 +1587,10 @@ async function findNextBreakIndex(playlistId: string, fromIndex: number): Promis
   const items = await prisma.playlistItem.findMany({
     where: { playlistId },
     orderBy: { order: 'asc' },
-    select: { id: true, order: true },
+    select: { id: true, isBreak: true },
   })
   for (let i = fromIndex + 1; i < items.length; i++) {
-    const row = await prisma.playlistItem.findUnique({ where: { id: items[i].id }, select: { breakNum: true } })
-    if (row && row.breakNum > 0) return i
+    if (items[i].isBreak) return i
   }
   return null
 }
