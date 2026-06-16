@@ -915,6 +915,16 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
     onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao comutar para câmera'),
   })
 
+  const scteOutMut = useMutation({
+    mutationFn: () => playoutApi.injectScte35(channel.id, true, 90),
+    onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao injetar SCTE-OUT'),
+  })
+
+  const scteInMut = useMutation({
+    mutationFn: () => playoutApi.injectScte35(channel.id, false),
+    onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao injetar SCTE-IN'),
+  })
+
   const toggleLoopMut = useMutation({
     mutationFn: (itemId: string) => playoutApi.toggleItemLoop(channel.id, itemId),
     onSuccess: () => refetchItems(),
@@ -1396,6 +1406,29 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
               )}
             >
               BLK
+            </button>
+
+            {/* Separador */}
+            <span className="w-px h-4 bg-gray-700 flex-shrink-0" />
+
+            {/* SCTE-OUT */}
+            <button
+              onClick={() => scteOutMut.mutate()}
+              disabled={scteOutMut.isPending}
+              title="Injetar SCTE-35 OUT (início de break)"
+              className="text-[9px] font-bold px-1 py-0.5 rounded flex-shrink-0 transition-all disabled:opacity-40 bg-red-900/60 text-red-300 hover:bg-red-700/70 hover:text-red-200"
+            >
+              S·OUT
+            </button>
+
+            {/* SCTE-IN */}
+            <button
+              onClick={() => scteInMut.mutate()}
+              disabled={scteInMut.isPending}
+              title="Injetar SCTE-35 IN (fim de break)"
+              className="text-[9px] font-bold px-1 py-0.5 rounded flex-shrink-0 transition-all disabled:opacity-40 bg-emerald-900/60 text-emerald-300 hover:bg-emerald-700/70 hover:text-emerald-200"
+            >
+              S·IN
             </button>
           </div>
 

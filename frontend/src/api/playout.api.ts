@@ -159,4 +159,6 @@ export const playoutApi = {
     api.post<{ hlsUrl: string }>(`/playout/${channelId}/preview-current`).then((r) => r.data),
   stopCurrentPreview: (channelId: string) =>
     api.delete(`/playout/${channelId}/preview-current`).then((r) => r.data),
+  injectScte35: (channelId: string, outOfNetwork: boolean, durationSecs?: number) =>
+    api.post(`/playout/${channelId}/test-scte`, { outOfNetwork, durationSecs }).then((r) => r.data),
 }
