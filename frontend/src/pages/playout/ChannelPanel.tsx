@@ -1159,6 +1159,22 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
               {status === 'PLAYING' ? 'LIVE' : `${activeOutputs} UP`}
             </span>
           )}
+          {(() => {
+            const ev = state?.scteInputLastEvent
+            if (!ev || Date.now() - ev.sentAt >= 60_000) return null
+            const isFresh = Date.now() - ev.sentAt < 8_000
+            return (
+              <span className={clsx(
+                'text-[9px] font-bold tracking-wider px-1.5 py-0.5 rounded border',
+                isFresh && 'animate-pulse',
+                ev.outOfNetwork
+                  ? 'bg-red-600/30 text-red-300 border-red-500/50'
+                  : 'bg-emerald-600/30 text-emerald-300 border-emerald-500/50'
+              )}>
+                SCTE-{ev.outOfNetwork ? 'OUT' : 'IN'}
+              </span>
+            )
+          })()}
         </div>
 
         {/* Direita: botões */}
@@ -1186,7 +1202,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
       {/* ── SCTE input event strip ────────────────────────────────────────── */}
       {(() => {
         const ev = state?.scteInputLastEvent
-        if (!ev || Date.now() - ev.sentAt >= 30_000) return null
+        if (!ev || Date.now() - ev.sentAt >= 60_000) return null
         const srcName = availableSources.find((s) => s.id === ev.sourceId)?.name ?? 'entrada'
         return (
           <div className="flex items-center gap-2 px-3 py-1 bg-amber-950/30 border-b border-amber-800/20">
