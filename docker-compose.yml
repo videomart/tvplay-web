@@ -94,9 +94,9 @@ services:
       YTDLP_COOKIES_FILE: /app/cookies/youtube-cookies.txt
       # Sinalização direta de SCTE-35 para receptor remoto (bypass do FFmpeg relay).
       # M3 (emissor): preencher URL, SOURCE_ID e SECRET; M1 (receptor): preencher só SECRET.
-      SCTE_SIGNAL_URL: ''           # Ex. M3: http://vps1.tvtupi.com.br:3001/api/input-sources/scte-signal
-      SCTE_SIGNAL_SOURCE_ID: ''     # Ex. M3: ID do InputSource SRT no receptor (M1)
-      SCTE_SIGNAL_SECRET: ''        # Segredo compartilhado (mesmo valor em M1 e M3)
+      SCTE_SIGNAL_URL: 'http://vps1.tvtupi.com.br:3001/api/input-sources/scte-signal'
+      SCTE_SIGNAL_SOURCE_ID: 'cmqd364tm0001vrwcs5uyfdyi'
+      SCTE_SIGNAL_SECRET: '618e65acac41441bda7bd691d58b10203c7c231f7c11a511'
     ports:
       - '3001:3001'
       - '4000:4000/udp'
