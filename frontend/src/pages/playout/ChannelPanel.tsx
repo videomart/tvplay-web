@@ -1167,9 +1167,15 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
             </span>
           )}
           {(() => {
-            const ev = state?.scteInputLastEvent
-            if (!ev || Date.now() - ev.sentAt >= 60_000) return null
-            const isFresh = Date.now() - ev.sentAt < 8_000
+            const now = Date.now()
+            const inEv  = state?.scteInputLastEvent
+            const outEv = state?.scteEnabled ? state?.scteLastEvent : null
+            const inAge  = inEv  ? now - inEv.sentAt  : Infinity
+            const outAge = outEv ? now - outEv.sentAt : Infinity
+            const age = Math.min(inAge, outAge)
+            if (age >= 60_000) return null
+            const ev = inAge <= outAge ? inEv! : outEv!
+            const isFresh = age < 8_000
             const durLabel = (ev as any).durationSecs ? ` ${Math.round((ev as any).durationSecs)}s` : ''
             return (
               <span className={clsx(

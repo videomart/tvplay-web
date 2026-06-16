@@ -305,7 +305,7 @@ export interface PlayoutState {
   // Rastreia o sinal atualmente no ar (para iluminação do switcher)
   activeCut: { type: 'INPUT_SOURCE' | 'BLACK' | 'COLORBARS'; sourceId?: string | null } | null
   scteEnabled: boolean
-  scteLastEvent: { outOfNetwork: boolean; sentAt: number } | null
+  scteLastEvent: { outOfNetwork: boolean; durationSecs?: number; sentAt: number } | null
   scteInputLastEvent: { sourceId: string; outOfNetwork: boolean; durationSecs?: number; sentAt: number } | null
 }
 
@@ -863,7 +863,7 @@ function startTimer(channelId: string) {
               // SCTE-35: sinaliza início do intervalo (saída da rede) — apenas se habilitado no canal
               if (state.scteEnabled) {
                 streamService.injectScte35(channelId, true, next.item.maxDuration ?? undefined)
-                state.scteLastEvent = { outOfNetwork: true, sentAt: Date.now() }
+                state.scteLastEvent = { outOfNetwork: true, durationSecs: next.item.maxDuration ?? undefined, sentAt: Date.now() }
               }
               // BREAK: switch to fallback/input, keep timer running so maxDuration is respected
               streamService.clearConcatRun(channelId)
@@ -1110,7 +1110,7 @@ async function restartFromIndex(channelId: string, index: number, playlistId: st
     const s = states.get(channelId)
     if (s?.scteEnabled) {
       streamService.injectScte35(channelId, true, item.maxDuration ?? undefined)
-      s.scteLastEvent = { outOfNetwork: true, sentAt: Date.now() }
+      s.scteLastEvent = { outOfNetwork: true, durationSecs: item.maxDuration ?? undefined, sentAt: Date.now() }
     }
     console.log(`[playout] BREAK manual ch=${channelId} — comutando para fallback/entrada`)
     const ch = await prisma.channel.findUnique({ where: { id: channelId }, include: { fallbackSource: true } }).catch(() => null)
@@ -1636,6 +1636,24 @@ export async function handleScteInputEvent(
       if (state.status !== 'PLAYING' || state.currentItem?.isBreak) continue
       const breakIdx = await findNextBreakIndex(state.playlistId, state.currentIndex).catch(() => null)
       if (breakIdx == null) continue
+
+      // Atualiza maxDuration do BREAK com a duração sinalizada pelo cue SCTE-35
+      if (durationSecs && durationSecs > 0) {
+        const allItems = await prisma.playlistItem.findMany({
+          where: { playlistId: state.playlistId },
+          orderBy: { order: 'asc' },
+          select: { id: true },
+        }).catch(() => [] as { id: string }[])
+        const breakItemId = allItems[breakIdx]?.id
+        if (breakItemId) {
+          await prisma.playlistItem.update({
+            where: { id: breakItemId },
+            data: { maxDuration: Math.round(durationSecs) },
+          }).catch(() => {})
+          console.log(`[playout/scte-in] ch=${channelId} — BREAK #${breakIdx} maxDuration → ${Math.round(durationSecs)}s`)
+        }
+      }
+
       console.log(`[playout/scte-in] ch=${channelId} — SCTE OUT (src=${sourceId}) → jumping to BREAK #${breakIdx}`)
       jumpTo(channelId, breakIdx).catch((err) =>
         console.error(`[playout/scte-in] Falha ao pular para BREAK: ${err.message}`)
