@@ -346,25 +346,32 @@ function PlaylistItemRow({
         onDragEnd={() => { fromHandle.current = false; onDragEnd() }}
         onDrop={(e) => { e.preventDefault(); onDrop() }}
         className={clsx(
-          'flex items-center gap-1.5 px-2 py-1 rounded transition-all bg-[rgb(68_74_114)]',
+          'relative flex items-center gap-1.5 px-2 py-1 rounded transition-all bg-[rgb(68_74_114)]',
           isCurrent
             ? 'ring-2 ring-white/60 shadow-[inset_3px_0_0_0_rgb(255_255_255)]'
-            : '',
+            : 'hover:bg-[rgb(80_87_132)]',
           isDragging ? 'opacity-30' : '',
           isDragOver ? 'border-t-2 border-brand-400' : '',
         )}
       >
+        {/* Overlay pulsante enquanto o BREAK está ativo */}
+        {isCurrent && (
+          <div className="absolute inset-0 rounded bg-indigo-300/20 animate-pulse pointer-events-none" />
+        )}
         <GripVertical
           onMouseDown={() => { fromHandle.current = true }}
           onMouseUp={() => { fromHandle.current = false }}
-          className="h-3.5 w-3.5 flex-shrink-0 cursor-grab active:cursor-grabbing text-white/50"
+          className="h-3.5 w-3.5 flex-shrink-0 cursor-grab active:cursor-grabbing text-white/50 relative"
         />
-        <span className="w-5 flex-shrink-0 flex items-center justify-end">
+        <span className="w-5 flex-shrink-0 flex items-center justify-end relative">
           {isCurrent
-            ? <span className="h-2 w-2 rounded-full bg-white animate-pulse flex-shrink-0" />
+            ? <span className="h-2 w-2 rounded-full bg-amber-300 animate-pulse flex-shrink-0" />
             : <span className="text-[10px] font-mono text-white/50">{item.index + 1}</span>}
         </span>
-        <span className="flex-1 text-center text-xs font-bold text-white tracking-widest uppercase">
+        <span className={clsx(
+          'flex-1 text-center text-xs font-bold tracking-widest uppercase relative',
+          isCurrent ? 'text-amber-200' : 'text-white'
+        )}>
           ⏸ BREAK{breakIndex != null ? ` #${breakIndex}` : ''}
           {isCurrent && scteEnabled && scteLastEvent && (
             <span className={clsx(
