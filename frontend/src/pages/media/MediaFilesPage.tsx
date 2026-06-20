@@ -459,13 +459,6 @@ export default function MediaFilesPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-800">
-                <th className="px-2 py-2 w-8">
-                  <input type="checkbox"
-                    checked={sorted.length > 0 && checkedIds.size === sorted.length}
-                    onChange={toggleCheckAll}
-                    title="Selecionar todos"
-                    className="h-4 w-4 rounded border-gray-600 bg-gray-800 text-brand-500 focus:ring-brand-500/40 cursor-pointer" />
-                </th>
                 <th className="px-1 py-2 w-28">
                   <div className="flex items-center gap-1">
                     <button onClick={handleRegenAllThumbnails} disabled={thumbRegenAll}
@@ -486,6 +479,13 @@ export default function MediaFilesPage() {
                 <th onClick={() => toggleSort('ingestStatus')} className="text-left px-4 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wide cursor-pointer hover:text-gray-300 select-none w-28">Mídia{si('ingestStatus')}</th>
                 <th onClick={() => toggleSort('originalName')} className="text-left px-4 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wide cursor-pointer hover:text-gray-300 select-none">Arquivo{si('originalName')}</th>
                 <th onClick={() => toggleSort('sizeBytes')} className="text-left px-4 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wide cursor-pointer hover:text-gray-300 select-none w-24">Tamanho{si('sizeBytes')}</th>
+                <th className="px-2 py-2 w-8">
+                  <input type="checkbox"
+                    checked={sorted.length > 0 && checkedIds.size === sorted.length}
+                    onChange={toggleCheckAll}
+                    title="Selecionar todos"
+                    className="h-4 w-4 rounded border-gray-600 bg-gray-800 text-brand-500 focus:ring-brand-500/40 cursor-pointer" />
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800/60">
@@ -500,14 +500,6 @@ export default function MediaFilesPage() {
                       isSelected ? 'bg-brand-900/20 ring-1 ring-inset ring-brand-700/40' :
                       isOrphan   ? 'bg-orange-950/10 hover:bg-orange-950/20' :
                                    'hover:bg-gray-800/30')}>
-
-                    {/* Checkbox */}
-                    <td className="px-2 py-2.5" onClick={(e) => e.stopPropagation()}>
-                      <input type="checkbox"
-                        checked={checkedIds.has(file.id)}
-                        onChange={() => toggleChecked(file.id)}
-                        className="h-4 w-4 rounded border-gray-600 bg-gray-800 text-brand-500 focus:ring-brand-500/40 cursor-pointer" />
-                    </td>
 
                     {/* Thumbnail */}
                     <td className="p-1 w-28" onClick={(e) => { if (file.thumbnail && file.ingestStatus === 'READY' && file.hlsPath) { e.stopPropagation(); setPreviewFile(file) } }}>
@@ -582,6 +574,14 @@ export default function MediaFilesPage() {
 
                     {/* Tamanho */}
                     <td className="px-4 py-2.5 text-gray-400 text-xs">{formatSize(file.sizeBytes)}</td>
+
+                    {/* Checkbox */}
+                    <td className="px-2 py-2.5" onClick={(e) => e.stopPropagation()}>
+                      <input type="checkbox"
+                        checked={checkedIds.has(file.id)}
+                        onChange={() => toggleChecked(file.id)}
+                        className="h-4 w-4 rounded border-gray-600 bg-gray-800 text-brand-500 focus:ring-brand-500/40 cursor-pointer" />
+                    </td>
                   </tr>
                 )
               })}
