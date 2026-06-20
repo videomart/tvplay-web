@@ -102,14 +102,17 @@ enum InputSourceType {
 // ─── Usuários ────────────────────────────────────────────────────────────────
 
 model User {
-  id        String    @id @default(cuid())
-  name      String
-  username  String    @unique
-  password  String
-  level     UserLevel @default(OPERATOR)
-  active    Boolean   @default(true)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id                String    @id @default(cuid())
+  name              String
+  username          String    @unique
+  email             String?   @unique
+  password          String
+  level             UserLevel @default(OPERATOR)
+  active            Boolean   @default(true)
+  resetToken        String?   @unique
+  resetTokenExpiry  DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   logs Log[]
 

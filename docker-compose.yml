@@ -97,6 +97,15 @@ services:
       SCTE_SIGNAL_URL: 'http://vps1.tvtupi.com.br:3001/api/input-sources/scte-signal'
       SCTE_SIGNAL_SOURCE_ID: 'cmqd364tm0001vrwcs5uyfdyi'
       SCTE_SIGNAL_SECRET: '618e65acac41441bda7bd691d58b10203c7c231f7c11a511'
+      # SMTP para envio de email de redefinição de senha — preencher via .env de cada
+      # servidor (não commitar credenciais reais aqui). Deixe em branco para desabilitar.
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
     ports:
       - '3001:3001'
       - '4000:4000/udp'

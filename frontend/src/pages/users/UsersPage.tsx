@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, UserCog } from 'lucide-react'
+import { Plus, Pencil, Trash2, UserCog, KeyRound } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { usersApi, type UserRecord, type UserLevel, LEVEL_LABELS } from '../../api/users.api'
 import { useAuthStore } from '../../stores/auth.store'
@@ -10,7 +10,7 @@ import { Modal } from '../../components/ui/Modal'
 import { Table, Thead, Th, Tbody, Tr, Td } from '../../components/ui/Table'
 import { StatusBadge } from '../../components/ui/Badge'
 
-const emptyForm = { name: '', username: '', password: '', level: 'OPERATOR' as UserLevel, active: true }
+const emptyForm = { name: '', username: '', email: '', password: '', level: 'OPERATOR' as UserLevel, active: true }
 
 export default function UsersPage() {
   const qc = useQueryClient()
@@ -26,11 +26,11 @@ export default function UsersPage() {
   const save = useMutation({
     mutationFn: () => {
       if (editing) {
-        const payload: any = { name: form.name, username: form.username, level: form.level, active: form.active }
+        const payload: any = { name: form.name, username: form.username, email: form.email || null, level: form.level, active: form.active }
         if (form.password) payload.password = form.password
         return usersApi.update(editing.id, payload)
       }
-      return usersApi.create({ name: form.name, username: form.username, password: form.password, level: form.level })
+      return usersApi.create({ name: form.name, username: form.username, email: form.email || null, password: form.password, level: form.level })
     },
     onSuccess: () => {
       toast.success(editing ? 'Usuário atualizado' : 'Usuário criado')
@@ -38,6 +38,21 @@ export default function UsersPage() {
       setOpen(false)
     },
     onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao salvar'),
+  })
+
+  const resetPassword = useMutation({
+    mutationFn: usersApi.resetPassword,
+    onSuccess: (data) => {
+      toast.success(
+        (t) => (
+          <span>
+            Senha temporária de <strong>{data.username}</strong>: <code className="font-mono bg-gray-800 px-1.5 py-0.5 rounded">{data.tempPassword}</code>
+          </span>
+        ),
+        { duration: 15000 },
+      )
+    },
+    onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao redefinir senha'),
   })
 
   const remove = useMutation({
@@ -56,7 +71,7 @@ export default function UsersPage() {
   }
   function openEdit(u: UserRecord) {
     setEditing(u)
-    setForm({ name: u.name, username: u.username, password: '', level: u.level, active: u.active })
+    setForm({ name: u.name, username: u.username, email: u.email ?? '', password: '', level: u.level, active: u.active })
     setOpen(true)
   }
 
@@ -133,6 +148,13 @@ export default function UsersPage() {
                 {isAdmin && (
                   <Td className="text-right">
                     <div className="flex items-center justify-end gap-1">
+                      <Button
+                        size="sm" variant="ghost"
+                        title="Redefinir senha (gera senha temporária)"
+                        icon={<KeyRound className="h-3.5 w-3.5" />}
+                        loading={resetPassword.isPending && resetPassword.variables === u.id}
+                        onClick={() => { if (confirm(`Gerar senha temporária para "${u.name}"?`)) resetPassword.mutate(u.id) }}
+                      />
                       <Button size="sm" variant="ghost" icon={<Pencil className="h-3.5 w-3.5" />} onClick={() => openEdit(u)} />
                       {u.id !== me?.id && (
                         <Button
@@ -167,6 +189,13 @@ export default function UsersPage() {
               ))}
             </Select>
           </div>
+          <Input
+            label="Email (para recuperação de senha)"
+            type="email"
+            value={form.email}
+            onChange={f('email')}
+            placeholder="usuario@email.com"
+          />
           <Input
             label={editing ? 'Nova senha (deixe em branco para manter)' : 'Senha *'}
             type="password"

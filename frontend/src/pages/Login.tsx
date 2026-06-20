@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { Radio, Eye, EyeOff } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { authApi } from '../api/auth.api'
@@ -72,6 +72,9 @@ export default function LoginPage() {
           <Button type="submit" loading={loading} className="w-full mt-2">
             Entrar
           </Button>
+          <Link to="/forgot-password" className="block text-center text-sm text-gray-500 hover:text-gray-300 mt-1">
+            Esqueci minha senha
+          </Link>
         </form>
 
         <p className="text-center text-xs text-gray-600 mt-6 font-mono">

@@ -6,6 +6,7 @@ export interface UserRecord {
   id: string
   name: string
   username: string
+  email?: string | null
   level: UserLevel
   active: boolean
   createdAt: string
@@ -25,4 +26,6 @@ export const usersApi = {
   update: (id: string, data: Partial<UserRecord> & { password?: string }) =>
     api.put<UserRecord>(`/users/${id}`, data).then((r) => r.data),
   delete: (id: string) => api.delete(`/users/${id}`),
+  resetPassword: (id: string) =>
+    api.post<{ id: string; name: string; username: string; tempPassword: string }>(`/users/${id}/reset-password`).then((r) => r.data),
 }

@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify'
 import bcrypt from 'bcryptjs'
+import crypto from 'crypto'
 import { z } from 'zod'
 import { UserLevel } from '@prisma/client'
 import { prisma } from '../lib/prisma'
@@ -7,6 +8,7 @@ import { prisma } from '../lib/prisma'
 const createSchema = z.object({
   name:     z.string().min(1),
   username: z.string().min(3).max(32).regex(/^[a-z0-9_]+$/, 'Apenas letras minúsculas, números e _'),
+  email:    z.string().email().optional().nullable(),
   password: z.string().min(6),
   level:    z.nativeEnum(UserLevel).default('OPERATOR'),
   active:   z.boolean().optional(),
@@ -30,14 +32,14 @@ export default async function usersRoutes(app: FastifyInstance) {
   app.get('/', auth, async () =>
     prisma.user.findMany({
       orderBy: { name: 'asc' },
-      select: { id: true, name: true, username: true, level: true, active: true, createdAt: true, updatedAt: true },
+      select: { id: true, name: true, username: true, email: true, level: true, active: true, createdAt: true, updatedAt: true },
     })
   )
 
   app.get('/:id', auth, async (request: any, reply) => {
     const user = await prisma.user.findUnique({
       where: { id: request.params.id },
-      select: { id: true, name: true, username: true, level: true, active: true, createdAt: true, updatedAt: true },
+      select: { id: true, name: true, username: true, email: true, level: true, active: true, createdAt: true, updatedAt: true },
     })
     if (!user) return reply.status(404).send({ error: 'Usuário não encontrado' })
     return user
@@ -94,5 +96,21 @@ export default async function usersRoutes(app: FastifyInstance) {
       data: { active: false },
     }).catch(() => null)
     return reply.status(204).send()
+  })
+
+  // Admin gera uma senha temporária para o usuário — útil quando ele esqueceu
+  // a senha e não tem (ou não consegue usar) email cadastrado para reset.
+  app.post('/:id/reset-password', admin, async (request: any, reply) => {
+    const tempPassword = crypto.randomBytes(6).toString('hex')
+    const hashed = await bcrypt.hash(tempPassword, 10)
+
+    const user = await prisma.user.update({
+      where: { id: request.params.id },
+      data: { password: hashed, resetToken: null, resetTokenExpiry: null },
+      select: { id: true, name: true, username: true },
+    }).catch(() => null)
+
+    if (!user) return reply.status(404).send({ error: 'Usuário não encontrado' })
+    return reply.send({ ...user, tempPassword })
   })
 }

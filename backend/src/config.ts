@@ -42,6 +42,18 @@ export const config = {
     sourceId: process.env.SCTE_SIGNAL_SOURCE_ID ?? '',  // ID do InputSource no receptor remoto
     secret:   process.env.SCTE_SIGNAL_SECRET    ?? '',  // Segredo compartilhado (header x-scte-secret)
   },
+
+  smtp: {
+    host:   process.env.SMTP_HOST   ?? '',
+    port:   parseInt(process.env.SMTP_PORT ?? '587', 10),
+    secure: process.env.SMTP_SECURE === 'true',
+    user:   process.env.SMTP_USER   ?? '',
+    pass:   process.env.SMTP_PASS   ?? '',
+    from:   process.env.SMTP_FROM   ?? '',
+  },
+
+  // URL base do frontend, usada para montar o link de reset de senha no email.
+  frontendUrl: process.env.FRONTEND_URL ?? 'http://localhost:5173',
 }
 
 // Mensagem exibida quando o usuário tenta usar/visualizar conteúdo YouTube/Twitch
