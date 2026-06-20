@@ -65,6 +65,7 @@ export default function MediaFilesPage() {
   const [uploadProgress, setUploadProgress] = useState(0)
   const [uploadCount,    setUploadCount]    = useState({ done: 0, total: 0 })
   const [selected,       setSelected]       = useState<any | null>(null)
+  const [checkedIds,     setCheckedIds]     = useState<Set<string>>(new Set())
   const [previewFile,    setPreviewFile]    = useState<any | null>(null)
   const [cookiesUploading, setCookiesUploading] = useState(false)
   const [scanLoading,       setScanLoading]       = useState(false)
@@ -135,6 +136,37 @@ export default function MediaFilesPage() {
     },
     onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao excluir'),
   })
+
+  const [bulkDeleting, setBulkDeleting] = useState(false)
+  const [confirmBulk,  setConfirmBulk]  = useState(false)
+
+  async function handleBulkDelete() {
+    setBulkDeleting(true)
+    let done = 0, errors = 0
+    for (const id of checkedIds) {
+      try { await clipsApi.deleteMedia(id); done++ }
+      catch { errors++ }
+    }
+    setBulkDeleting(false); setConfirmBulk(false); setCheckedIds(new Set())
+    qc.invalidateQueries({ queryKey: ['media-files'] })
+    qc.invalidateQueries({ queryKey: ['clips'] })
+    qc.invalidateQueries({ queryKey: ['clips-library'] })
+    errors === 0
+      ? toast.success(`${done} arquivo(s) excluído(s)`)
+      : toast.error(`${done} excluído(s), ${errors} falharam`)
+  }
+
+  function toggleChecked(id: string) {
+    setCheckedIds(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  function toggleCheckAll() {
+    setCheckedIds(prev => prev.size === sorted.length ? new Set() : new Set(sorted.map(f => f.id)))
+  }
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const fs = Array.from(e.target.files ?? [])
@@ -393,6 +425,30 @@ export default function MediaFilesPage() {
         )}
       </div>
 
+      {/* ── Barra de ação em massa — visível quando há itens marcados ──────── */}
+      {checkedIds.size > 0 && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-950/30 border border-red-800/40">
+          <span className="text-sm text-red-300 font-medium">{checkedIds.size} selecionado(s)</span>
+          <div className="flex-1" />
+          {confirmBulk ? (
+            <>
+              <span className="text-xs text-red-400">Confirmar exclusão de {checkedIds.size} arquivo(s)?</span>
+              <Button size="sm" variant="danger" loading={bulkDeleting} onClick={handleBulkDelete}>Sim, excluir</Button>
+              <Button size="sm" variant="ghost" onClick={() => setConfirmBulk(false)}>Cancelar</Button>
+            </>
+          ) : (
+            <>
+              <button onClick={() => setConfirmBulk(true)}
+                className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-red-600/20 text-red-400 hover:bg-red-600/30 transition-colors border border-red-700/40">
+                <Trash2 className="h-3 w-3" />Excluir selecionados
+              </button>
+              <button onClick={() => setCheckedIds(new Set())}
+                className="p-1.5 rounded text-gray-500 hover:text-gray-300 transition-colors text-xs">✕</button>
+            </>
+          )}
+        </div>
+      )}
+
       {/* ── Tabela ──────────────────────────────────────────────────────────── */}
       <div className="card overflow-hidden">
         {isLoading ? (
@@ -403,6 +459,13 @@ export default function MediaFilesPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-800">
+                <th className="px-2 py-2 w-8">
+                  <input type="checkbox"
+                    checked={sorted.length > 0 && checkedIds.size === sorted.length}
+                    onChange={toggleCheckAll}
+                    title="Selecionar todos"
+                    className="h-4 w-4 rounded border-gray-600 bg-gray-800 text-brand-500 focus:ring-brand-500/40 cursor-pointer" />
+                </th>
                 <th className="px-1 py-2 w-28">
                   <div className="flex items-center gap-1">
                     <button onClick={handleRegenAllThumbnails} disabled={thumbRegenAll}
@@ -437,6 +500,14 @@ export default function MediaFilesPage() {
                       isSelected ? 'bg-brand-900/20 ring-1 ring-inset ring-brand-700/40' :
                       isOrphan   ? 'bg-orange-950/10 hover:bg-orange-950/20' :
                                    'hover:bg-gray-800/30')}>
+
+                    {/* Checkbox */}
+                    <td className="px-2 py-2.5" onClick={(e) => e.stopPropagation()}>
+                      <input type="checkbox"
+                        checked={checkedIds.has(file.id)}
+                        onChange={() => toggleChecked(file.id)}
+                        className="h-4 w-4 rounded border-gray-600 bg-gray-800 text-brand-500 focus:ring-brand-500/40 cursor-pointer" />
+                    </td>
 
                     {/* Thumbnail */}
                     <td className="p-1 w-28" onClick={(e) => { if (file.thumbnail && file.ingestStatus === 'READY' && file.hlsPath) { e.stopPropagation(); setPreviewFile(file) } }}>
