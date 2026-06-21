@@ -661,6 +661,10 @@ function buildArgs(
     ? ['-b:v', `${vBitrate}k`, '-maxrate', `${Math.round(vBitrate * 1.2)}k`, '-bufsize', `${vBitrate}k`]
     : []
 
+  // CFR fixo: evita drift entre o framerate nominal da fonte e o -re do relay
+  // final, que acumula lag e causa timestamp discontinuity no destino RTMP/SRT.
+  const cfrArgs = ['-r', '25', '-fps_mode', 'cfr']
+
   let videoCodec: string[]
   if (isLive) {
     videoCodec = ['-c', 'copy', '-map', '0:v:0', '-map', '0:a:0']
@@ -670,7 +674,7 @@ function buildArgs(
       ...templateResult.filterArgs,
       '-c:v', 'libx264', '-preset', 'veryfast', '-profile:v', 'high',
       ...videoBitrateArgs,
-      '-g', '60', '-keyint_min', '60', '-sc_threshold', '0',
+      '-g', '60', '-keyint_min', '60', '-sc_threshold', '0', ...cfrArgs,
       '-c:a', 'aac', '-ar', '44100', '-b:a', `${aBitrate}k`,
       ...templateResult.mapArgs,
     ]
@@ -683,7 +687,7 @@ function buildArgs(
       ...filterArgs,
       '-c:v', 'libx264', '-preset', 'veryfast', '-profile:v', 'high',
       ...videoBitrateArgs,
-      '-g', '60', '-keyint_min', '60', '-sc_threshold', '0',
+      '-g', '60', '-keyint_min', '60', '-sc_threshold', '0', ...cfrArgs,
       '-c:a', 'aac', '-ar', '44100', '-b:a', `${aBitrate}k`,
       ...dashMap,
     ]
@@ -1014,6 +1018,12 @@ function buildConcatArgs(
     '-bufsize', `${vBitrate}k`,
   ]
 
+  // CFR fixo em 25fps na saída: sem isso, clipes concatenados com framerates
+  // ligeiramente diferentes (29.97 vs 30 vs 25) não são normalizados pelo concat
+  // demuxer, e o drift acumula no -re do relay final (rate 1.05x, lag crescente
+  // até estourar timestamp discontinuity no destino RTMP/YouTube).
+  const cfrArgs = ['-r', '25', '-fps_mode', 'cfr']
+
   let videoCodec: string[]
   if (useTemplate && templateResult) {
     videoCodec = [
@@ -1022,7 +1032,7 @@ function buildConcatArgs(
       // já consome a maior parte da CPU, veryfast fazia o lag de -re crescer continuamente
       '-c:v', 'libx264', '-preset', 'ultrafast', '-profile:v', 'high',
       ...videoBitrateArgs,
-      '-g', '60', '-keyint_min', '60', '-sc_threshold', '0',
+      '-g', '60', '-keyint_min', '60', '-sc_threshold', '0', ...cfrArgs,
       '-c:a', 'aac', '-ar', '44100', '-b:a', `${aBitrate}k`,
       ...templateResult.mapArgs,
     ]
@@ -1032,7 +1042,7 @@ function buildConcatArgs(
       ...filterArgs,
       '-c:v', 'libx264', '-preset', 'ultrafast', '-profile:v', 'high',
       ...videoBitrateArgs,
-      '-g', '60', '-keyint_min', '60', '-sc_threshold', '0',
+      '-g', '60', '-keyint_min', '60', '-sc_threshold', '0', ...cfrArgs,
       '-c:a', 'aac', '-ar', '44100', '-b:a', `${aBitrate}k`,
       ...mapArgs,
     ]
