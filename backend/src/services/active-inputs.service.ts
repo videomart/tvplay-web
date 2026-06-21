@@ -345,3 +345,35 @@ export async function initActiveInputs(): Promise<void> {
   await Promise.all(sources.map((s: InputSourceMeta) => activateInput(s).catch(() => {})))
   console.log(`[active-inputs] ${sources.length} entradas ativas inicializadas`)
 }
+
+const SYNC_INTERVAL_MS = 5 * 60 * 1000  // 5 min
+
+/**
+ * Reconcilia as sessões em memória com o estado atual do banco — corrige
+ * "sessões zumbi" (fonte deletada/recriada com novo id sem o servidor
+ * reiniciar, ou qualquer outro caso em que `sessions` fica fora de sincronia).
+ * Sem isso, uma sessão órfã pode segurar indefinidamente uma porta SRT
+ * listener, impedindo a fonte (re)criada de ativar seu próprio relay.
+ */
+export async function syncActiveInputs(): Promise<void> {
+  const { prisma } = await import('../lib/prisma')
+  const sources = await prisma.inputSource.findMany({ where: { active: true } }).catch(() => [] as any[])
+  const activeIds = new Set(sources.map((s: InputSourceMeta) => s.id))
+
+  for (const sessionId of [...sessions.keys()]) {
+    if (!activeIds.has(sessionId)) {
+      console.log(`[active-inputs] Sessão órfã detectada (fonte ${sessionId} não existe mais/inativa) — encerrando`)
+      await deactivateInput(sessionId)
+    }
+  }
+  for (const source of sources) {
+    if (!sessions.has(source.id)) {
+      console.log(`[active-inputs] Fonte ativa sem sessão (${source.id}) — iniciando`)
+      await activateInput(source).catch(() => {})
+    }
+  }
+}
+
+export function startActiveInputsSyncWatcher(): void {
+  setInterval(() => { syncActiveInputs().catch(() => {}) }, SYNC_INTERVAL_MS)
+}

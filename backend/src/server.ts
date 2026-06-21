@@ -7,7 +7,7 @@ import corsPlugin from './plugins/cors.plugin'
 import { registerRoutes } from './routes'
 import { initFromDb, handleStreamFailure, resolveSourceUrl, handleScteInputEvent, setYoutubeContentEnabled } from './services/playout.service'
 import { setStreamFailureCallback, setClockOffsetHours, startRelayCycleWatcher } from './services/stream.service'
-import { setUrlResolver, initActiveInputs } from './services/active-inputs.service'
+import { setUrlResolver, initActiveInputs, startActiveInputsSyncWatcher } from './services/active-inputs.service'
 import { onScteInputEvent } from './services/scte35-watcher.service'
 import { startScheduler } from './services/scheduler.service'
 import { prisma } from './lib/prisma'
@@ -50,6 +50,7 @@ async function bootstrap() {
   // Sobe os relays de entradas ativas primeiro — dá tempo do HLS ficar pronto
   // antes de canais cortados (cut-to-input) tentarem resolver suas fontes.
   await initActiveInputs()
+  startActiveInputsSyncWatcher()
   await initFromDb()
 
   // Registra callback para eventos SCTE-35 detectados nas entradas monitoradas
