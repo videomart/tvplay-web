@@ -661,9 +661,10 @@ function buildArgs(
     ? ['-b:v', `${vBitrate}k`, '-maxrate', `${Math.round(vBitrate * 1.2)}k`, '-bufsize', `${vBitrate}k`]
     : []
 
-  // CFR fixo: evita drift entre o framerate nominal da fonte e o -re do relay
-  // final, que acumula lag e causa timestamp discontinuity no destino RTMP/SRT.
-  const cfrArgs = ['-r', '25', '-fps_mode', 'cfr']
+  // CFR fixo em 29.97fps (NTSC, padrão da maioria do conteúdo broadcast BR):
+  // evita drift entre o framerate nominal da fonte e o -re do relay final, que
+  // acumula lag e causa timestamp discontinuity no destino RTMP/SRT.
+  const cfrArgs = ['-r', '30000/1001', '-fps_mode', 'cfr']
 
   let videoCodec: string[]
   if (isLive) {
@@ -1018,11 +1019,12 @@ function buildConcatArgs(
     '-bufsize', `${vBitrate}k`,
   ]
 
-  // CFR fixo em 25fps na saída: sem isso, clipes concatenados com framerates
-  // ligeiramente diferentes (29.97 vs 30 vs 25) não são normalizados pelo concat
-  // demuxer, e o drift acumula no -re do relay final (rate 1.05x, lag crescente
-  // até estourar timestamp discontinuity no destino RTMP/YouTube).
-  const cfrArgs = ['-r', '25', '-fps_mode', 'cfr']
+  // CFR fixo em 29.97fps (NTSC, padrão da maioria do conteúdo broadcast BR):
+  // sem isso, clipes concatenados com framerates ligeiramente diferentes (29.97
+  // vs 30 vs 25) não são normalizados pelo concat demuxer, e o drift acumula no
+  // -re do relay final (rate 1.05x, lag crescente até estourar timestamp
+  // discontinuity no destino RTMP/YouTube).
+  const cfrArgs = ['-r', '30000/1001', '-fps_mode', 'cfr']
 
   let videoCodec: string[]
   if (useTemplate && templateResult) {
