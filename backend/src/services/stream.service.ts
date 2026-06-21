@@ -1222,18 +1222,26 @@ export async function startStreamingFromUrl(
   inputUrl: string,
   contentGraphic: GraphicConfig | null = null,
 ) {
-  stopAllStreaming(channelId)
   const outputs = await prisma.streamOutput.findMany({
     where: { channelId, active: true },
     include: { graphic: { include: { template: { include: { elements: { where: { active: true }, orderBy: { order: 'asc' } } } } } } },
   })
   if (!outputs.length) return
+
+  // Ensure relay processes are running before restarting content — sem isso o
+  // FFmpeg escreve direto na URL final (RTMP/YouTube) sem o relay intermediário
+  // que mantém a conexão viva durante gaps/transições (causa de "conexão ok
+  // mas tela preta" até o primeiro PLAY da playlist reiniciar via relay).
+  await ensureRelays(channelId, outputs)
+  await stopStreaming(channelId)
+
   const map = new Map<string, StreamProcess>()
   for (const output of outputs) {
     // Re-encode quando há gráfico ativo (necessário para aplicar filtros de overlay)
     const effectiveGraphic = contentGraphic ?? output.graphic ?? null
     const live = !effectiveGraphic  // sem gráfico → copy; com gráfico → re-encode
-    const sp = spawnOutput(channelId, output, inputUrl, 0, live, contentGraphic, null)
+    const port = isRelayCapable(output.type) ? proxyPortMap.get(output.id) ?? null : null
+    const sp = spawnOutput(channelId, output, inputUrl, 0, live, contentGraphic, port)
     if (sp) map.set(output.id, sp)
   }
   if (map.size) channelProcs.set(channelId, map)
