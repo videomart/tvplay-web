@@ -1258,6 +1258,41 @@ export async function cutToCamera(channelId: string): Promise<PlayoutState> {
   return state
 }
 
+// Reaplica a fonte atualmente "no ar" (CUT manual ou fallback configurado) em
+// todos os outputs ativos do canal. Usado quando o canal está parado (sem
+// playlist tocando) e o operador liga uma saída pelo toggle individual — sem
+// isso, o output ficava marcado active=true no banco mas nenhum processo
+// FFmpeg era de fato iniciado, e a transmissão só "pegava" depois de um PLAY.
+export async function reapplyCurrentSource(channelId: string): Promise<void> {
+  const state = states.get(channelId)
+  const cut = state?.activeCut
+
+  if (cut?.type === 'INPUT_SOURCE' && cut.sourceId) {
+    const source = await prisma.inputSource.findUnique({ where: { id: cut.sourceId } })
+    if (source) {
+      const graphic = await resolveGraphic(null, null, channelId).catch(() => null)
+      await activateFallbackSource(channelId, source, graphic)
+      return
+    }
+  }
+  if (cut?.type === 'BLACK' || cut?.type === 'COLORBARS') {
+    await streamService.startStreamingFromFallback(channelId, cut.type)
+    return
+  }
+
+  // Sem CUT manual ativo — usa o fallback configurado no canal (mesmo caminho do stop())
+  const channel = await prisma.channel.findUnique({
+    where: { id: channelId },
+    include: { fallbackSource: true },
+  }).catch(() => null)
+  if (channel?.fallbackType === 'INPUT_SOURCE' && channel.fallbackSource) {
+    const graphic = await resolveGraphic(null, null, channelId).catch(() => null)
+    await activateFallbackSource(channelId, channel.fallbackSource, graphic)
+  } else {
+    await streamService.startStreamingFromFallback(channelId, channel?.fallbackType ?? 'BLACK')
+  }
+}
+
 // Chamado pelo camera.service quando a câmera INICIA — para o timer para não interferir.
 export function pauseForCamera(channelId: string): void {
   stopTimer(channelId)

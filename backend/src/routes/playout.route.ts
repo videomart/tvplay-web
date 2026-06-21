@@ -252,6 +252,11 @@ export default async function playoutRoutes(app: FastifyInstance) {
         }
         // URL clips: restart global streaming para incluir o output recém-ativado
         // (não há como iniciar um output individual para uma URL yt-dlp)
+      } else {
+        // Canal parado (fallback/CUT no ar) — reaplica a fonte atual em todos os
+        // outputs ativos, senão o output fica marcado active=true sem nenhum
+        // processo FFmpeg de fato rodando (só "pegava" depois de um PLAY).
+        await playout.reapplyCurrentSource(channelId).catch(() => {})
       }
     }
 
