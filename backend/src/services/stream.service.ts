@@ -139,7 +139,14 @@ function buildRelayArgs(output: OutputConfig, port: number): string[] | null {
   // janela de resolução sem deixar o relay "pendurado" por muito tempo em caso de crash real.
   // buffer_size: aumenta o SO_RCVBUF do socket (padrão do kernel ~208KB) para o
   // máximo permitido (net.core.rmem_max) — reduz descarte de datagramas em picos
-  const udpUrl    = `udp://0.0.0.0:${port}?overrun_nonfatal=1&timeout=15000000&buffer_size=4194304`
+  // fifo_size=86016 (3x o default 28672, ~15.3MB — pacotes de 188 bytes, NÃO bytes):
+  // confirmado em produção (2026-06-21) que mesmo com CFR forçado na origem (-r
+  // 30000/1001 -fps_mode cfr) o relay final ainda apresenta "Resumed reading ...
+  // rate 1.050 ... lag" crescente e "Circular buffer overrun" — o -re necessário
+  // para RTMP/YouTube não absorve variações de timing reais entre o encode local
+  // e o socket UDP, independente da fonte upstream (reproduzido com M1 E M3 como
+  // origem). Mais margem de fifo reduz a chance de overrun antes do offset saltar.
+  const udpUrl    = `udp://0.0.0.0:${port}?overrun_nonfatal=1&timeout=15000000&buffer_size=4194304&fifo_size=86016`
   const readRate  = output.type === 'RTMP' ? ['-re'] : []
   const inputArgs = ['-hide_banner', '-loglevel', 'warning', '-stats', ...readRate, '-f', 'mpegts', '-i', udpUrl]
   const codec     = ['-c', 'copy']
@@ -218,6 +225,16 @@ function spawnRelay(channelId: string, output: OutputConfig, port: number): Rela
 async function ensureRelays(channelId: string, outputs: OutputConfig[]): Promise<void> {
   if (!relayProcs.has(channelId)) relayProcs.set(channelId, new Map())
   const relayMap = relayProcs.get(channelId)!
+
+  // ts-proxy só é necessário quando o canal de fato sinaliza SCTE-35. Mantê-lo
+  // sempre ativo injeta o PID 0x0500/stream_type 0x86 no PMT mesmo sem nenhum
+  // evento real — alguns demuxers (relay de saída -map 0 -copy_unknown em
+  // cadeias multi-hop, ex.: M4→M2) não conseguem determinar codec parameters
+  // para esse stream desconhecido no probe inicial e crasham em loop (~2s),
+  // nunca enviando mais que poucos segundos por vez (causa raiz 2026-06-22).
+  const channel = await prisma.channel.findUnique({ where: { id: channelId }, select: { scteEnabled: true } }).catch(() => null)
+  const scteEnabled = !!channel?.scteEnabled
+
   for (const output of outputs) {
     if (!isRelayCapable(output.type) || !output.url) continue
 
@@ -230,9 +247,11 @@ async function ensureRelays(channelId: string, outputs: OutputConfig[]): Promise
     // e o SCTE-35 nunca chega ao destino (causa raiz v1.0.80).
     const key = proxyKey(channelId, output.id)
     const proxyWasActive = tsProxy.isProxyActive(key)
-    if (!proxyWasActive) {
+    if (scteEnabled && !proxyWasActive) {
       const proxyPort = getOrAllocProxyPort(output.id)
       tsProxy.startProxy(key, proxyPort, relayPort)
+    } else if (!scteEnabled && proxyWasActive) {
+      tsProxy.stopProxy(key)
     }
 
     const existing = relayMap.get(output.id)
@@ -241,7 +260,7 @@ async function ensureRelays(channelId: string, outputs: OutputConfig[]): Promise
     if (!relayAlive) {
       const relay = spawnRelay(channelId, output, relayPort)
       if (relay) relayMap.set(output.id, relay)
-    } else if (!proxyWasActive) {
+    } else if (scteEnabled && !proxyWasActive) {
       // Relay já estava rodando com o probe feito antes do proxy existir —
       // reinicia para reprovar os streams com o PMT já reescrito (0x0500/0x86)
       // desde o primeiro pacote. SIGTERM não dispara auto-respawn (isError
