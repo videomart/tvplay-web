@@ -121,7 +121,7 @@ function isRelayCapable(type: string): boolean {
   return ['RTMP', 'SRT', 'LOCAL_DEVICE'].includes(type)
 }
 
-function buildRelayArgs(output: OutputConfig, port: number): string[] | null {
+function buildRelayArgs(output: OutputConfig, port: number, scteEnabled = false): string[] | null {
   if (!isRelayCapable(output.type)) return null
   // -re: lê o buffer UDP na taxa nativa do stream (evita burst ao vivo para o YouTube/RTMP).
   // Restrito a RTMP — em relays SRT/LOCAL_DEVICE de longa duração, pequena diferença de
@@ -150,8 +150,13 @@ function buildRelayArgs(output: OutputConfig, port: number): string[] | null {
   const readRate  = output.type === 'RTMP' ? ['-re'] : []
   const inputArgs = ['-hide_banner', '-loglevel', 'warning', '-stats', ...readRate, '-f', 'mpegts', '-i', udpUrl]
   const codec     = ['-c', 'copy']
-  // -copy_unknown -map 0: preserva PIDs privados (incluindo SCTE-35 PID 0x0500) em containers mpegts
-  const copyAll   = ['-copy_unknown', '-map', '0']
+  // -copy_unknown -map 0: preserva PIDs privados (incluindo SCTE-35 PID 0x0500) em containers
+  // mpegts — só quando SCTE está de fato habilitado. Sem isso, o demuxer do relay tenta fazer
+  // probe de QUALQUER stream privado desconhecido vindo do mpegts de entrada (não só o PID do
+  // ts-proxy) e pode falhar com "could not find codec parameters", crashando em loop e nunca
+  // enviando mais que poucos segundos por vez — observado em cadeias multi-hop (2026-06-22).
+  // Sem SCTE, usa o mapeamento padrão do ffmpeg (vídeo+áudio conhecidos), mais tolerante.
+  const copyAll   = scteEnabled ? ['-copy_unknown', '-map', '0'] : []
   switch (output.type) {
     case 'RTMP': {
       if (!output.url) return null
@@ -173,8 +178,8 @@ function buildRelayArgs(output: OutputConfig, port: number): string[] | null {
   }
 }
 
-function spawnRelay(channelId: string, output: OutputConfig, port: number): RelayProcess | null {
-  const args = buildRelayArgs(output, port)
+function spawnRelay(channelId: string, output: OutputConfig, port: number, scteEnabled = false): RelayProcess | null {
+  const args = buildRelayArgs(output, port, scteEnabled)
   if (!args) return null
 
   const entry: RelayProcess = { proc: null as any, port, stopped: false, startedAt: Date.now() }
@@ -210,7 +215,8 @@ function spawnRelay(channelId: string, output: OutputConfig, port: number): Rela
         if (current && current.proc !== proc) return
         const dbOutput = await prisma.streamOutput.findUnique({ where: { id: output.id }, include: { graphic: { include: { template: { include: { elements: { where: { active: true }, orderBy: { order: 'asc' } } } } } } } })
         if (!dbOutput?.active) return
-        const newEntry = spawnRelay(channelId, dbOutput, port)
+        const ch = await prisma.channel.findUnique({ where: { id: channelId }, select: { scteEnabled: true } }).catch(() => null)
+        const newEntry = spawnRelay(channelId, dbOutput, port, !!ch?.scteEnabled)
         if (!newEntry) return
         relayProcs.get(channelId)!.set(output.id, newEntry)
       }, 2000)
@@ -258,7 +264,7 @@ async function ensureRelays(channelId: string, outputs: OutputConfig[]): Promise
     const relayAlive = !!existing && !existing.stopped && existing.proc.exitCode === null
 
     if (!relayAlive) {
-      const relay = spawnRelay(channelId, output, relayPort)
+      const relay = spawnRelay(channelId, output, relayPort, scteEnabled)
       if (relay) relayMap.set(output.id, relay)
     } else if (scteEnabled && !proxyWasActive) {
       // Relay já estava rodando com o probe feito antes do proxy existir —
@@ -272,7 +278,7 @@ async function ensureRelays(channelId: string, outputs: OutputConfig[]): Promise
       setTimeout(() => {
         const current = relayMap.get(output.id)
         if (current && current.proc !== oldProc) return // já substituído por outra via
-        const relay = spawnRelay(channelId, output, relayPort)
+        const relay = spawnRelay(channelId, output, relayPort, scteEnabled)
         if (relay) relayMap.set(output.id, relay)
       }, 1500)
     }
@@ -1224,7 +1230,8 @@ export async function startOutput(
   let port: number | null = null
   if (isRelayMode && isRelayCapable(output.type) && output.url) {
     port = getOrAllocRelayPort(outputId)
-    const relay = spawnRelay(channelId, output, port)
+    const ch = await prisma.channel.findUnique({ where: { id: channelId }, select: { scteEnabled: true } }).catch(() => null)
+    const relay = spawnRelay(channelId, output, port, !!ch?.scteEnabled)
     if (relay) {
       if (!relayProcs.has(channelId)) relayProcs.set(channelId, new Map())
       relayProcs.get(channelId)!.set(outputId, relay)
