@@ -31,6 +31,16 @@ const schema = z.object({
   scteAction:       z.enum(['LOG', 'BREAK']).optional(),
 })
 
+// Calcula o primeiro inputNumber livre no escopo (por canal, ou global se sem canal).
+async function nextAvailableInputNumber(channelId: string | null | undefined): Promise<number> {
+  const scope = channelId ? { channelId } : { channelId: null }
+  const existing = await prisma.inputSource.findMany({ where: scope, select: { inputNumber: true } })
+  const used = new Set(existing.map((o: any) => o.inputNumber).filter(Boolean))
+  let n = 1
+  while (used.has(n)) n++
+  return n
+}
+
 // Garante unicidade de inputNumber por canal: se houver conflito, move o existente
 // para o primeiro número disponível.
 async function resolveInputNumber(
@@ -246,6 +256,10 @@ export default async function inputSourceRoutes(app: FastifyInstance) {
     if (!body.success) return reply.status(400).send({ error: body.error.flatten() })
     if (body.data.inputNumber != null) {
       await resolveInputNumber(body.data.channelId, body.data.inputNumber)
+    } else {
+      // Sem número informado: atribui automaticamente o primeiro disponível,
+      // evitando o "?" no botão do switcher por falta de inputNumber.
+      body.data.inputNumber = await nextAvailableInputNumber(body.data.channelId)
     }
     const source = await prisma.inputSource.create({ data: body.data, include })
     return reply.status(201).send(source)

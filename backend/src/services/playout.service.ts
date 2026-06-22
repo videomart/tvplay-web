@@ -1077,18 +1077,23 @@ export async function stop(channelId: string): Promise<PlayoutState> {
   state.status = 'STOPPED'
   state.position = 0
   state.currentItem = null
-  state.activeCut = null  // limpa CUT manual; preview volta a mostrar o fallback configurado
   state.updatedAt = Date.now()
   states.set(channelId, state)
   persistState(channelId, null, 0)
   await prisma.channel.update({ where: { id: channelId }, data: { status: 'STOPPED' } }).catch(() => {})
-  broadcast(channelId, state)
 
-  // Comuta para fallback configurado (passthrough)
+  // Comuta para o fallback configurado, que agora É a última fonte selecionada
+  // via CUT — reconstrói activeCut a partir dele para o botão CUT correspondente
+  // continuar "acesso" na UI (em vez de zerar e perder a indicação visual).
   const channel = await prisma.channel.findUnique({
     where: { id: channelId },
     include: { fallbackSource: true },
   }).catch(() => null)
+  state.activeCut = channel?.fallbackType === 'INPUT_SOURCE' && channel.fallbackSourceId
+    ? { type: 'INPUT_SOURCE', sourceId: channel.fallbackSourceId }
+    : { type: (channel?.fallbackType ?? 'BLACK') as 'BLACK' | 'COLORBARS' }
+  broadcast(channelId, state)
+
   if (channel?.fallbackType === 'INPUT_SOURCE' && channel.fallbackSource) {
     resolveGraphic(null, null, channelId).catch(() => null).then(fallbackGraphic => {
       activateFallbackSource(channelId, channel!.fallbackSource!, fallbackGraphic).catch(() => {})
