@@ -295,14 +295,37 @@ async function ensureRelays(channelId: string, outputs: OutputConfig[]): Promise
   }
 }
 
-function stopRelays(channelId: string): void {
+/**
+ * Envia SIGTERM e aguarda o processo sair; escala para SIGKILL após `escalateMs`
+ * se ele não responder. Necessário porque FFmpeg bloqueado em recvfrom() numa UDP
+ * sem dados pode ignorar SIGTERM indefinidamente, deixando um processo órfão
+ * segurando a porta e quebrando o próximo bind ("Address in use" em loop) — mesmo
+ * padrão já usado em active-inputs.service.ts.
+ */
+function killAndWait(p: ChildProcess | null, escalateMs = 2_000): Promise<void> {
+  if (!p || p.exitCode !== null || p.signalCode !== null) return Promise.resolve()
+  return new Promise((resolve) => {
+    const t = setTimeout(() => { try { p.kill('SIGKILL') } catch {} }, escalateMs)
+    p.once('exit', () => { clearTimeout(t); resolve() })
+    try { p.kill('SIGTERM') } catch { clearTimeout(t); resolve() }
+  })
+}
+
+// Async + aguarda os processos saírem de fato antes de retornar — sem isso, um
+// ensureRelays() chamado logo depois (ex.: stop()/cutToFallbackType seguido de
+// reativação do fallback) pode tentar abrir a mesma porta UDP antes do processo
+// antigo liberar o socket, causando "Address in use" e o relay ficar preso até
+// o próximo retry de 2s ou um toggle manual (2026-06-22).
+async function stopRelays(channelId: string): Promise<void> {
   const map = relayProcs.get(channelId)
   if (!map?.size) return
+  const procs: ChildProcess[] = []
   for (const entry of map.values()) {
     entry.stopped = true
-    try { entry.proc.kill('SIGTERM') } catch {}
+    procs.push(entry.proc)
   }
   relayProcs.delete(channelId)
+  await Promise.all(procs.map((p) => killAndWait(p)))
   console.log(`[relay/${channelId}] Todos os relays parados`)
 }
 
@@ -899,12 +922,13 @@ export function stopStreaming(channelId: string) {
 
 // Stops both content processes and relay processes (use for full stop / cut-to-input / fallback).
 // Also stops active camera so two FFmpeg processes never write to the same output.
-export function stopAllStreaming(channelId: string) {
+// Async + aguarda stopRelays liberar as portas UDP antes de retornar — ver killAndWait.
+export async function stopAllStreaming(channelId: string): Promise<void> {
   _stopCameraHook?.(channelId)
   // Captura outputIds antes de stopStreaming deletar o mapa
   const outputIds = [...(channelProcs.get(channelId)?.keys() ?? [])]
   stopStreaming(channelId)
-  stopRelays(channelId)
+  await stopRelays(channelId)
   for (const outputId of outputIds) {
     tsProxy.stopProxy(proxyKey(channelId, outputId))
   }

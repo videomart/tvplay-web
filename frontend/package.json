@@ -1,6 +1,6 @@
 {
   "name": "tvplay-web-ui",
-  "version": "1.0.98",
+  "version": "1.0.99",
   "private": true,
   "scripts": {
     "dev": "vite",

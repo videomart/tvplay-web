@@ -961,7 +961,7 @@ function startTimer(channelId: string) {
 export async function play(channelId: string, playlistId: string, startItemId?: string | null): Promise<PlayoutState> {
   console.log(`[playout] play ch=${channelId} playlist=${playlistId} startItem=${startItemId ?? 'primeiro'}`)
   stopTimer(channelId)
-  streamService.stopAllStreaming(channelId)
+  await streamService.stopAllStreaming(channelId)
   const playlist = await prisma.playlist.findUnique({ where: { id: playlistId } })
   if (!playlist) throw new Error('Playlist não encontrada')
 
@@ -1071,7 +1071,7 @@ export async function resume(channelId: string): Promise<PlayoutState> {
 export async function stop(channelId: string): Promise<PlayoutState> {
   stopTimer(channelId)
   streamService.clearConcatRun(channelId)
-  streamService.stopAllStreaming(channelId)
+  await streamService.stopAllStreaming(channelId)
   tickerService.stopAll()
   const state = states.get(channelId) ?? defaultState(channelId)
   state.status = 'STOPPED'
