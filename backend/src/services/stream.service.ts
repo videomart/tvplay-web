@@ -148,7 +148,12 @@ function buildRelayArgs(output: OutputConfig, port: number, scteEnabled = false)
   // origem). Mais margem de fifo reduz a chance de overrun antes do offset saltar.
   const udpUrl    = `udp://0.0.0.0:${port}?overrun_nonfatal=1&timeout=15000000&buffer_size=4194304&fifo_size=86016`
   const readRate  = output.type === 'RTMP' ? ['-re'] : []
-  const inputArgs = ['-hide_banner', '-loglevel', 'warning', '-stats', ...readRate, '-f', 'mpegts', '-i', udpUrl]
+  // -err_detect ignore_err + -fflags +discardcorrupt: o probe do demuxer mpegts roda SEMPRE
+  // (mesmo com -map explícito na saída) e tenta determinar codec parameters de TODOS os
+  // streams do input — se qualquer um falhar ("could not find codec parameters"), o processo
+  // inteiro aborta, mesmo que esse stream nunca fosse usado no output. Essas flags já evitam
+  // esse abort no relay de entrada (active-inputs.service); replicado aqui (2026-06-22).
+  const inputArgs = ['-hide_banner', '-loglevel', 'warning', '-stats', '-err_detect', 'ignore_err', '-fflags', '+discardcorrupt', ...readRate, '-f', 'mpegts', '-i', udpUrl]
   const codec     = ['-c', 'copy']
   // -copy_unknown -map 0: preserva PIDs privados (incluindo SCTE-35 PID 0x0500) em containers
   // mpegts — só quando SCTE está de fato habilitado. Sem isso, o demuxer do relay tenta fazer
