@@ -163,7 +163,12 @@ function buildRelayArgs(output: OutputConfig, port: number, scteEnabled = false)
       const dest = output.streamKey ? `${output.url}/${output.streamKey}` : output.url
       // UDP input does not support -reconnect flags — reconnect is handled at app level (exit handler)
       // RTMP/FLV não suporta PIDs privados — sem copyAll (FLV container rejeitaria streams desconhecidos)
-      return [...inputArgs, ...codec, '-f', 'flv', dest]
+      // -map 0:v:0 -map 0:a:0 explícito: sem mapeamento, o FFmpeg ainda faz probe de TODOS os
+      // streams do input antes de decidir o que copiar — se qualquer stream desconhecido falhar
+      // o probe ("could not find codec parameters"), o processo morre mesmo sem usá-lo no
+      // output. Mapeamento explícito por índice evita esse probe completo (2026-06-22).
+      const mapExplicit = ['-map', '0:v:0', '-map', '0:a:0']
+      return [...inputArgs, ...codec, ...mapExplicit, '-f', 'flv', dest]
     }
     case 'SRT': {
       if (!output.url) return null
