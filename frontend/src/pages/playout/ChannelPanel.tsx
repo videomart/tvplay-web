@@ -657,7 +657,6 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
   const [saveAsName, setSaveAsName] = useState('')
   const [monitorOpen, setMonitorOpen] = useState(true)
   const [fallbackOpen, setFallbackOpen] = useState(true)
-  const [signalSelectorOpen, setSignalSelectorOpen] = useState(false)
   const [outputsOpen, setOutputsOpen] = useState(false)
   const [playlistOpen, setPlaylistOpen] = useState(true)
   const [defaultsApplied, setDefaultsApplied] = useState(false)
@@ -881,18 +880,6 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
     mutationFn: (outputId: string) => playoutApi.reconnectOutput(channel.id, outputId),
     onSuccess: () => { toast.success('Reconectando...'); qc.invalidateQueries({ queryKey: ['channel-outputs', channel.id] }) },
     onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao reconectar'),
-  })
-
-  const fallbackMut = useMutation({
-    mutationFn: (data: { fallbackType: FallbackType; fallbackSourceId?: string | null }) =>
-      playoutApi.setFallback(channel.id, data.fallbackType, data.fallbackSourceId),
-    onSuccess: () => {
-      toast.success('Sinal de fallback atualizado')
-      setFallbackOpen(true)
-      setSignalSelectorOpen(false)
-      qc.invalidateQueries({ queryKey: ['channels'] })
-    },
-    onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao definir fallback'),
   })
 
   const cutToTypeMut = useMutation({
@@ -1347,92 +1334,9 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
       )}
 
 
-      {/* ── Switcher ──────────────────────────────────────────────────────── */}
+      {/* ── Switcher (CUT único — também define o fallback do canal) ───────── */}
       {fallbackOpen && (
-        <div className="border-b border-gray-800 flex items-stretch divide-x divide-gray-700/60">
-
-          {/* Célula esquerda — FALLBACK */}
-          <div className="flex items-center gap-1 px-2 py-1 flex-1 min-w-0">
-            <span className="text-[9px] font-black px-1 py-0.5 rounded bg-brand-900/40 text-brand-400 flex-shrink-0">FB</span>
-            <div className="flex-1" />
-
-            {/* FB por entrada */}
-            {availableSources.map((s) => {
-              const isActive = channel.fallbackType === 'INPUT_SOURCE' && channel.fallbackSourceId === s.id
-              const isWebcam = s.type === 'WEBCAM'
-              return (
-                <button
-                  key={s.id}
-                  onClick={() => {
-                    if (isWebcam && !camera.active) { setCameraOpen(true); return }
-                    fallbackMut.mutate({ fallbackType: 'INPUT_SOURCE', fallbackSourceId: s.id })
-                  }}
-                  title={`Fallback → ${s.name}`}
-                  className={clsx(
-                    'text-[9px] font-bold w-7 py-0.5 rounded flex-shrink-0 transition-all',
-                    isActive
-                      ? 'bg-brand-500 text-white shadow-[0_0_5px_1px_rgb(99_102_241/0.5)]'
-                      : 'bg-gray-800 text-gray-400 hover:bg-brand-700/40 hover:text-brand-300'
-                  )}
-                >
-                  {mnemonic(s.name)}
-                </button>
-              )
-            })}
-
-            {/* FB BAR */}
-            <button
-              onClick={() => fallbackMut.mutate({ fallbackType: 'COLORBARS', fallbackSourceId: null })}
-              title="Fallback → Barras de cor"
-              className={clsx(
-                'text-[9px] font-bold w-7 py-0.5 rounded flex-shrink-0 transition-all',
-                channel.fallbackType === 'COLORBARS'
-                  ? 'bg-brand-500 text-white shadow-[0_0_5px_1px_rgb(99_102_241/0.5)]'
-                  : 'bg-gray-800 text-gray-400 hover:bg-brand-700/40 hover:text-brand-300'
-              )}
-            >
-              BAR
-            </button>
-
-            {/* FB BLK */}
-            <button
-              onClick={() => fallbackMut.mutate({ fallbackType: 'BLACK', fallbackSourceId: null })}
-              title="Fallback → Black"
-              className={clsx(
-                'text-[9px] font-bold w-7 py-0.5 rounded flex-shrink-0 transition-all',
-                channel.fallbackType === 'BLACK'
-                  ? 'bg-brand-500 text-white shadow-[0_0_5px_1px_rgb(99_102_241/0.5)]'
-                  : 'bg-gray-800 text-gray-400 hover:bg-gray-600/50 hover:text-gray-200'
-              )}
-            >
-              BLK
-            </button>
-
-            {/* Separador */}
-            <span className="w-px h-4 bg-gray-700 flex-shrink-0" />
-
-            {/* SCTE-OUT */}
-            <button
-              onClick={() => scteOutMut.mutate()}
-              disabled={scteOutMut.isPending}
-              title="Injetar SCTE-35 OUT (início de break)"
-              className="text-[9px] font-bold px-1 py-0.5 rounded flex-shrink-0 transition-all disabled:opacity-40 bg-red-900/60 text-red-300 hover:bg-red-700/70 hover:text-red-200"
-            >
-              S·OUT
-            </button>
-
-            {/* SCTE-IN */}
-            <button
-              onClick={() => scteInMut.mutate()}
-              disabled={scteInMut.isPending}
-              title="Injetar SCTE-35 IN (fim de break)"
-              className="text-[9px] font-bold px-1 py-0.5 rounded flex-shrink-0 transition-all disabled:opacity-40 bg-emerald-900/60 text-emerald-300 hover:bg-emerald-700/70 hover:text-emerald-200"
-            >
-              S·IN
-            </button>
-          </div>
-
-          {/* Célula direita — CUT */}
+        <div className="border-b border-gray-800 flex items-stretch">
           <div className="flex items-center gap-1 px-2 py-1 flex-1 min-w-0">
             <span className="text-[9px] font-black px-1 py-0.5 rounded bg-red-900/40 text-red-400 flex-shrink-0">CUT</span>
             <div className="flex-1" />
@@ -1490,6 +1394,29 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
               )}
             >
               BLK
+            </button>
+
+            {/* Separador */}
+            <span className="w-px h-4 bg-gray-700 flex-shrink-0" />
+
+            {/* SCTE-OUT */}
+            <button
+              onClick={() => scteOutMut.mutate()}
+              disabled={scteOutMut.isPending}
+              title="Injetar SCTE-35 OUT (início de break)"
+              className="text-[9px] font-bold px-1 py-0.5 rounded flex-shrink-0 transition-all disabled:opacity-40 bg-red-900/60 text-red-300 hover:bg-red-700/70 hover:text-red-200"
+            >
+              S·OUT
+            </button>
+
+            {/* SCTE-IN */}
+            <button
+              onClick={() => scteInMut.mutate()}
+              disabled={scteInMut.isPending}
+              title="Injetar SCTE-35 IN (fim de break)"
+              className="text-[9px] font-bold px-1 py-0.5 rounded flex-shrink-0 transition-all disabled:opacity-40 bg-emerald-900/60 text-emerald-300 hover:bg-emerald-700/70 hover:text-emerald-200"
+            >
+              S·IN
             </button>
           </div>
         </div>

@@ -1216,7 +1216,9 @@ export async function cutToInput(channelId: string, sourceId: string): Promise<P
   return state
 }
 
-// CUT imediato para BLACK ou COLORBARS sem alterar o fallback configurado no banco
+// CUT imediato para BLACK ou COLORBARS — também grava como fallback configurado
+// do canal (igual cutToInput), para que STOP/BREAK/fim de playlist comutem para
+// o último sinal selecionado via CUT em vez de exigir configuração separada de FB.
 export async function cutToFallbackType(channelId: string, type: 'BLACK' | 'COLORBARS'): Promise<void> {
   stopTimer(channelId)
 
@@ -1229,11 +1231,17 @@ export async function cutToFallbackType(channelId: string, type: 'BLACK' | 'COLO
   states.set(channelId, state)
 
   persistState(channelId, null, 0)
+  await prisma.channel.update({
+    where: { id: channelId },
+    data: { fallbackType: type, fallbackSourceId: null },
+  }).catch(() => {})
+
   broadcast(channelId, state)
   streamService.startStreamingFromFallback(channelId, type).catch(() => {})
 }
 
-// CUT para câmera (browser webcam via SRT local)
+// CUT para câmera (browser webcam via SRT local) — grava a InputSource WEBCAM
+// como fallback do canal, mesmo padrão de cutToFallbackType/cutToInput.
 export async function cutToCamera(channelId: string): Promise<PlayoutState> {
   const { getCameraInputUrl, isCameraActive } = await import('./camera.service')
   if (!isCameraActive(channelId)) throw new Error('Câmera não está ativa neste canal')
@@ -1242,14 +1250,26 @@ export async function cutToCamera(channelId: string): Promise<PlayoutState> {
   const url = getCameraInputUrl(channelId)
   if (!url) throw new Error('URL da câmera não disponível')
 
+  const webcamSource = await prisma.inputSource.findFirst({
+    where: { channelId, type: 'WEBCAM' },
+    select: { id: true },
+  }).catch(() => null)
+
   const state = states.get(channelId) ?? defaultState(channelId)
   state.status = 'STOPPED'
   state.currentItem = null
   state.position = 0
+  if (webcamSource) state.activeCut = { type: 'INPUT_SOURCE', sourceId: webcamSource.id }
   state.updatedAt = Date.now()
   states.set(channelId, state)
 
   persistState(channelId, null, 0)
+  if (webcamSource) {
+    await prisma.channel.update({
+      where: { id: channelId },
+      data: { fallbackType: 'INPUT_SOURCE', fallbackSourceId: webcamSource.id },
+    }).catch(() => {})
+  }
 
   const cutGraphic = await resolveGraphic(null, null, channelId).catch(() => null)
   streamService.startStreamingFromUrl(channelId, url, cutGraphic).catch(() => {})
