@@ -5,8 +5,6 @@ import { tmpdir } from 'os'
 import { prisma } from '../lib/prisma'
 import { config } from '../config'
 import { tickerFilePath } from './ticker.service'
-import * as tsProxy from './ts-proxy.service'
-import { buildBreakPackets } from './scte35.service'
 import { computeBarLayout, computeElementXY, type BarLayout, type LayoutElement } from './graphicLayout'
 
 // Hook registrado pelo camera.service para parar câmera quando qualquer
@@ -98,19 +96,6 @@ const relayProcs  = new Map<string, Map<string, RelayProcess>>()
 const relayPortMap  = new Map<string, number>()
 let   nextRelayPort  = 13100
 
-// Proxy SCTE-35: content → proxy → relay (um por output relay-capable)
-const proxyPortMap  = new Map<string, number>()
-let   nextProxyPort = 14100
-
-function getOrAllocProxyPort(outputId: string): number {
-  if (!proxyPortMap.has(outputId)) proxyPortMap.set(outputId, nextProxyPort++)
-  return proxyPortMap.get(outputId)!
-}
-
-function proxyKey(channelId: string, outputId: string): string {
-  return `${channelId}::${outputId}`
-}
-
 function getOrAllocRelayPort(outputId: string): number {
   if (!relayPortMap.has(outputId)) relayPortMap.set(outputId, nextRelayPort++)
   return relayPortMap.get(outputId)!
@@ -121,7 +106,7 @@ function isRelayCapable(type: string): boolean {
   return ['RTMP', 'SRT', 'LOCAL_DEVICE'].includes(type)
 }
 
-function buildRelayArgs(output: OutputConfig, port: number, scteEnabled = false): string[] | null {
+function buildRelayArgs(output: OutputConfig, port: number): string[] | null {
   if (!isRelayCapable(output.type)) return null
   // -re: lê o buffer UDP na taxa nativa do stream (evita burst ao vivo para o YouTube/RTMP).
   // Restrito a RTMP — em relays SRT/LOCAL_DEVICE de longa duração, pequena diferença de
@@ -155,13 +140,14 @@ function buildRelayArgs(output: OutputConfig, port: number, scteEnabled = false)
   // esse abort no relay de entrada (active-inputs.service); replicado aqui (2026-06-22).
   const inputArgs = ['-hide_banner', '-loglevel', 'warning', '-stats', '-err_detect', 'ignore_err', '-fflags', '+discardcorrupt', ...readRate, '-f', 'mpegts', '-i', udpUrl]
   const codec     = ['-c', 'copy']
-  // -copy_unknown -map 0: preserva PIDs privados (incluindo SCTE-35 PID 0x0500) em containers
-  // mpegts — só quando SCTE está de fato habilitado. Sem isso, o demuxer do relay tenta fazer
-  // probe de QUALQUER stream privado desconhecido vindo do mpegts de entrada (não só o PID do
-  // ts-proxy) e pode falhar com "could not find codec parameters", crashando em loop e nunca
-  // enviando mais que poucos segundos por vez — observado em cadeias multi-hop (2026-06-22).
-  // Sem SCTE, usa o mapeamento padrão do ffmpeg (vídeo+áudio conhecidos), mais tolerante.
-  const copyAll   = scteEnabled ? ['-copy_unknown', '-map', '0'] : []
+  // Sem -copy_unknown/-map 0: mapeamento padrão do ffmpeg (vídeo+áudio conhecidos).
+  // Injeção de SCTE-35 no transport stream via FFmpeg foi removida (2026-06-22) —
+  // confirmado por teste real que o FFmpeg descarta o PID 0x0500/stream_type=0x86
+  // no probe do demuxer, então a injeção nunca chegava de fato a sistemas terceiros;
+  // o código que tentava (-copy_unknown -map 0 + ts-proxy) ainda causava crash loop
+  // em cadeias multi-hop ("could not find codec parameters"). Sinalização de
+  // BREAK entre instâncias do TVPlay continua via bypass HTTP (signalRemoteScte35).
+  const copyAll: string[] = []
   switch (output.type) {
     case 'RTMP': {
       if (!output.url) return null
@@ -188,8 +174,8 @@ function buildRelayArgs(output: OutputConfig, port: number, scteEnabled = false)
   }
 }
 
-function spawnRelay(channelId: string, output: OutputConfig, port: number, scteEnabled = false): RelayProcess | null {
-  const args = buildRelayArgs(output, port, scteEnabled)
+function spawnRelay(channelId: string, output: OutputConfig, port: number): RelayProcess | null {
+  const args = buildRelayArgs(output, port)
   if (!args) return null
 
   const entry: RelayProcess = { proc: null as any, port, stopped: false, startedAt: Date.now() }
@@ -225,8 +211,7 @@ function spawnRelay(channelId: string, output: OutputConfig, port: number, scteE
         if (current && current.proc !== proc) return
         const dbOutput = await prisma.streamOutput.findUnique({ where: { id: output.id }, include: { graphic: { include: { template: { include: { elements: { where: { active: true }, orderBy: { order: 'asc' } } } } } } } })
         if (!dbOutput?.active) return
-        const ch = await prisma.channel.findUnique({ where: { id: channelId }, select: { scteEnabled: true } }).catch(() => null)
-        const newEntry = spawnRelay(channelId, dbOutput, port, !!ch?.scteEnabled)
+        const newEntry = spawnRelay(channelId, dbOutput, port)
         if (!newEntry) return
         relayProcs.get(channelId)!.set(output.id, newEntry)
       }, 2000)
@@ -242,55 +227,16 @@ async function ensureRelays(channelId: string, outputs: OutputConfig[]): Promise
   if (!relayProcs.has(channelId)) relayProcs.set(channelId, new Map())
   const relayMap = relayProcs.get(channelId)!
 
-  // ts-proxy só é necessário quando o canal de fato sinaliza SCTE-35. Mantê-lo
-  // sempre ativo injeta o PID 0x0500/stream_type 0x86 no PMT mesmo sem nenhum
-  // evento real — alguns demuxers (relay de saída -map 0 -copy_unknown em
-  // cadeias multi-hop, ex.: M4→M2) não conseguem determinar codec parameters
-  // para esse stream desconhecido no probe inicial e crasham em loop (~2s),
-  // nunca enviando mais que poucos segundos por vez (causa raiz 2026-06-22).
-  const channel = await prisma.channel.findUnique({ where: { id: channelId }, select: { scteEnabled: true } }).catch(() => null)
-  const scteEnabled = !!channel?.scteEnabled
-
   for (const output of outputs) {
     if (!isRelayCapable(output.type) || !output.url) continue
 
     const relayPort = getOrAllocRelayPort(output.id)  // sempre aloca (idempotente)
-
-    // Proxy SCTE-35 ANTES do relay: o relay roda `-map 0 -c copy` e faz o probe
-    // de streams UMA ÚNICA VEZ na abertura — se essa abertura ocorrer (ou já
-    // tiver ocorrido) antes do proxy estar reescrevendo o PMT para incluir o
-    // PID 0x0500/0x86, o relay trava nos PIDs originais do conteúdo para sempre
-    // e o SCTE-35 nunca chega ao destino (causa raiz v1.0.80).
-    const key = proxyKey(channelId, output.id)
-    const proxyWasActive = tsProxy.isProxyActive(key)
-    if (scteEnabled && !proxyWasActive) {
-      const proxyPort = getOrAllocProxyPort(output.id)
-      tsProxy.startProxy(key, proxyPort, relayPort)
-    } else if (!scteEnabled && proxyWasActive) {
-      tsProxy.stopProxy(key)
-    }
-
     const existing = relayMap.get(output.id)
     const relayAlive = !!existing && !existing.stopped && existing.proc.exitCode === null
 
     if (!relayAlive) {
-      const relay = spawnRelay(channelId, output, relayPort, scteEnabled)
+      const relay = spawnRelay(channelId, output, relayPort)
       if (relay) relayMap.set(output.id, relay)
-    } else if (scteEnabled && !proxyWasActive) {
-      // Relay já estava rodando com o probe feito antes do proxy existir —
-      // reinicia para reprovar os streams com o PMT já reescrito (0x0500/0x86)
-      // desde o primeiro pacote. SIGTERM não dispara auto-respawn (isError
-      // exige code !== null), então o respawn é feito explicitamente aqui.
-      console.log(`[relay/${channelId}/${output.name}] Proxy SCTE-35 (re)ativado — reiniciando relay para reprovar PIDs com PMT reescrito`)
-      const oldProc = existing.proc
-      existing.stopped = true
-      try { oldProc.kill('SIGTERM') } catch {}
-      setTimeout(() => {
-        const current = relayMap.get(output.id)
-        if (current && current.proc !== oldProc) return // já substituído por outra via
-        const relay = spawnRelay(channelId, output, relayPort, scteEnabled)
-        if (relay) relayMap.set(output.id, relay)
-      }, 1500)
     }
   }
 }
@@ -900,7 +846,7 @@ export async function startStreaming(
   const hlsUrl = hlsUrlForMedia(mediaId)
   const map = new Map<string, StreamProcess>()
   for (const output of outputs) {
-    const port = isRelayCapable(output.type) ? proxyPortMap.get(output.id) ?? null : null
+    const port = isRelayCapable(output.type) ? relayPortMap.get(output.id) ?? null : null
     const sp = spawnOutput(channelId, output, hlsUrl, cueIn, false, contentGraphic, port)
     if (sp) map.set(output.id, sp)
   }
@@ -925,53 +871,29 @@ export function stopStreaming(channelId: string) {
 // Async + aguarda stopRelays liberar as portas UDP antes de retornar — ver killAndWait.
 export async function stopAllStreaming(channelId: string): Promise<void> {
   _stopCameraHook?.(channelId)
-  // Captura outputIds antes de stopStreaming deletar o mapa
-  const outputIds = [...(channelProcs.get(channelId)?.keys() ?? [])]
   stopStreaming(channelId)
   await stopRelays(channelId)
-  for (const outputId of outputIds) {
-    tsProxy.stopProxy(proxyKey(channelId, outputId))
-  }
 }
 
 /**
- * Injeta um evento SCTE-35 splice_insert em todos os streams ativos do canal.
+ * Sinaliza um evento SCTE-35 (splice_insert) via bypass HTTP direto ao receptor
+ * remoto configurado (signalRemoteScte35) — usado entre instâncias do próprio
+ * TVPlay (ex.: M3→M1) para acionar avanço automático de BREAK e badge na UI.
+ *
+ * Injeção real do PID 0x0500/stream_type=0x86 no transport stream via FFmpeg
+ * foi removida (2026-06-22): confirmado por teste de bytes que o FFmpeg
+ * descarta esse PID no probe do demuxer mesmo com -copy_unknown -map 0 — a
+ * injeção nunca chegava de fato a sistemas terceiros, e o código que tentava
+ * ainda causava crash loop em relays multi-hop ("could not find codec
+ * parameters"). Sem uma ferramenta dedicada de manipulação de TS (ex.:
+ * TSDuck), não há caminho viável para SCTE-35 real no stream via FFmpeg.
+ *
  * @param outOfNetwork true = início do break (saída da rede), false = retorno
  * @param durationSecs duração do break em segundos (opcional)
  */
-// Repete a injeção do mesmo pacote (mesmo eventId) algumas vezes ao longo de
-// ~2s — o link de relay (SRT/UDP) pode descartar pacotes isolados em rajadas
-// de corrupção, e um cue SCTE-35 one-shot perdido nunca é recuperado. O
-// watcher do lado receptor deduplica por eventId+outOfNetwork, então as
-// repetições não geram eventos duplicados.
-// Janela alongada (~4.8s): a transição para BREAK reinicia todo o pipeline
-// de saída (fallback) na mesma janela da injeção — as primeiras repetições
-// caem durante essa instabilidade, mas as últimas alcançam o relay já
-// estabilizado no novo pipeline.
-const SCTE35_REPEATS       = 12
-const SCTE35_REPEAT_GAP_MS = 400
-
 export function injectScte35(channelId: string, outOfNetwork: boolean, durationSecs?: number): void {
-  // Sinalização HTTP direta ao receptor remoto — independente de ter relay ativo
   signalRemoteScte35(outOfNetwork, durationSecs)
-
-  const outputs = channelProcs.get(channelId)
-  if (!outputs?.size) return
-  const packets = buildBreakPackets(outOfNetwork, durationSecs)
-
-  const send = () => {
-    const current = channelProcs.get(channelId)
-    if (!current?.size) return
-    for (const outputId of current.keys()) {
-      tsProxy.injectPackets(proxyKey(channelId, outputId), packets)
-    }
-  }
-
-  send()
-  for (let n = 1; n < SCTE35_REPEATS; n++) {
-    setTimeout(send, n * SCTE35_REPEAT_GAP_MS)
-  }
-  console.log(`[scte35/${channelId}] splice_insert out_of_network=${outOfNetwork}${durationSecs ? ` dur=${durationSecs}s` : ''} (${SCTE35_REPEATS}x)`)
+  console.log(`[scte35/${channelId}] splice_insert out_of_network=${outOfNetwork}${durationSecs ? ` dur=${durationSecs}s` : ''} (sinalização HTTP apenas)`)
 }
 
 function signalRemoteScte35(outOfNetwork: boolean, durationSecs?: number): void {
@@ -1212,7 +1134,7 @@ export async function startStreamingFromPlaylist(
 
   const map = new Map<string, StreamProcess>()
   for (const output of outputs) {
-    const port = isRelayCapable(output.type) ? proxyPortMap.get(output.id) ?? null : null
+    const port = isRelayCapable(output.type) ? relayPortMap.get(output.id) ?? null : null
     const sp = spawnOutputFromConcat(channelId, output, concatFilePath, contentGraphic, port)
     if (sp) map.set(output.id, sp)
   }
@@ -1264,8 +1186,7 @@ export async function startOutput(
   let port: number | null = null
   if (isRelayMode && isRelayCapable(output.type) && output.url) {
     port = getOrAllocRelayPort(outputId)
-    const ch = await prisma.channel.findUnique({ where: { id: channelId }, select: { scteEnabled: true } }).catch(() => null)
-    const relay = spawnRelay(channelId, output, port, !!ch?.scteEnabled)
+    const relay = spawnRelay(channelId, output, port)
     if (relay) {
       if (!relayProcs.has(channelId)) relayProcs.set(channelId, new Map())
       relayProcs.get(channelId)!.set(outputId, relay)
@@ -1312,7 +1233,7 @@ export async function startStreamingFromUrl(
     // Re-encode quando há gráfico ativo (necessário para aplicar filtros de overlay)
     const effectiveGraphic = contentGraphic ?? output.graphic ?? null
     const live = !effectiveGraphic  // sem gráfico → copy; com gráfico → re-encode
-    const port = isRelayCapable(output.type) ? proxyPortMap.get(output.id) ?? null : null
+    const port = isRelayCapable(output.type) ? relayPortMap.get(output.id) ?? null : null
     const sp = spawnOutput(channelId, output, inputUrl, 0, live, contentGraphic, port)
     if (sp) map.set(output.id, sp)
   }
@@ -1338,7 +1259,7 @@ export async function startStreamingFromUrlReencode(
 
   const map = new Map<string, StreamProcess>()
   for (const output of outputs) {
-    const port = isRelayCapable(output.type) ? proxyPortMap.get(output.id) ?? null : null
+    const port = isRelayCapable(output.type) ? relayPortMap.get(output.id) ?? null : null
     // isLive=false → usa -re + re-encode (libx264/aac) em vez de -c copy
     const sp = spawnOutput(channelId, output, inputUrl, 0, false, contentGraphic, port)
     if (sp) map.set(output.id, sp)
@@ -1367,7 +1288,7 @@ export async function startStreamingFromFallback(channelId: string, fallbackType
       : `color=c=black:size=${size}:rate=25`
 
     // Usa proxy port se relay-capable (mantém RTMP vivo via relay)
-    const port = isRelayCapable(output.type) ? proxyPortMap.get(output.id) ?? null : null
+    const port = isRelayCapable(output.type) ? relayPortMap.get(output.id) ?? null : null
     const args = buildFallbackArgs(videoInput, output, output.graphic ?? null, port)
     if (!args) continue
 
