@@ -115,6 +115,40 @@ setInterval(() => {
   }
 }, MEM_CHECK_INTERVAL)
 
+// ─── Watchdog de corrupção H.264 ───────────────────────────────────────────────
+// Esta sessão é um listener SRT de vida longa: o emissor remoto (ex.: outra
+// instância do TVPlay) pode trocar de fonte internamente (ex.: arquivo local
+// concat ↔ fallback) sem reiniciar a conexão SRT em si — o novo bitstream
+// H.264 (SPS/PPS/frame_num diferentes) chega misturado no MESMO stream que
+// este FFmpeg está copiando (`-c copy`) para o HLS local. Sem decodificar, não
+// há como esse processo "saber" que a fonte trocou — só dá pra perceber pelos
+// próprios erros de decoder que o FFmpeg já emite no stderr quando tenta
+// remuxar dados incompatíveis. Confirmado em produção (2026-06-24): sem isso,
+// a sessão fica indefinidamente corrompida até um restart manual completo.
+const H264_CORRUPTION_PATTERN = /illegal (reordering|modification)_of_pic_nums_idc|cabac_init_idc \d+ overflow|reference count.*overflow|non-existing PPS \d+ referenced|Out of range weight is not implemented/
+const CORRUPTION_WINDOW_MS    = 10_000   // janela deslizante de observação
+const CORRUPTION_THRESHOLD    = 15       // ocorrências na janela para disparar restart
+
+interface CorruptionTracker { count: number; windowStart: number }
+const corruptionTrackers = new Map<string, CorruptionTracker>()
+
+function noteCorruptionAndMaybeRestart(sourceId: string, session: Session, line: string): void {
+  if (!H264_CORRUPTION_PATTERN.test(line)) return
+  const now = Date.now()
+  let tracker = corruptionTrackers.get(sourceId)
+  if (!tracker || now - tracker.windowStart > CORRUPTION_WINDOW_MS) {
+    tracker = { count: 0, windowStart: now }
+    corruptionTrackers.set(sourceId, tracker)
+  }
+  tracker.count++
+  if (tracker.count >= CORRUPTION_THRESHOLD) {
+    corruptionTrackers.delete(sourceId)
+    console.warn(`[active-input/${sourceId}] ${tracker.count} erros de decodificação H.264 em ${CORRUPTION_WINDOW_MS / 1000}s — fonte remota provavelmente trocou de bitstream sem reabrir a conexão; reiniciando sessão`)
+    session.proc?.kill('SIGTERM')
+    session.relayProc?.kill('SIGTERM')
+  }
+}
+
 // ─── FFmpeg ───────────────────────────────────────────────────────────────────
 
 /** Garante parâmetro timeout para SRT listener (aguarda sender reconectar). */
@@ -235,6 +269,7 @@ async function launchSession(source: InputSourceMeta, session: Session): Promise
   proc.stderr?.on('data', (d: Buffer) => {
     const msg = d.toString().trim()
     if (msg) console.log(`[active-input/${source.id}] ${msg}`)
+    noteCorruptionAndMaybeRestart(source.id, session, msg)
   })
 
   // proc principal e relay (se houver) formam uma unidade — se um cair, reinicia os dois juntos
@@ -293,6 +328,7 @@ export async function deactivateInput(sourceId: string): Promise<void> {
   if (s.retryTimer) { clearTimeout(s.retryTimer); s.retryTimer = null }
   if (s.ports) releasePortPair(s.ports)
   sessions.delete(sourceId)
+  corruptionTrackers.delete(sourceId)
   scteWatcher.stopWatcher(sourceId)
   scteWatcher.stopUdpWatcher(sourceId)
   await Promise.all([killAndWait(s.proc), killAndWait(s.relayProc)])
