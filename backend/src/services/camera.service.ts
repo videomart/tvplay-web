@@ -5,11 +5,16 @@ interface CameraSession {
   proc: ChildProcess
   port: number
   stopped: boolean
+  gotStdinData: boolean      // true assim que o WebSocket escreveu o 1º frame
+  sawListenerIOError: boolean // true se o stderr mostrou o padrão de listener perdendo o caller
+  restartTimer: ReturnType<typeof setTimeout> | null
 }
 
 const sessions   = new Map<string, CameraSession>()
 const portMap    = new Map<string, number>()
 let   nextPort   = 13050   // portas reservadas para SRT de câmera
+
+const RESTART_DELAY_MS = 1_000
 
 function getOrAllocPort(channelId: string): number {
   if (!portMap.has(channelId)) portMap.set(channelId, nextPort++)
@@ -31,26 +36,17 @@ export function getCameraProc(channelId: string): ChildProcess | null {
   return sessions.get(channelId)?.proc ?? null
 }
 
-export async function startCamera(channelId: string): Promise<void> {
-  // Para sessão existente antes de iniciar nova
-  const existing = sessions.get(channelId)
-  if (existing) {
-    existing.stopped = true
-    try { existing.proc.kill('SIGTERM') } catch {}
-    sessions.delete(channelId)
-  }
+// Marca que o WebSocket já entregou dados ao stdin desta sessão — usado para
+// distinguir um crash "a frio" (sem dados ainda, não vale reiniciar — era o
+// loop destrutivo da v1.1.7) de um crash em pleno funcionamento (vale
+// reiniciar automaticamente).
+export function markStdinData(channelId: string): void {
+  const s = sessions.get(channelId)
+  if (s) s.gotStdinData = true
+}
 
-  const port = getOrAllocPort(channelId)
-
-  // Câmera → SRT local (listener) — o playout lê daqui ao fazer CUT
-  // analyzeduration=0/probesize=32768 (valores anteriores) eram baixos demais para
-  // detectar corretamente os parâmetros do WebM de entrada — o FFmpeg avisava
-  // "not enough frames to estimate rate" e a decisão de encode ficava ruim,
-  // produzindo vídeo visivelmente borrado mesmo com bitrate/resolução de captura
-  // adequados no browser (confirmado em produção, 2026-06-24). 1M de probesize
-  // ainda é baixo (poucos ms de buffer), suficiente para reduzir o atraso de
-  // start sem cair no problema de detecção insuficiente.
-  const args = [
+function buildArgs(port: number): string[] {
+  return [
     '-hide_banner', '-loglevel', 'warning',
     '-analyzeduration', '1000000', '-probesize', '1000000',
     '-f', 'webm', '-i', 'pipe:0',
@@ -69,32 +65,80 @@ export async function startCamera(channelId: string): Promise<void> {
     '-c:a', 'aac', '-ar', '44100', '-b:a', '128k',
     '-f', 'mpegts', `srt://0.0.0.0:${port}?mode=listener&pkt_size=1316`,
   ]
+}
 
-  const proc = spawn(config.ffmpeg.path, args, {
+// Padrão de stderr quando o listener SRT perde o caller anterior (ex.: um
+// novo CUT para a câmera reconecta, ou o relay de saída reinicia e abre uma
+// nova conexão SRT) — confirmado em produção (2026-06-24): o processo recebe
+// "Error submitting a packet to the muxer: I/O error" e sai com código 251.
+// Diferente do crash a frio (EBML header parsing failed, sem dados ainda),
+// este padrão ocorre em pleno funcionamento e é seguro reiniciar.
+const LISTENER_IO_ERROR_PATTERN = /Error submitting a packet to the muxer: I\/O error/
+
+function spawnCameraProcess(channelId: string, session: CameraSession): void {
+  const proc = spawn(config.ffmpeg.path, buildArgs(session.port), {
     stdio: ['pipe', 'pipe', 'pipe'],
   })
-
-  const session: CameraSession = { proc, port, stopped: false }
-  sessions.set(channelId, session)
+  session.proc = proc
+  session.sawListenerIOError = false
 
   proc.stderr?.on('data', (d: Buffer) => {
     const msg = d.toString().trim()
     if (msg) console.log(`[camera/${channelId}] ${msg}`)
+    if (LISTENER_IO_ERROR_PATTERN.test(msg)) session.sawListenerIOError = true
   })
 
   proc.on('exit', (code) => {
     const cur = sessions.get(channelId)
-    if (cur?.proc === proc) sessions.delete(channelId)
-    console.log(`[camera/${channelId}] FFmpeg encerrou (código ${code})`)
+    if (cur?.proc !== proc) return  // já substituído por outra via (stop/restart manual)
+    if (session.stopped) { sessions.delete(channelId); return }
+
+    const shouldRestart = session.gotStdinData && session.sawListenerIOError
+    if (!shouldRestart) {
+      sessions.delete(channelId)
+      console.log(`[camera/${channelId}] FFmpeg encerrou (código ${code}) — sessão finalizada (reabra o modal para reiniciar)`)
+      return
+    }
+
+    // Sessão estava funcionando e perdeu o caller SRT — reinicia automaticamente,
+    // mantendo a entrada no map para o WebSocket continuar alimentando o
+    // processo novo via getCameraProc() sem qualquer ação do usuário.
+    console.log(`[camera/${channelId}] FFmpeg encerrou (código ${code}) após perder o caller SRT — reiniciando em ${RESTART_DELAY_MS / 1000}s`)
+    session.gotStdinData = false
+    session.restartTimer = setTimeout(() => {
+      session.restartTimer = null
+      if (session.stopped) return
+      spawnCameraProcess(channelId, session)
+    }, RESTART_DELAY_MS)
   })
 
-  console.log(`[camera/${channelId}] Câmera SRT listener em :${port}`)
+  console.log(`[camera/${channelId}] Câmera SRT listener em :${session.port}`)
+}
+
+export async function startCamera(channelId: string): Promise<void> {
+  // Para sessão existente antes de iniciar nova
+  const existing = sessions.get(channelId)
+  if (existing) {
+    existing.stopped = true
+    if (existing.restartTimer) clearTimeout(existing.restartTimer)
+    try { existing.proc.kill('SIGTERM') } catch {}
+    sessions.delete(channelId)
+  }
+
+  const port = getOrAllocPort(channelId)
+  const session: CameraSession = {
+    proc: null as any, port, stopped: false,
+    gotStdinData: false, sawListenerIOError: false, restartTimer: null,
+  }
+  sessions.set(channelId, session)
+  spawnCameraProcess(channelId, session)
 }
 
 export function stopCamera(channelId: string): void {
   const session = sessions.get(channelId)
   if (!session) return
   session.stopped = true
+  if (session.restartTimer) clearTimeout(session.restartTimer)
   try { session.proc.kill('SIGTERM') } catch {}
   sessions.delete(channelId)
   console.log(`[camera/${channelId}] Parado`)

@@ -370,7 +370,7 @@ export default function InputSourcesPage() {
 
     if (s.type === 'IP' && s.url?.match(/^https?:\/\//i)) {
       setPreviewStreamUrl(s.url)
-    } else if (s.url || s.device) {
+    } else if (s.type === 'WEBCAM' || s.url || s.device) {
       setResolving(true)
       try {
         const { hlsUrl } = await inputSourcesApi.startPreview(s.id)
@@ -399,6 +399,7 @@ export default function InputSourcesPage() {
 
   function canPreview(s: InputSource) {
     if (s.type === 'CLIP') return !!(s.clip) // CLIP: preview se tem clipe associado
+    if (s.type === 'WEBCAM') return true // backend valida se há sessão ativa
     return !!(s.url || s.device)
   }
 

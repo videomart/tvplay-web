@@ -367,6 +367,33 @@ export default async function inputSourceRoutes(app: FastifyInstance) {
       return reply.status(504).send({ error: `Timeout: a fonte SRT não enviou dados em ${MAX_WAIT}s. Verifique se vps1 está transmitindo.` })
     }
 
+    // Tipo WEBCAM: usa a URL SRT dinâmica da sessão de câmera ativa (gerada em
+    // runtime pelo camera.service, não armazenada no banco) — sem isso o
+    // preview nunca tinha como funcionar para WEBCAM (sem url/device fixo).
+    if ((source as any).type === 'WEBCAM') {
+      const { getCameraInputUrl, isCameraActive } = await import('../services/camera.service')
+      // channelId pode ser null (entrada "Todos os canais") — preview usa a
+      // primeira sessão de câmera ativa encontrada, já que não há como saber
+      // a priori em qual canal o operador a ativou.
+      const candidateChannelIds = [source.channelId, ...(await prisma.channel.findMany({ select: { id: true } })).map((c: any) => c.id)]
+      const activeChannelId = candidateChannelIds.find((id) => id && isCameraActive(id))
+      if (!activeChannelId) return reply.status(400).send({ error: 'Câmera não está ativa em nenhum canal' })
+      const camUrl = getCameraInputUrl(activeChannelId)
+      if (!camUrl) return reply.status(400).send({ error: 'URL da câmera não disponível' })
+      previewService.startPreview(source.id, camUrl)
+      const hlsFile = path.join('/tmp/tvplay-previews', source.id, 'index.m3u8')
+      for (let i = 0; i < 20; i++) {
+        if (fs.existsSync(hlsFile)) break
+        if (previewService.hasPreviewFailed(source.id)) break
+        await new Promise((r) => setTimeout(r, 500))
+      }
+      if (!fs.existsSync(hlsFile)) {
+        previewService.stopPreview(source.id)
+        return reply.status(504).send({ error: 'Timeout ao iniciar preview da câmera.' })
+      }
+      return { hlsUrl: `/api/input-sources/${source.id}/preview/stream/index.m3u8` }
+    }
+
     // Tipo CLIP: resolve a URL a partir do clipe cadastrado
     if ((source as any).type === 'CLIP') {
       const clip = (source as any).clip

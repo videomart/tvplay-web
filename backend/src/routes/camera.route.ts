@@ -27,6 +27,7 @@ export default async function cameraRoutes(app: FastifyInstance) {
     socket.on('message', (data: Buffer) => {
       const proc = cameraService.getCameraProc(channelId)
       if (proc?.stdin?.writable) {
+        cameraService.markStdinData(channelId)
         proc.stdin.write(data, (err) => {
           if (err) console.warn(`[camera/${channelId}] stdin write:`, err.message)
         })
