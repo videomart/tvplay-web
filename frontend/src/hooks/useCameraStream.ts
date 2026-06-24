@@ -129,8 +129,17 @@ export function useCameraStream(channelId: string) {
     })
 
     // 4. Inicia MediaRecorder
+    // videoBitsPerSecond explícito: sem isso o Chrome aplica um bitrate bem
+    // conservador por padrão (visivelmente abaixo do que a resolução 1280x720
+    // pedida acima suporta), produzindo vídeo borrado mesmo com o preview
+    // local parecendo nítido (o preview usa o MediaStream raw, não o WebM
+    // comprimido pelo MediaRecorder) — confirmado em produção (2026-06-24).
     const mimeType = getSupportedMimeType()
-    const recorder = new MediaRecorder(stream, { mimeType })
+    const recorder = new MediaRecorder(stream, {
+      mimeType,
+      videoBitsPerSecond: 4_000_000,
+      audioBitsPerSecond: 128_000,
+    })
     recorder.ondataavailable = (e) => {
       if (e.data.size > 0 && ws.readyState === WebSocket.OPEN) ws.send(e.data)
     }

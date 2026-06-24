@@ -158,7 +158,13 @@ function buildRelayArgs(output: OutputConfig, port: number): string[] | null {
   // e o socket UDP, independente da fonte upstream (reproduzido com M1 E M3 como
   // origem). Mais margem de fifo reduz a chance de overrun antes do offset saltar.
   const udpUrl    = `udp://0.0.0.0:${port}?overrun_nonfatal=1&timeout=15000000&buffer_size=4194304&fifo_size=86016`
-  const readRate  = output.type === 'RTMP' ? ['-re'] : []
+  // -readrate_catchup: quando o lag acumulado cresce (fonte upstream ~5% mais rápida
+  // que o pacing nominal do -re — "rate 1.050" observado em produção), o FFmpeg
+  // troca temporariamente para 1.5x de velocidade até zerar o atraso, em vez de
+  // deixá-lo crescer indefinidamente (visto chegar a 30s+ em poucos minutos antes
+  // desta correção, culminando em "Circular buffer overrun" e descarte de pacotes
+  // em massa). Confirmado disponível no binário static-ffmpeg em uso (2026-06-24).
+  const readRate  = output.type === 'RTMP' ? ['-re', '-readrate_catchup', '1.5'] : []
   // -err_detect ignore_err + -fflags +discardcorrupt: o probe do demuxer mpegts roda SEMPRE
   // (mesmo com -map explícito na saída) e tenta determinar codec parameters de TODOS os
   // streams do input — se qualquer um falhar ("could not find codec parameters"), o processo

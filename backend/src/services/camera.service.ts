@@ -49,7 +49,10 @@ export async function startCamera(channelId: string): Promise<void> {
     '-f', 'webm', '-i', 'pipe:0',
     '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
     '-g', '60', '-keyint_min', '60',
-    '-b:v', '2500k', '-maxrate', '3000k', '-bufsize', '2500k',
+    // Acompanha o videoBitsPerSecond do MediaRecorder (useCameraStream.ts) — sem
+    // isso o reencode aqui limitava a qualidade de novo mesmo após corrigir o
+    // bitrate de captura no browser.
+    '-b:v', '4000k', '-maxrate', '4800k', '-bufsize', '4000k',
     '-c:a', 'aac', '-ar', '44100', '-b:a', '128k',
     '-f', 'mpegts', `srt://0.0.0.0:${port}?mode=listener&pkt_size=1316`,
   ]
