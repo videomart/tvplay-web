@@ -1279,8 +1279,12 @@ export async function cutToCamera(channelId: string): Promise<PlayoutState> {
   const url = getCameraInputUrl(channelId)
   if (!url) throw new Error('URL da câmera não disponível')
 
+  // Aceita tanto a entrada WEBCAM vinculada a este canal quanto uma global
+  // ("Todos os canais", channelId: null) — confirmado em produção (2026-06-24)
+  // que entradas globais não eram encontradas aqui, deixando o fallback do
+  // canal sem ser persistido mesmo com o streaming iniciando corretamente.
   const webcamSource = await prisma.inputSource.findFirst({
-    where: { channelId, type: 'WEBCAM' },
+    where: { type: 'WEBCAM', OR: [{ channelId }, { channelId: null }] },
     select: { id: true },
   }).catch(() => null)
 

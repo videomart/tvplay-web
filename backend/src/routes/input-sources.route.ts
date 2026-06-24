@@ -31,36 +31,33 @@ const schema = z.object({
   scteAction:       z.enum(['LOG', 'BREAK']).optional(),
 })
 
-// Calcula o primeiro inputNumber livre no escopo (por canal, ou global se sem canal).
-async function nextAvailableInputNumber(channelId: string | null | undefined): Promise<number> {
-  const scope = channelId ? { channelId } : { channelId: null }
-  const existing = await prisma.inputSource.findMany({ where: scope, select: { inputNumber: true } })
+// Calcula o primeiro inputNumber livre — único GLOBALMENTE (não por canal).
+// Entradas "Todos os canais" (channelId: null) e entradas de um canal específico
+// compartilham a mesma sequência numérica, evitando dois botões com o mesmo
+// número no switcher de um canal (ex.: uma entrada global e uma do canal com
+// inputNumber=1 simultaneamente — confirmado em produção, 2026-06-24).
+async function nextAvailableInputNumber(): Promise<number> {
+  const existing = await prisma.inputSource.findMany({ select: { inputNumber: true } })
   const used = new Set(existing.map((o: any) => o.inputNumber).filter(Boolean))
   let n = 1
   while (used.has(n)) n++
   return n
 }
 
-// Garante unicidade de inputNumber por canal: se houver conflito, move o existente
-// para o primeiro número disponível.
-async function resolveInputNumber(
-  channelId: string | null | undefined,
-  desiredNumber: number,
-  excludeId?: string,
-): Promise<void> {
-  // Escopo de unicidade: por canal se channelId informado, global caso contrário
-  const scope = channelId ? { channelId } : { channelId: null }
+// Garante unicidade de inputNumber GLOBALMENTE: se houver conflito, move o
+// existente para o primeiro número disponível.
+async function resolveInputNumber(desiredNumber: number, excludeId?: string): Promise<void> {
   const excludeFilter = excludeId ? { id: { not: excludeId } } : {}
 
   const conflict = await prisma.inputSource.findFirst({
-    where: { ...scope, inputNumber: desiredNumber, ...excludeFilter },
+    where: { inputNumber: desiredNumber, ...excludeFilter },
   })
   if (!conflict) return
 
   // Libera o slot antes de recalcular para evitar cascade de conflitos
   await prisma.inputSource.update({ where: { id: conflict.id }, data: { inputNumber: null } })
   const others = await prisma.inputSource.findMany({
-    where: { ...scope, id: { notIn: [conflict.id, ...(excludeId ? [excludeId] : [])] } },
+    where: { id: { notIn: [conflict.id, ...(excludeId ? [excludeId] : [])] } },
     select: { inputNumber: true },
   })
   const used = new Set(others.map((o: any) => o.inputNumber).filter(Boolean))
@@ -255,11 +252,11 @@ export default async function inputSourceRoutes(app: FastifyInstance) {
     const body = schema.safeParse(request.body)
     if (!body.success) return reply.status(400).send({ error: body.error.flatten() })
     if (body.data.inputNumber != null) {
-      await resolveInputNumber(body.data.channelId, body.data.inputNumber)
+      await resolveInputNumber(body.data.inputNumber)
     } else {
       // Sem número informado: atribui automaticamente o primeiro disponível,
       // evitando o "?" no botão do switcher por falta de inputNumber.
-      body.data.inputNumber = await nextAvailableInputNumber(body.data.channelId)
+      body.data.inputNumber = await nextAvailableInputNumber()
     }
     const source = await prisma.inputSource.create({ data: body.data, include })
     return reply.status(201).send(source)
@@ -269,8 +266,7 @@ export default async function inputSourceRoutes(app: FastifyInstance) {
     const body = schema.partial().safeParse(request.body)
     if (!body.success) return reply.status(400).send({ error: body.error.flatten() })
     if (body.data.inputNumber != null) {
-      const current = await prisma.inputSource.findUnique({ where: { id: request.params.id }, select: { channelId: true } })
-      await resolveInputNumber(body.data.channelId ?? current?.channelId, body.data.inputNumber, request.params.id)
+      await resolveInputNumber(body.data.inputNumber, request.params.id)
     }
     const source = await prisma.inputSource.update({
       where: { id: request.params.id },

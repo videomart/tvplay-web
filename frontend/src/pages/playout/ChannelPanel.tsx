@@ -898,7 +898,10 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
 
   const cutToCameraMut = useMutation({
     mutationFn: () => playoutApi.cutToCamera(channel.id),
-    onSuccess: () => toast.success('Cortando para câmera...'),
+    onSuccess: () => {
+      toast.success('Cortando para câmera...')
+      qc.invalidateQueries({ queryKey: ['channels'] })
+    },
     onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao comutar para câmera'),
   })
 
@@ -1350,9 +1353,10 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                   key={s.id}
                   onClick={() => {
                     if (isWebcam && !camera.active) { setCameraOpen(true); return }
+                    if (isWebcam) { cutToCameraMut.mutate(); return }
                     cutToInputMut.mutate(s.id)
                   }}
-                  disabled={cutToInputMut.isPending}
+                  disabled={cutToInputMut.isPending || cutToCameraMut.isPending}
                   title={`CUT → ${s.name}`}
                   className={clsx(
                     'text-[9px] font-black w-7 py-0.5 rounded flex-shrink-0 transition-all disabled:opacity-40',
