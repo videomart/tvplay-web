@@ -67,6 +67,24 @@ async function resolveInputNumber(desiredNumber: number, excludeId?: string): Pr
   await prisma.inputSource.update({ where: { id: conflict.id }, data: { inputNumber: n } })
 }
 
+// Reordena TODOS os inputNumber globalmente: entradas ATIVAS ocupam 1..N sem
+// buracos (preservando a ordem relativa atual entre elas), entradas INATIVAS
+// ficam nos números seguintes (N+1 em diante) — evita que o switcher do
+// operador mostre lacunas entre botões de fontes ativas (ex.: 1 e 3 sem o 2)
+// quando uma fonte no meio da sequência é desativada. Disparado a cada toggle
+// de `active` (criação/edição já usam nextAvailableInputNumber/resolveInputNumber).
+async function reorderInputNumbers(): Promise<void> {
+  const all = await prisma.inputSource.findMany({
+    select: { id: true, active: true, inputNumber: true },
+    orderBy: [{ active: 'desc' }, { inputNumber: 'asc' }],
+  })
+  await Promise.all(
+    all.map((source: { id: string }, idx: number) =>
+      prisma.inputSource.update({ where: { id: source.id }, data: { inputNumber: idx + 1 } })
+    ),
+  )
+}
+
 const include = {
   channel: { select: { id: true, name: true, number: true } },
   clip: { select: { id: true, code: true, title: true, sourceType: true, sourceUrl: true, media: { select: { hlsPath: true, ingestStatus: true } } } },
@@ -275,11 +293,16 @@ export default async function inputSourceRoutes(app: FastifyInstance) {
     }).catch(() => null)
     if (!source) return reply.status(404).send({ error: 'Fonte não encontrada' })
     // Gerencia relay ativo ao mudar campo active ou scteWatchEnabled
+    let result = source
     if (body.data.active === false) {
+      await reorderInputNumbers()
+      result = await prisma.inputSource.findUnique({ where: { id: source.id }, include }) ?? source
       activeInputsService.deactivateInput(source.id)
         .then(() => refreshInputSourceConsumers(source.id))
         .catch(() => {})
     } else if (body.data.active === true) {
+      await reorderInputNumbers()
+      result = await prisma.inputSource.findUnique({ where: { id: source.id }, include }) ?? source
       activeInputsService.activateInput(source)
         .then(() => refreshInputSourceConsumers(source.id))
         .catch(() => {})
@@ -289,7 +312,7 @@ export default async function inputSourceRoutes(app: FastifyInstance) {
         .then(() => refreshInputSourceConsumers(source.id))
         .catch(() => {})
     }
-    return source
+    return result
   })
 
   // Status do último evento SCTE-35 detectado nesta entrada
