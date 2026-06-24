@@ -96,6 +96,32 @@ const relayProcs  = new Map<string, Map<string, RelayProcess>>()
 const relayPortMap  = new Map<string, number>()
 let   nextRelayPort  = 13100
 
+// ─── Detecção de troca de "modo" de conteúdo (força restart do relay) ────────
+// O relay opera em `-c copy`: nunca decodifica, só copia bytes do H.264/AAC que
+// chega no socket UDP. Ele NUNCA deveria caber repassar dois bitstreams H.264
+// diferentes (SPS/PPS/frame_num distintos) sem reabrir a conexão externa —
+// o decoder do lado receptor (RTMP/SRT) trata isso como stream corrompido
+// ("illegal reordering_of_pic_nums_idc", "cabac_init_idc overflow", etc.) e só
+// se recupera com um restart manual completo (confirmado em produção, 2026-06-24,
+// troca de fonte SRT-direta ↔ concat de playlist na mesma saída).
+// Dentro do MESMO modo (ex.: trocar de clipe para clipe dentro do concat), o
+// processo de conteúdo já é seamless e não recria o relay — isso é intencional.
+type ContentMode = 'concat' | 'direct-copy' | 'direct-reencode' | 'fallback'
+const channelContentMode = new Map<string, ContentMode>()
+
+// Se o modo mudou desde a última chamada, mata e recria o relay (mesma porta)
+// antes do novo content process começar a escrever — evita misturar dois
+// bitstreams H.264 incompatíveis no mesmo processo `-c copy` de longa duração.
+async function ensureRelaysForMode(channelId: string, outputs: OutputConfig[], mode: ContentMode): Promise<void> {
+  const previousMode = channelContentMode.get(channelId)
+  channelContentMode.set(channelId, mode)
+  if (previousMode && previousMode !== mode) {
+    console.log(`[relay/${channelId}] Troca de modo de conteúdo (${previousMode} → ${mode}) — reiniciando relay para evitar stream H.264 incompatível`)
+    await stopRelays(channelId)
+  }
+  await ensureRelays(channelId, outputs)
+}
+
 function getOrAllocRelayPort(outputId: string): number {
   if (!relayPortMap.has(outputId)) relayPortMap.set(outputId, nextRelayPort++)
   return relayPortMap.get(outputId)!
@@ -840,7 +866,7 @@ export async function startStreaming(
   if (!outputs.length) return
 
   // Ensure relay processes are running before restarting content
-  await ensureRelays(channelId, outputs)
+  await ensureRelaysForMode(channelId, outputs, 'direct-reencode')
   await stopStreaming(channelId)
 
   const hlsUrl = hlsUrlForMedia(mediaId)
@@ -873,6 +899,7 @@ export async function stopAllStreaming(channelId: string): Promise<void> {
   _stopCameraHook?.(channelId)
   stopStreaming(channelId)
   await stopRelays(channelId)
+  channelContentMode.delete(channelId)
 }
 
 /**
@@ -1127,7 +1154,7 @@ export async function startStreamingFromPlaylist(
   if (!outputs.length) return
 
   // Ensure relay processes are running before restarting content
-  await ensureRelays(channelId, outputs)
+  await ensureRelaysForMode(channelId, outputs, 'concat')
   await stopStreaming(channelId)
 
   const concatFilePath = await writeConcatFile(channelId, items)
@@ -1225,7 +1252,7 @@ export async function startStreamingFromUrl(
   // FFmpeg escreve direto na URL final (RTMP/YouTube) sem o relay intermediário
   // que mantém a conexão viva durante gaps/transições (causa de "conexão ok
   // mas tela preta" até o primeiro PLAY da playlist reiniciar via relay).
-  await ensureRelays(channelId, outputs)
+  await ensureRelaysForMode(channelId, outputs, 'direct-copy')
   await stopStreaming(channelId)
 
   const map = new Map<string, StreamProcess>()
@@ -1254,7 +1281,7 @@ export async function startStreamingFromUrlReencode(
   if (!outputs.length) return
 
   // Ensure relay processes are running before restarting content
-  await ensureRelays(channelId, outputs)
+  await ensureRelaysForMode(channelId, outputs, 'direct-reencode')
   await stopStreaming(channelId)
 
   const map = new Map<string, StreamProcess>()
@@ -1277,7 +1304,7 @@ export async function startStreamingFromFallback(channelId: string, fallbackType
   if (!outputs.length) return
 
   // Garante que os relays estão ativos ANTES de parar o content process
-  await ensureRelays(channelId, outputs)
+  await ensureRelaysForMode(channelId, outputs, 'fallback')
   await stopStreaming(channelId)   // para só o content — relay continua vivo
 
   const map = new Map<string, StreamProcess>()
