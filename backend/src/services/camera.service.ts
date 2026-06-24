@@ -43,10 +43,23 @@ export async function startCamera(channelId: string): Promise<void> {
   const port = getOrAllocPort(channelId)
 
   // Câmera → SRT local (listener) — o playout lê daqui ao fazer CUT
+  // analyzeduration=0/probesize=32768 (valores anteriores) eram baixos demais para
+  // detectar corretamente os parâmetros do WebM de entrada — o FFmpeg avisava
+  // "not enough frames to estimate rate" e a decisão de encode ficava ruim,
+  // produzindo vídeo visivelmente borrado mesmo com bitrate/resolução de captura
+  // adequados no browser (confirmado em produção, 2026-06-24). 1M de probesize
+  // ainda é baixo (poucos ms de buffer), suficiente para reduzir o atraso de
+  // start sem cair no problema de detecção insuficiente.
   const args = [
     '-hide_banner', '-loglevel', 'warning',
-    '-analyzeduration', '0', '-probesize', '32768',
+    '-analyzeduration', '1000000', '-probesize', '1000000',
     '-f', 'webm', '-i', 'pipe:0',
+    // scale força a saída em 1280x720 independente do que vier do browser —
+    // sem isso, qualquer captura em resolução menor (ex.: webcam de baixa
+    // qualidade, ou o navegador escolhendo um valor abaixo do "ideal" pedido)
+    // saía sem upscale, e variações na fonte afetavam a qualidade percebida
+    // no ar de forma inconsistente.
+    '-vf', 'scale=1280:720',
     '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
     '-g', '60', '-keyint_min', '60',
     // Acompanha o videoBitsPerSecond do MediaRecorder (useCameraStream.ts) — sem
