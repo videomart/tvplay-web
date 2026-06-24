@@ -154,6 +154,25 @@ function isUrlClip(sourceType: string | null | undefined, sourceUrl: string | nu
 // Clientes a tentar em ordem — ios é o mais confiável em 2025 (bypassa bot-check do YouTube)
 const YT_CLIENTS = ['ios', 'tv_embedded', 'android', 'mweb', ''] as const
 
+// ─── Cache de falha de resolução (resolveViaYtDlp) ────────────────────────────
+// Quando todas as tentativas falham (ex.: bloqueio de IP de datacenter — "Sign in
+// to confirm you're not a bot" —, persistente e não relacionado a cookies), evita
+// repetir as 5 tentativas sequenciais (até ~300s de bloqueio) a cada vez que o
+// mesmo clipe/URL é tocado novamente em sequência rápida (ex.: loop de playlist).
+// TTL curto (2 min): se o bloqueio for transitório, ainda tenta de novo em breve;
+// se for persistente, poupa o pipeline de conteúdo de travar repetidamente — o
+// gap de silêncio no relay RTMP/SRT durante essa espera é o que faz plataformas
+// como o YouTube ocasionalmente encerrar a sessão de transmissão (2026-06-24).
+const ytResolveFailureCache = new Map<string, number>()  // url → timestamp da última falha
+const YT_RESOLVE_FAILURE_TTL_MS = 2 * 60 * 1000           // 2 min
+
+function recentlyFailedToResolve(url: string): boolean {
+  const ts = ytResolveFailureCache.get(url)
+  if (ts === undefined) return false
+  if (Date.now() - ts > YT_RESOLVE_FAILURE_TTL_MS) { ytResolveFailureCache.delete(url); return false }
+  return true
+}
+
 function ytClientArgs(client: string): string[] {
   return client ? ['--extractor-args', `youtube:player_client=${client}`] : []
 }
@@ -199,6 +218,10 @@ async function resolveViaYtDlp(rawUrl: string): Promise<string | null> {
     console.log(`[yt-dlp] desabilitado nas Configurações deste servidor — não resolvendo: ${rawUrl}`)
     return null
   }
+  if (recentlyFailedToResolve(rawUrl)) {
+    console.log(`[yt-dlp] falha recente em cache (<2min) — pulando novas tentativas: ${rawUrl}`)
+    return null
+  }
   const base = [
     '--no-playlist', '-g', '--no-warnings', '--socket-timeout', '15',
     '--js-runtimes', 'node',          // usa Node.js para resolver n-challenge do YouTube
@@ -231,6 +254,7 @@ async function resolveViaYtDlp(rawUrl: string): Promise<string | null> {
     }
   }
   console.error(`[yt-dlp] TODAS as tentativas falharam para: ${rawUrl}`)
+  ytResolveFailureCache.set(rawUrl, Date.now())
   return null
 }
 
