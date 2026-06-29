@@ -96,39 +96,19 @@ const relayProcs  = new Map<string, Map<string, RelayProcess>>()
 const relayPortMap  = new Map<string, number>()
 let   nextRelayPort  = 13100
 
-// ─── Detecção de troca de "modo" de conteúdo (força restart do relay) ────────
 // O relay opera em `-c copy`: nunca decodifica, só copia bytes do H.264/AAC que
-// chega no socket UDP. Ele NUNCA deveria caber repassar dois bitstreams H.264
-// diferentes (SPS/PPS/frame_num distintos) sem reabrir a conexão externa —
-// o decoder do lado receptor (RTMP/SRT) trata isso como stream corrompido
-// ("illegal reordering_of_pic_nums_idc", "cabac_init_idc overflow", etc.) e só
-// se recupera com um restart manual completo (confirmado em produção, 2026-06-24,
-// troca de fonte SRT-direta ↔ concat de playlist na mesma saída).
-// Dentro do MESMO modo (ex.: trocar de clipe para clipe dentro do concat), o
-// processo de conteúdo já é seamless e não recria o relay — isso é intencional.
-//
-// 'concat' e 'direct-reencode' usam o MESMO codec/GOP/CFR (libx264, profile high,
-// -g 60 -keyint_min 60 -sc_threshold 0, 29.97fps CFR — ver buildArgs/buildConcatArgs),
-// então são tratados como um único modo 'reencode': trocar entre CUT de entrada e
-// PLAY de playlist já troca de processo FFmpeg (novo SPS/PPS inline no -c copy do
-// relay, igual a qualquer troca de clipe dentro do concat) sem precisar derrubar a
-// conexão RTMP/SRT externa. Antes disso, essa troca forçava restart do relay e
-// causava ~20s de interrupção do stream externo (2026-06-29).
-type ContentMode = 'reencode' | 'fallback'
-const channelContentMode = new Map<string, ContentMode>()
-
-// Se o modo mudou desde a última chamada, mata e recria o relay (mesma porta)
-// antes do novo content process começar a escrever — evita misturar dois
-// bitstreams H.264 incompatíveis no mesmo processo `-c copy` de longa duração.
-async function ensureRelaysForMode(channelId: string, outputs: OutputConfig[], mode: ContentMode): Promise<void> {
-  const previousMode = channelContentMode.get(channelId)
-  channelContentMode.set(channelId, mode)
-  if (previousMode && previousMode !== mode) {
-    console.log(`[relay/${channelId}] Troca de modo de conteúdo (${previousMode} → ${mode}) — reiniciando relay para evitar stream H.264 incompatível`)
-    await stopRelays(channelId)
-  }
-  await ensureRelays(channelId, outputs)
-}
+// chega no socket UDP. Por isso TODOS os caminhos de conteúdo (concat, clip URL
+// reencodado, entrada cortada via CUT, fallback BARS/BLACK) usam o MESMO
+// codec/GOP/CFR (libx264, profile high, -g 60 -keyint_min 60 -sc_threshold 0,
+// 29.97fps CFR — ver buildArgs/buildConcatArgs/buildFallbackArgs). Isso garante
+// que o relay nunca precisa reabrir a conexão RTMP/SRT externa ao trocar de
+// fonte — o decoder do lado receptor trata um novo SPS/PPS inline no meio do
+// -c copy como uma troca de cena normal (mesmo padrão já usado entre clipes
+// dentro do concat). Antes de unificar esses parâmetros, bitstreams incompatíveis
+// entre os modos forçavam restart do relay a cada troca, causando ~20s de
+// interrupção do stream externo, ou exigindo refresh manual do lado do receptor
+// (2026-06-29). Se algum caminho novo de conteúdo for adicionado, mantenha os
+// mesmos parâmetros de GOP/profile/framerate ou ele vai reintroduzir esse bug.
 
 function getOrAllocRelayPort(outputId: string): number {
   if (!relayPortMap.has(outputId)) relayPortMap.set(outputId, nextRelayPort++)
@@ -880,7 +860,7 @@ export async function startStreaming(
   if (!outputs.length) return
 
   // Ensure relay processes are running before restarting content
-  await ensureRelaysForMode(channelId, outputs, 'reencode')
+  await ensureRelays(channelId, outputs)
   await stopStreaming(channelId)
 
   const hlsUrl = hlsUrlForMedia(mediaId)
@@ -913,7 +893,6 @@ export async function stopAllStreaming(channelId: string): Promise<void> {
   _stopCameraHook?.(channelId)
   stopStreaming(channelId)
   await stopRelays(channelId)
-  channelContentMode.delete(channelId)
 }
 
 /**
@@ -1168,7 +1147,7 @@ export async function startStreamingFromPlaylist(
   if (!outputs.length) return
 
   // Ensure relay processes are running before restarting content
-  await ensureRelaysForMode(channelId, outputs, 'reencode')
+  await ensureRelays(channelId, outputs)
   await stopStreaming(channelId)
 
   const concatFilePath = await writeConcatFile(channelId, items)
@@ -1252,9 +1231,8 @@ export async function reconnectOutput(
 // Sempre re-encoda (nunca -c copy) quando há saída relay-capable: o relay copia bytes
 // H.264 crus (-c copy) e não pode receber um bitstream com SPS/PPS diferente do que a
 // playlist (concat/reencode) produz sem reabrir a conexão externa — forçar o mesmo
-// encoder/GOP aqui elimina a troca de "modo de conteúdo" (ver ensureRelaysForMode) ao
-// alternar entre CUT de entrada e PLAY de playlist, e com isso o restart do relay que
-// causava ~20s de interrupção do RTMP/SRT externo a cada troca (2026-06-29).
+// encoder/GOP aqui (ver comentário acima de isRelayCapable) elimina o restart do relay
+// ao alternar entre CUT de entrada e PLAY de playlist (2026-06-29).
 export async function startStreamingFromUrl(
   channelId: string,
   inputUrl: string,
@@ -1270,7 +1248,7 @@ export async function startStreamingFromUrl(
   // FFmpeg escreve direto na URL final (RTMP/YouTube) sem o relay intermediário
   // que mantém a conexão viva durante gaps/transições (causa de "conexão ok
   // mas tela preta" até o primeiro PLAY da playlist reiniciar via relay).
-  await ensureRelaysForMode(channelId, outputs, 'reencode')
+  await ensureRelays(channelId, outputs)
   await stopStreaming(channelId)
 
   const map = new Map<string, StreamProcess>()
@@ -1299,7 +1277,7 @@ export async function startStreamingFromUrlReencode(
   if (!outputs.length) return
 
   // Ensure relay processes are running before restarting content
-  await ensureRelaysForMode(channelId, outputs, 'reencode')
+  await ensureRelays(channelId, outputs)
   await stopStreaming(channelId)
 
   const map = new Map<string, StreamProcess>()
@@ -1322,15 +1300,19 @@ export async function startStreamingFromFallback(channelId: string, fallbackType
   if (!outputs.length) return
 
   // Garante que os relays estão ativos ANTES de parar o content process
-  await ensureRelaysForMode(channelId, outputs, 'fallback')
+  await ensureRelays(channelId, outputs)
   await stopStreaming(channelId)   // para só o content — relay continua vivo
 
   const map = new Map<string, StreamProcess>()
   for (const output of outputs) {
     const size = output.videoResolution ?? '1280x720'
+    // rate=30000/1001 (29.97fps, CFR) — mesmo framerate nominal do modo 'reencode'
+    // (concat/direct-reencode), para que o bitstream H.264 gerado aqui seja compatível
+    // com o que o relay já está repassando, evitando precisar reiniciar o relay ao
+    // alternar entre BARS/BLACK e entrada/playlist (mesma causa do bug corrigido em v1.1.13).
     const videoInput = fallbackType === 'COLORBARS'
-      ? `smptehdbars=size=${size}:rate=25`
-      : `color=c=black:size=${size}:rate=25`
+      ? `smptehdbars=size=${size}:rate=30000/1001`
+      : `color=c=black:size=${size}:rate=30000/1001`
 
     // Usa proxy port se relay-capable (mantém RTMP vivo via relay)
     const port = isRelayCapable(output.type) ? relayPortMap.get(output.id) ?? null : null
@@ -1383,7 +1365,11 @@ function buildFallbackArgs(videoInput: string, output: OutputConfig, graphic: Gr
     '-map', '0:v', '-map', '1:a',
     '-c:v', 'libx264', '-preset', 'veryfast', '-profile:v', 'high',
     ...(output.videoBitrate ? ['-b:v', `${output.videoBitrate}k`, '-maxrate', `${Math.round(output.videoBitrate * 1.5)}k`, '-bufsize', `${output.videoBitrate * 2}k`] : []),
-    '-g', '50', '-keyint_min', '50', '-sc_threshold', '0',  // keyframe a cada 2s (25fps) — dentro do limite de 4s do YouTube
+    // -g/-keyint_min 60 a 29.97fps: mesmo GOP do modo 'reencode' (concat/direct-reencode) —
+    // ver buildArgs/buildConcatArgs. Manter o mesmo GOP/profile/framerate entre os modos
+    // evita misturar bitstreams H.264 incompatíveis no -c copy do relay (mesma causa do
+    // restart de relay corrigido em v1.1.13, agora também entre BARS/BLACK e SRT/playlist).
+    '-g', '60', '-keyint_min', '60', '-sc_threshold', '0',
     '-c:a', 'aac', '-ar', '44100', '-b:a', `${aBitrate}k`,
   ]
 
