@@ -242,6 +242,17 @@ async function resolveViaYtDlp(rawUrl: string): Promise<string | null> {
         return combined
       }
       const url = lines[0]
+      // Manifest "ao vivo"/DVR (hls_playlist, playlist_type=DVR, source=yt_live_broadcast):
+      // sem cookies válidos para autenticar o formato progressivo normal, alguns clientes
+      // (ex.: tv_embedded) ainda retornam esse manifest genérico de fallback em vez de
+      // erro — mas ele é sabidamente instável (keepalive falha, segmentos somem) e nunca
+      // deveria ser usado para um clip de playlist. Rejeitamos e seguimos tentando o
+      // próximo client, em vez de transmitir um stream que vai cair sozinho minutos depois
+      // (confirmado em produção, 2026-06-30 — corte recorrente exigindo refresh).
+      if (url && /\/api\/manifest\/hls_playlist\/|playlist_type\/DVR|source\/yt_live_broadcast/.test(url)) {
+        console.warn(`[yt-dlp] client=${client || 'default'} retornou manifest ao vivo/DVR instável — rejeitando, provável cookie inválido/expirado`)
+        continue
+      }
       if (url) {
         console.log(`[yt-dlp] URL resolvida OK (client=${client || 'default'}): ${url.slice(0, 80)}`)
         return url
