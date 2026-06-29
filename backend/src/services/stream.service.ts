@@ -106,7 +106,15 @@ let   nextRelayPort  = 13100
 // troca de fonte SRT-direta ↔ concat de playlist na mesma saída).
 // Dentro do MESMO modo (ex.: trocar de clipe para clipe dentro do concat), o
 // processo de conteúdo já é seamless e não recria o relay — isso é intencional.
-type ContentMode = 'concat' | 'direct-copy' | 'direct-reencode' | 'fallback'
+//
+// 'concat' e 'direct-reencode' usam o MESMO codec/GOP/CFR (libx264, profile high,
+// -g 60 -keyint_min 60 -sc_threshold 0, 29.97fps CFR — ver buildArgs/buildConcatArgs),
+// então são tratados como um único modo 'reencode': trocar entre CUT de entrada e
+// PLAY de playlist já troca de processo FFmpeg (novo SPS/PPS inline no -c copy do
+// relay, igual a qualquer troca de clipe dentro do concat) sem precisar derrubar a
+// conexão RTMP/SRT externa. Antes disso, essa troca forçava restart do relay e
+// causava ~20s de interrupção do stream externo (2026-06-29).
+type ContentMode = 'reencode' | 'fallback'
 const channelContentMode = new Map<string, ContentMode>()
 
 // Se o modo mudou desde a última chamada, mata e recria o relay (mesma porta)
@@ -872,7 +880,7 @@ export async function startStreaming(
   if (!outputs.length) return
 
   // Ensure relay processes are running before restarting content
-  await ensureRelaysForMode(channelId, outputs, 'direct-reencode')
+  await ensureRelaysForMode(channelId, outputs, 'reencode')
   await stopStreaming(channelId)
 
   const hlsUrl = hlsUrlForMedia(mediaId)
@@ -1160,7 +1168,7 @@ export async function startStreamingFromPlaylist(
   if (!outputs.length) return
 
   // Ensure relay processes are running before restarting content
-  await ensureRelaysForMode(channelId, outputs, 'concat')
+  await ensureRelaysForMode(channelId, outputs, 'reencode')
   await stopStreaming(channelId)
 
   const concatFilePath = await writeConcatFile(channelId, items)
@@ -1241,8 +1249,12 @@ export async function reconnectOutput(
 
 // Para corte de entrada / fallback INPUT_SOURCE.
 // Stops relays first (full streaming reset), then starts direct output.
-// Se contentGraphic estiver presente, usa re-encode para aplicar o overlay.
-// Caso contrário, usa -c copy (baixa latência).
+// Sempre re-encoda (nunca -c copy) quando há saída relay-capable: o relay copia bytes
+// H.264 crus (-c copy) e não pode receber um bitstream com SPS/PPS diferente do que a
+// playlist (concat/reencode) produz sem reabrir a conexão externa — forçar o mesmo
+// encoder/GOP aqui elimina a troca de "modo de conteúdo" (ver ensureRelaysForMode) ao
+// alternar entre CUT de entrada e PLAY de playlist, e com isso o restart do relay que
+// causava ~20s de interrupção do RTMP/SRT externo a cada troca (2026-06-29).
 export async function startStreamingFromUrl(
   channelId: string,
   inputUrl: string,
@@ -1258,15 +1270,15 @@ export async function startStreamingFromUrl(
   // FFmpeg escreve direto na URL final (RTMP/YouTube) sem o relay intermediário
   // que mantém a conexão viva durante gaps/transições (causa de "conexão ok
   // mas tela preta" até o primeiro PLAY da playlist reiniciar via relay).
-  await ensureRelaysForMode(channelId, outputs, 'direct-copy')
+  await ensureRelaysForMode(channelId, outputs, 'reencode')
   await stopStreaming(channelId)
 
   const map = new Map<string, StreamProcess>()
   for (const output of outputs) {
-    // Re-encode quando há gráfico ativo (necessário para aplicar filtros de overlay)
-    const effectiveGraphic = contentGraphic ?? output.graphic ?? null
-    const live = !effectiveGraphic  // sem gráfico → copy; com gráfico → re-encode
     const port = isRelayCapable(output.type) ? relayPortMap.get(output.id) ?? null : null
+    // isLive=false → sempre re-encode (libx264/aac) quando passa pelo relay, mantendo
+    // o mesmo bitstream que startStreamingFromUrlReencode/concat usam na mesma saída
+    const live = port === null
     const sp = spawnOutput(channelId, output, inputUrl, 0, live, contentGraphic, port)
     if (sp) map.set(output.id, sp)
   }
@@ -1287,7 +1299,7 @@ export async function startStreamingFromUrlReencode(
   if (!outputs.length) return
 
   // Ensure relay processes are running before restarting content
-  await ensureRelaysForMode(channelId, outputs, 'direct-reencode')
+  await ensureRelaysForMode(channelId, outputs, 'reencode')
   await stopStreaming(channelId)
 
   const map = new Map<string, StreamProcess>()
