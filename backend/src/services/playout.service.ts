@@ -92,6 +92,23 @@ async function activateFallbackSource(
       streamService.startStreamingFromUrl(channelId, hlsUrl, graphic).catch(() => {})
       return
     }
+    // SRT/RTSP em modo listener só aceita UM listener por porta — cair para a URL crua
+    // aqui sempre falha com "Address in use" (o active-inputs.service já está ouvindo
+    // essa porta), gerando um loop infinito de erro/reconnect a cada 5s sem nunca
+    // recuperar o canal (confirmado em produção, 2026-06-30). Em vez de tentar a URL
+    // crua, insiste no HLS local com uma segunda espera — o relay pode estar passando
+    // por um restart momentâneo, não significa que parou de existir.
+    if (/^srt:.*mode=listener/i.test(source.url ?? '')) {
+      console.warn(`[playout] Fallback ch=${channelId} — relay SRT-listener de ${source.id} não ficou pronto, tentando novamente (URL crua sempre falharia: porta já em uso)`)
+      const readyRetry = await activeInputs.waitUntilReady(source.id, 15_000)
+      if (readyRetry) {
+        const hlsUrl = `http://localhost:${config.port}/api/input-sources/${source.id}/active-stream/index.m3u8`
+        streamService.startStreamingFromUrl(channelId, hlsUrl, graphic).catch(() => {})
+      } else {
+        console.error(`[playout] Fallback ch=${channelId} — relay SRT-listener de ${source.id} não recuperou; canal permanece no fallback de fundo (BLACK/COLORBARS)`)
+      }
+      return
+    }
     console.warn(`[playout] Fallback ch=${channelId} — relay ativo de ${source.id} não ficou pronto a tempo, usando URL direta`)
   }
 
