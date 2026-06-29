@@ -985,7 +985,14 @@ function startTimer(channelId: string) {
 export async function play(channelId: string, playlistId: string, startItemId?: string | null): Promise<PlayoutState> {
   console.log(`[playout] play ch=${channelId} playlist=${playlistId} startItem=${startItemId ?? 'primeiro'}`)
   stopTimer(channelId)
-  await streamService.stopAllStreaming(channelId)
+  // Para só o content process — o relay (conexão RTMP/SRT externa) permanece vivo.
+  // Logo abaixo sempre chamamos uma das startStreamingFrom* (playlist/url/fallback),
+  // que já garante o relay via ensureRelays() antes de reiniciar o content. Usar
+  // stopAllStreaming() aqui era redundante e causava o relay reabrir com o
+  // bitstream do content process anterior ainda "preso" no buffer UDP, gerando
+  // corrupção H.264 ("non-existing PPS referenced", DTS fora de ordem) detectada
+  // pelo player de terceiro que consome o RTMP de saída (2026-06-29).
+  streamService.stopStreaming(channelId)
   const playlist = await prisma.playlist.findUnique({ where: { id: playlistId } })
   if (!playlist) throw new Error('Playlist não encontrada')
 
@@ -1095,7 +1102,11 @@ export async function resume(channelId: string): Promise<PlayoutState> {
 export async function stop(channelId: string): Promise<PlayoutState> {
   stopTimer(channelId)
   streamService.clearConcatRun(channelId)
-  await streamService.stopAllStreaming(channelId)
+  // Para só o content process — abaixo sempre comutamos para um fallback
+  // (activateFallbackSource ou startStreamingFromFallback), que já garante o
+  // relay vivo via ensureRelays(). Ver comentário em stopAllStreaming sobre por
+  // que matar o relay aqui causava corrupção de bitstream H.264 (2026-06-29).
+  streamService.stopStreaming(channelId)
   tickerService.stopAll()
   const state = states.get(channelId) ?? defaultState(channelId)
   state.status = 'STOPPED'

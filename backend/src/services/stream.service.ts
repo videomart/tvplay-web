@@ -881,7 +881,10 @@ export async function startStreaming(
   if (map.size) channelProcs.set(channelId, map)
 }
 
+// Para só o content process — preserva o relay (conexão RTMP/SRT externa) vivo.
+// Também para a câmera ativa, já que ela escreve no mesmo channelProcs/output.
 export function stopStreaming(channelId: string) {
+  _stopCameraHook?.(channelId)
   const map = channelProcs.get(channelId)
   if (!map?.size) return Promise.resolve()
   for (const sp of map.values()) {
@@ -894,11 +897,17 @@ export function stopStreaming(channelId: string) {
   return Promise.resolve()
 }
 
-// Stops both content processes and relay processes (use for full stop / cut-to-input / fallback).
-// Also stops active camera so two FFmpeg processes never write to the same output.
-// Async + aguarda stopRelays liberar as portas UDP antes de retornar — ver killAndWait.
+// Stops both content processes and relay processes — use apenas quando NENHUM
+// startStreamingFrom* for chamado em seguida (ex.: ao desativar uma saída, ou ao
+// desligar o canal por completo sem fallback). Se um start* for chamado depois,
+// prefira stopStreaming(): o relay já é garantido por ensureRelays() dentro de cada
+// start*, e matá-lo aqui só para recriá-lo no próximo start* deixa o socket UDP do
+// relay momentaneamente sem um content process escrevendo nele, gerando corrupção
+// de bitstream H.264 ("non-existing PPS referenced", DTS fora de ordem) detectada
+// pelo player de terceiro que consome o RTMP de saída (confirmado em produção,
+// 2026-06-29, ao reproduzir play()/stop() chamando isso antes de reiniciar).
+// Async e aguarda stopRelays liberar as portas UDP antes de retornar — ver killAndWait.
 export async function stopAllStreaming(channelId: string): Promise<void> {
-  _stopCameraHook?.(channelId)
   stopStreaming(channelId)
   await stopRelays(channelId)
 }
