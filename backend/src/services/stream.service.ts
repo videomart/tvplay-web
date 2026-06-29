@@ -635,13 +635,24 @@ function buildArgs(
   const isRtspInput = lowerInputUrl.startsWith('rtsp://')
   const isHttpInput = lowerInputUrl.startsWith('http://') || lowerInputUrl.startsWith('https://')
   const isSrtInput  = lowerInputUrl.startsWith('srt://')
-  // HLS ao vivo (YouTube live, manifests): não aplicar -re (o HLS já controla a taxa)
-  const isHlsLive   = isHttpInput && (lowerInputUrl.includes('.m3u8') || lowerInputUrl.includes('/api/manifest/hls'))
+  // HLS local de entrada ativa (CUT para InputSource SRT/RTMP/RTSP — gerado por
+  // active-inputs.service a partir do SRT recebido, /api/input-sources/.../active-stream).
+  // Esse HLS já reflete o ritmo real de chegada do SRT (o FFmpeg de origem não usa -re,
+  // pois lê o SRT ao vivo), mas ele é servido por loopback HTTP local — sem -re aqui,
+  // este content process lê os segmentos de 2s o mais rápido que o disco/loopback permite
+  // (instantâneo) em vez de respeitar os 2s de cada segmento, inundando o relay com uma
+  // rajada continua. Isso gerava lag crescente sem limite (chegou a 50s+ em produção) e
+  // "Circular buffer overrun"/"Packet corrupt" constantes — degradando o stream até a
+  // Twitch cortar a sessão (confirmado em produção via logs, 2026-06-29).
+  const isLocalInputHls = isHttpInput && lowerInputUrl.includes('/api/input-sources/')
+  // HLS ao vivo de terceiro (YouTube live, manifests remotos): não aplicar -re aqui —
+  // o HLS remoto já pacing pela CDN, e -re causaria stalls em throttling intermitente.
+  const isHlsLive   = isHttpInput && !isLocalInputHls && (lowerInputUrl.includes('.m3u8') || lowerInputUrl.includes('/api/manifest/hls'))
   // URL remota resolvida via yt-dlp (CDN do YouTube/Twitch, ex.: googlevideo.com/videoplayback) —
   // NÃO usar -re aqui: a CDN aplica throttling agressivo em leituras pausadas/intermitentes,
   // o que trava o FFmpeg antes do primeiro frame (saída fica só em PAT/PMT, ~24 Kbps).
   // Tratamos como fonte ao vivo: lê o mais rápido possível e deixa o pacing por conta do relay.
-  const isRemoteCdnInput = isHttpInput && !lowerInputUrl.includes('/api/media/') && !isHlsLive
+  const isRemoteCdnInput = isHttpInput && !isLocalInputHls && !lowerInputUrl.includes('/api/media/') && !isHlsLive
 
   // Se output.graphic (raw Prisma) tem templateId mas não templateElements, converte inline
   let resolvedGraphic = effectiveGraphic as any
@@ -677,9 +688,12 @@ function buildArgs(
     // HLS ao vivo (YouTube) ou CDN remota (googlevideo etc.): reconnect para sustentar a leitura
     ...(isHlsLive || isRemoteCdnInput ? ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5', '-timeout', '30000000'] : []),
     ...(isSrtInput ? ['-timeout', '10000000'] : []),
-    // -re só para VOD local (FILE clips); HLS ao vivo e CDN remota controlam sua própria taxa
-    // (CDN do YouTube faz throttling agressivo em leituras pausadas pelo -re — ver isRemoteCdnInput acima)
-    ...(!isLive && !isHlsLive && !isRemoteCdnInput ? ['-re'] : []),
+    // -re para VOD local (FILE clips) E para HLS local de entrada ativa (isLocalInputHls,
+    // ver definição acima) — ambos precisam de pacing porque o FFmpeg lê de
+    // disco/loopback HTTP, muito mais rápido que tempo real. HLS remoto de terceiro e
+    // CDN remota NÃO usam -re (CDN do YouTube faz throttling agressivo em leituras
+    // pausadas pelo -re — ver isRemoteCdnInput acima).
+    ...((!isLive || isLocalInputHls) && !isHlsLive && !isRemoteCdnInput ? ['-re'] : []),
     ...(cueIn > 0 && !isLive ? ['-ss', String(Math.floor(cueIn))] : []),
     '-i', primaryUrl,
     // DASH: segundo input de áudio separado
