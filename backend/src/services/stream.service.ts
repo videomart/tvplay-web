@@ -158,7 +158,17 @@ function buildRelayArgs(output: OutputConfig, port: number): string[] | null {
   // streams do input — se qualquer um falhar ("could not find codec parameters"), o processo
   // inteiro aborta, mesmo que esse stream nunca fosse usado no output. Essas flags já evitam
   // esse abort no relay de entrada (active-inputs.service); replicado aqui (2026-06-22).
-  const inputArgs = ['-hide_banner', '-loglevel', 'warning', '-stats', '-err_detect', 'ignore_err', '-fflags', '+discardcorrupt', ...readRate, '-f', 'mpegts', '-i', udpUrl]
+  // -use_wallclock_as_timestamps: cada troca de fonte (CUT, PLAY, BARS) sobe um NOVO
+  // content process com seu próprio PTS/DTS começando do zero (ou de um clock de origem
+  // diferente). O relay em -c copy repassa esses timestamps sem normalizar, e um
+  // CDN/gateway de terceiro (Wowza/nginx-rtmp) que gera HLS a partir do nosso RTMP detecta
+  // a descontinuidade de timestamp e quebra a playlist HLS — o player HTML5 do lado do
+  // site embedado trava nisso e só recupera com reload manual (2026-06-29), mesmo com o
+  // relay/conexão RTMP nunca caindo (corrigido em v1.1.13/14). Forçar timestamps pelo
+  // wallclock do próprio processo de relay (em vez dos PTS embutidos no MPEG-TS de cada
+  // content process) dá ao relay um clock único e contínuo através das trocas — equivalente
+  // a um frame synchronizer de hardware ditando o clock em vez de cada fonte.
+  const inputArgs = ['-hide_banner', '-loglevel', 'warning', '-stats', '-err_detect', 'ignore_err', '-fflags', '+discardcorrupt+genpts', '-use_wallclock_as_timestamps', '1', ...readRate, '-f', 'mpegts', '-i', udpUrl]
   const codec     = ['-c', 'copy']
   // Sem -copy_unknown/-map 0: mapeamento padrão do ffmpeg (vídeo+áudio conhecidos).
   // Injeção de SCTE-35 no transport stream via FFmpeg foi removida (2026-06-22) —
