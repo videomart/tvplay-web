@@ -408,6 +408,7 @@ model StreamOutput {
   audioBitrate    Int?
   outputNumber Int?            // índice de exibição no painel — 1 = sempre visível
   active      Boolean          @default(true)
+  enabled     Boolean          @default(true) // false = oculta do playout (não aparece no switcher/saídas)
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 
@@ -434,6 +435,7 @@ model InputSource {
   serverIp     String?   // IP do servidor TVPlay para o agente LOCAL_DEVICE enviar SRT
   inputNumber  Int?            // índice único por canal — usado nos botões do Switcher
   active       Boolean         @default(true)
+  enabled      Boolean         @default(true) // false = oculta do playout (não aparece no switcher)
   scteWatchEnabled Boolean     @default(false) // monitora splice_insert nesta entrada
   scteAction       String      @default("LOG") // LOG | BREAK
   createdAt DateTime        @default(now())

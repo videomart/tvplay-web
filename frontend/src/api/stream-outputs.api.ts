@@ -21,6 +21,7 @@ export interface StreamOutput {
   channelId?: string
   channel?: { id: string; name: string; number: number }
   active: boolean
+  enabled: boolean
   outputNumber?: number | null
   createdAt: string
 }

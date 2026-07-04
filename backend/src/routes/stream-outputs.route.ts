@@ -19,6 +19,7 @@ const schema = z.object({
   graphicId:       z.string().optional().nullable(),
   channelId:       z.string().min(1),
   active:          z.boolean().optional(),
+  enabled:         z.boolean().optional(),
   outputNumber:    z.number().int().positive().optional().nullable(),
 })
 

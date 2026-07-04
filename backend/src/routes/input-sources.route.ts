@@ -26,6 +26,7 @@ const schema = z.object({
   clipId:       z.string().optional().nullable(),
   channelId:    z.string().optional().nullable(),
   active:           z.boolean().optional(),
+  enabled:          z.boolean().optional(),
   inputNumber:      z.number().int().positive().optional().nullable(),
   scteWatchEnabled: z.boolean().optional(),
   scteAction:       z.enum(['LOG', 'BREAK']).optional(),

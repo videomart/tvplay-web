@@ -299,7 +299,7 @@ export default function InputSourcesPage() {
   })
 
   const toggle = useMutation({
-    mutationFn: (item: InputSource) => inputSourcesApi.update(item.id, { active: !item.active }),
+    mutationFn: (item: InputSource) => inputSourcesApi.update(item.id, { enabled: !item.enabled }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['input-sources'] }),
   })
 
@@ -451,7 +451,7 @@ export default function InputSourcesPage() {
             <Th>Tipo</Th>
             <Th>URL / Dispositivo</Th>
             <Th>Canal</Th>
-            <Th>Situação</Th>
+            <Th>No playout</Th>
             <Th className="w-28 text-right">Ações</Th>
           </Thead>
           <Tbody>
@@ -481,7 +481,7 @@ export default function InputSourcesPage() {
                 <Td>
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <button onClick={() => toggle.mutate(s)} className="focus:outline-none">
-                      <StatusBadge active={s.active} />
+                      <StatusBadge active={s.enabled} />
                     </button>
                     {s.scteWatchEnabled && (
                       <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/15 text-amber-400 tracking-wider">

@@ -17,6 +17,7 @@ export interface InputSource {
   channelId?: string
   channel?: { id: string; name: string; number: number }
   active: boolean
+  enabled: boolean
   inputNumber?: number | null
   scteWatchEnabled?: boolean
   scteAction?: 'LOG' | 'BREAK'

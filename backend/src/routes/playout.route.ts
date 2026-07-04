@@ -211,7 +211,7 @@ export default async function playoutRoutes(app: FastifyInstance) {
   app.get('/:channelId/outputs', auth, async (request: any) => {
     const { channelId } = request.params
     const outputs = await prisma.streamOutput.findMany({
-      where: { channelId },
+      where: { channelId, enabled: true },
       orderBy: { name: 'asc' },
     })
     const streaming = streamService.getStreamingStatus()

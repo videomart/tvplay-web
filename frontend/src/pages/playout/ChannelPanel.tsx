@@ -1106,7 +1106,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
   }
 
   const availableSources = inputSources
-    .filter((s) => s.active && (!s.channelId || s.channelId === channel.id))
+    .filter((s) => s.enabled !== false && s.active && (!s.channelId || s.channelId === channel.id))
     .sort((a, b) => (a.inputNumber ?? 999) - (b.inputNumber ?? 999))
 
   function mnemonic(name: string): string {

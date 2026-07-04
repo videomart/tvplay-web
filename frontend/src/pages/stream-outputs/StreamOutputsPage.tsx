@@ -170,7 +170,7 @@ export default function StreamOutputsPage() {
   })
 
   const toggle = useMutation({
-    mutationFn: (item: StreamOutput) => streamOutputsApi.update(item.id, { active: !item.active }),
+    mutationFn: (item: StreamOutput) => streamOutputsApi.update(item.id, { enabled: !item.enabled }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['stream-outputs'] }),
   })
 
@@ -259,7 +259,7 @@ export default function StreamOutputsPage() {
             <Th>Destino</Th>
             <Th>Codificação</Th>
             <Th>Canal</Th>
-            <Th>Situação</Th>
+            <Th>No playout</Th>
             <Th className="w-24 text-right">Ações</Th>
           </Thead>
           <Tbody>
@@ -307,7 +307,7 @@ export default function StreamOutputsPage() {
                 <Td>{o.channel ? `Canal ${o.channel.number} — ${o.channel.name}` : <span className="text-gray-600">—</span>}</Td>
                 <Td>
                   <button onClick={() => toggle.mutate(o)} className="focus:outline-none">
-                    <StatusBadge active={o.active} />
+                    <StatusBadge active={o.enabled} />
                   </button>
                 </Td>
                 <Td className="text-right">
