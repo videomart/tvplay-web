@@ -783,8 +783,8 @@ function buildArgs(
     return [
       ...input, ...videoCodec,
       '-f', 'mpegts', `udp://127.0.0.1:${relayPort}?pkt_size=1316`,
-      // VU meter: segundo output null — re-mapeia áudio da entrada para astats
-      '-map', '0:a:0', '-af', 'astats=metadata=1:reset=1', '-f', 'null', '-',
+      // VU meter: segundo output null — mapeia por tipo (a:0) para compatibilidade com HLS e concat
+      '-map', 'a:0', '-af', 'astats=metadata=1:reset=1', '-f', 'null', '-',
     ]
   }
 
@@ -1133,7 +1133,7 @@ function buildConcatArgs(
     return [
       ...input, ...videoCodec,
       '-f', 'mpegts', `udp://127.0.0.1:${relayPort}?pkt_size=1316`,
-      '-map', '0:a:0', '-af', 'astats=metadata=1:reset=1', '-f', 'null', '-',
+      '-map', 'a:0', '-af', 'astats=metadata=1:reset=1', '-f', 'null', '-',
     ]
   }
 

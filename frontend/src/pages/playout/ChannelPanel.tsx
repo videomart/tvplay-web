@@ -437,7 +437,7 @@ function PlaylistItemRow({
         'flex items-center gap-1.5 px-2 rounded transition-all group',
         isCurrent ? 'py-1.5' : 'py-1',
         // Prioridade de fundo: isCurrent > isSelected/hover > isPlayed > zebra
-        isCurrent  ? 'bg-emerald-400 ring-2 ring-emerald-300 shadow-[inset_3px_0_0_0_rgb(52_211_153)]' :
+        isCurrent  ? 'bg-blue-700 ring-2 ring-blue-400 shadow-[inset_3px_0_0_0_rgb(96_165_250)]' :
         isSelected ? 'bg-violet-700' :
         lightRow   ? 'bg-gray-200' : 'bg-gray-800',
         isPlayed && !isSelected && 'line-through opacity-60',
@@ -501,7 +501,7 @@ function PlaylistItemRow({
 
       {/* Badge AO AR */}
       {isCurrent && (
-        <span className="flex-shrink-0 text-[9px] font-bold px-1 py-0.5 rounded bg-emerald-800 text-emerald-100 border border-emerald-900 tracking-wide animate-pulse">
+        <span className="flex-shrink-0 text-[9px] font-bold px-1 py-0.5 rounded bg-red-600 text-white tracking-wide animate-pulse">
           AO AR
         </span>
       )}
