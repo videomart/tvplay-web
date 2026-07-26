@@ -74,12 +74,6 @@ export function VideoPlayer({ src, poster, className, autoPlay = false, startAt,
     }
   }, [])
 
-  // Expõe o elemento <video> ao pai para uso externo (ex.: VU meter via Web Audio API)
-  useEffect(() => {
-    onVideoRef?.(videoRef.current)
-    return () => onVideoRef?.(null)
-  }, [onVideoRef])
-
   // Carrega nova fonte quando src muda — reutiliza instância HLS existente
   useEffect(() => {
     const video = videoRef.current

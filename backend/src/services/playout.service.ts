@@ -359,6 +359,7 @@ export interface PlayoutState {
   scteEnabled: boolean
   scteLastEvent: { outOfNetwork: boolean; durationSecs?: number; sentAt: number } | null
   scteInputLastEvent: { sourceId: string; outOfNetwork: boolean; durationSecs?: number; sentAt: number } | null
+  audioLevels: { l: number; r: number } | null
 }
 
 export interface CurrentItem {
@@ -440,6 +441,7 @@ function defaultState(channelId: string): PlayoutState {
     scteEnabled: false,
     scteLastEvent: null,
     scteInputLastEvent: null,
+    audioLevels: null,
   }
 }
 
@@ -502,6 +504,8 @@ export function unsubscribeWS(channelId: string, ws: WSClient) {
 function broadcast(channelId: string, state: PlayoutState) {
   const clients = wsClients.get(channelId)
   if (!clients?.size) return
+  // Injeta níveis de áudio atuais (lidos do stderr do content process via ebur128)
+  state.audioLevels = streamService.getAudioLevels(channelId)
   const msg = JSON.stringify({ event: 'state', data: state })
   for (const ws of clients) {
     if (ws.readyState === 1) ws.send(msg)
@@ -1063,6 +1067,7 @@ export async function play(channelId: string, playlistId: string, startItemId?: 
     scteEnabled: chSettings?.scteEnabled ?? false,
     scteLastEvent: null,
     scteInputLastEvent: null,
+    audioLevels: null,
   }
   states.set(channelId, state)
   await prisma.channel.update({ where: { id: channelId }, data: { status: 'PLAYING' } }).catch(() => {})
@@ -1659,6 +1664,7 @@ export async function initFromDb(): Promise<void> {
       scteEnabled: ch.scteEnabled ?? false,
       scteLastEvent: null,
       scteInputLastEvent: null,
+      audioLevels: null,
     }
     states.set(ch.id, state)
 

@@ -69,6 +69,7 @@ export interface PlayoutState {
   scteEnabled: boolean
   scteLastEvent: { outOfNetwork: boolean; sentAt: number } | null
   scteInputLastEvent: { sourceId: string; outOfNetwork: boolean; sentAt: number } | null
+  audioLevels: { l: number; r: number } | null
 }
 
 export interface PlaylistItemRow {

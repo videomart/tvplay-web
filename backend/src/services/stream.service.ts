@@ -77,6 +77,28 @@ type OutputConfig = {
 // Map: channelId → Map<outputId, StreamProcess> (content processes)
 const channelProcs = new Map<string, Map<string, StreamProcess>>()
 
+// Níveis de áudio por canal — atualizados pelo parser ebur128 do stderr do content process
+// Formato: { l: dBFS canal esquerdo, r: dBFS canal direito, updatedAt: epoch ms }
+const audioLevels = new Map<string, { l: number; r: number; updatedAt: number }>()
+
+export function getAudioLevels(channelId: string): { l: number; r: number } | null {
+  const lv = audioLevels.get(channelId)
+  if (!lv) return null
+  // Descarta leituras com mais de 3s (processo parado / sem sinal)
+  if (Date.now() - lv.updatedAt > 3000) return null
+  return { l: lv.l, r: lv.r }
+}
+
+// Parseia linha de stderr do FFmpeg com medição ebur128:
+// "  M:  -14.3  -16.1  S:  -14.7  -17.0  I:  -15.4 LUFS  LRA:   0.3 LU"
+function parseEbur128(line: string, channelId: string) {
+  const m = line.match(/M:\s*([-\d.]+)\s+([-\d.]+)/)
+  if (!m) return
+  const l = Math.max(-60, Math.min(0, parseFloat(m[1])))
+  const r = Math.max(-60, Math.min(0, parseFloat(m[2])))
+  audioLevels.set(channelId, { l, r, updatedAt: Date.now() })
+}
+
 // ─── Relay architecture ───────────────────────────────────────────────────────
 // Content processes encode → UDP loopback → relay processes forward to RTMP/SRT.
 // Relay processes never restart during clip switches, keeping the external connection alive.
@@ -742,8 +764,14 @@ function buildArgs(
 
   // Relay mode: redirect encoded stream to UDP loopback instead of external destination.
   // The relay process picks it up and forwards to RTMP/SRT without restarting on clip change.
+  // A second null output with ebur128 feeds the audio level meter (stderr → parseEbur128).
   if (relayPort !== null && isRelayCapable(output.type)) {
-    return [...input, ...videoCodec, '-f', 'mpegts', `udp://127.0.0.1:${relayPort}?pkt_size=1316`]
+    return [
+      ...input, ...videoCodec,
+      '-f', 'mpegts', `udp://127.0.0.1:${relayPort}?pkt_size=1316`,
+      // VU meter: mede nível momentâneo L/R via ebur128, descarta frames (null muxer)
+      '-af', 'ebur128=metadata=1:peak=true', '-f', 'null', '-',
+    ]
   }
 
   switch (output.type) {
@@ -818,10 +846,12 @@ function spawnOutput(
   proc.stdout?.on('data', () => {})
   proc.stderr?.on('data', (d: Buffer) => {
     const raw = d.toString()
+    // Parseia medição de nível de áudio ebur128 (presente em modo relay)
+    if (relayPort && raw.includes('M:')) parseEbur128(raw, channelId)
     // In relay mode, relay process tracks stats (external output); skip stats from content process
     if (!relayPort && raw.includes('bitrate=')) {
       parseStats(channelId, output.id, raw)
-    } else if (!raw.includes('bitrate=')) {
+    } else if (!raw.includes('bitrate=') && !raw.includes('M:')) {
       const msg = raw.replace(/\r/g, '\n').trim()
       if (msg) console.log(`[stream/${channelId}/${output.name}] ${msg}`)
     }
