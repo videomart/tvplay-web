@@ -373,7 +373,7 @@ function PlaylistItemRow({
         </span>
         <span className={clsx(
           'flex-1 text-center text-xs font-bold tracking-widest uppercase relative',
-          isCurrent ? 'text-amber-200' : isPlayed ? 'text-white/50 line-through' : 'text-white'
+          isCurrent ? 'text-white' : isPlayed ? 'text-white/50 line-through' : 'text-white'
         )}>
           ⏸ BREAK{breakIndex != null ? ` #${breakIndex}` : ''}
           {isCurrent && scteEnabled && scteLastEvent && (
@@ -437,7 +437,7 @@ function PlaylistItemRow({
         'flex items-center gap-1.5 px-2 rounded transition-all group',
         isCurrent ? 'py-1.5' : 'py-1',
         // Prioridade de fundo: isCurrent > isSelected/hover > isPlayed > zebra
-        isCurrent  ? 'bg-blue-700 ring-2 ring-blue-400 shadow-[inset_3px_0_0_0_rgb(96_165_250)]' :
+        isCurrent  ? 'bg-[rgb(104_4_148)] ring-2 ring-purple-400 shadow-[inset_3px_0_0_0_rgb(192_132_252)]' :
         isSelected ? 'bg-violet-700' :
         lightRow   ? 'bg-gray-200' : 'bg-gray-800',
         isPlayed && !isSelected && 'line-through opacity-60',
@@ -453,7 +453,7 @@ function PlaylistItemRow({
         onMouseUp={() => { fromHandle.current = false }}
         className={clsx(
           'h-3.5 w-3.5 flex-shrink-0 cursor-grab active:cursor-grabbing',
-          isCurrent ? 'text-emerald-900' : isSelected ? 'text-white/60' : lightRow ? 'text-gray-400 group-hover:text-white/60' : 'text-gray-600 group-hover:text-white/60'
+          isCurrent ? 'text-white/70' : isSelected ? 'text-white/60' : lightRow ? 'text-gray-400 group-hover:text-white/60' : 'text-gray-600 group-hover:text-white/60'
         )}
       />
 
@@ -462,7 +462,7 @@ function PlaylistItemRow({
         {isCurrent ? (
           <>
             <span className="h-2 w-2 rounded-full bg-emerald-900 animate-pulse flex-shrink-0" />
-            <span className="text-[10px] font-bold text-emerald-900">▶</span>
+            <span className="text-[10px] font-bold text-white">▶</span>
           </>
         ) : (
           <span className={clsx('text-[10px] font-mono', isSelected ? 'text-white/60' : lightRow ? 'text-gray-500 group-hover:text-white/60' : 'text-gray-500 group-hover:text-white/60')}>{item.index + 1}</span>
@@ -481,7 +481,7 @@ function PlaylistItemRow({
       {/* Código */}
       <span className={clsx(
         'text-[10px] font-mono flex-shrink-0 w-14 truncate pl-2',
-        isCurrent ? 'text-emerald-900 font-semibold' : isSelected ? 'text-white font-semibold' : lightRow ? 'text-gray-700 font-medium group-hover:text-white' : 'text-gray-500 group-hover:text-white'
+        isCurrent ? 'text-white font-semibold' : isSelected ? 'text-white font-semibold' : lightRow ? 'text-gray-700 font-medium group-hover:text-white' : 'text-gray-500 group-hover:text-white'
       )} title={item.code}>
         {item.code}
       </span>
@@ -493,7 +493,7 @@ function PlaylistItemRow({
         title={isSelected ? 'Clique para desselecionar · Duplo clique para ir para este clipe' : 'Clique para selecionar posição · Duplo clique para ir para este clipe'}
         className={clsx(
           'flex-1 text-left text-xs truncate transition-colors min-w-0 pl-1',
-          isCurrent ? 'text-emerald-950 font-bold cursor-default' : isSelected ? 'text-white font-bold cursor-pointer' : lightRow ? 'text-gray-800 font-medium group-hover:text-white cursor-pointer' : 'text-gray-300 group-hover:text-white cursor-pointer'
+          isCurrent ? 'text-white font-bold cursor-default' : isSelected ? 'text-white font-bold cursor-pointer' : lightRow ? 'text-gray-800 font-medium group-hover:text-white cursor-pointer' : 'text-gray-300 group-hover:text-white cursor-pointer'
         )}
       >
         {item.title}
@@ -1226,7 +1226,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
             {(status === 'PLAYING' || status === 'PAUSED') && !item?.isBreak ? (
               monitorSrc
                 ? <>
-                    <VideoPlayer src={monitorSrc} startAt={monitorStartAt} autoPlay className="w-full h-full" onVideoRef={setMonitorVideoEl} />
+                    <VideoPlayer src={monitorSrc} startAt={monitorStartAt} autoPlay muted className="w-full h-full" onVideoRef={setMonitorVideoEl} />
                     {state?.activeGraphic && <GraphicOverlay graphic={state.activeGraphic} />}
                   </>
                 : item?.sourceType === 'URL'

@@ -35,11 +35,7 @@ function Bar({ db, peak, label }: { db: number; peak: number; label: string }) {
               height: i === peakIdx ? 5 : 4,
               borderRadius: 0.5,
               backgroundColor:
-                i === peakIdx
-                  ? segColor(i)
-                  : i <= active
-                    ? segColor(i)
-                    : 'rgba(255,255,255,0.07)',
+                i === peakIdx ? segColor(i) : i <= active ? segColor(i) : 'rgba(255,255,255,0.07)',
             }}
           />
         ))}
@@ -53,99 +49,94 @@ export function VuMeter({ videoEl, muted = true, className }: Props) {
   const [peaks, setPeaks] = useState<[number, number]>([-60, -60])
 
   const ctxRef      = useRef<AudioContext | null>(null)
-  const gainRef     = useRef<GainNode | null>(null)
   const sourceRef   = useRef<MediaElementAudioSourceNode | null>(null)
-  const analyserL   = useRef<AnalyserNode | null>(null)
-  const analyserR   = useRef<AnalyserNode | null>(null)
+  const analyserRef = useRef<AnalyserNode | null>(null)
+  const gainRef     = useRef<GainNode | null>(null)
   const rafRef      = useRef<number>(0)
   const peakTimers  = useRef<[number, number]>([0, 0])
   const peakVals    = useRef<[number, number]>([-60, -60])
+  const aliveRef    = useRef(false)
 
   const teardown = useCallback(() => {
+    aliveRef.current = false
     cancelAnimationFrame(rafRef.current)
     try { sourceRef.current?.disconnect() } catch {}
+    try { gainRef.current?.disconnect() } catch {}
     try { ctxRef.current?.close() } catch {}
     ctxRef.current    = null
     sourceRef.current = null
+    analyserRef.current = null
     gainRef.current   = null
-    analyserL.current = null
-    analyserR.current = null
   }, [])
 
   useEffect(() => {
-    if (!videoEl) return
+    if (!videoEl) { teardown(); return }
     teardown()
+    aliveRef.current = true
 
-    let alive = true
     const ctx = new AudioContext()
     ctxRef.current = ctx
 
-    const resume = () => { if (ctx.state === 'suspended') ctx.resume() }
-    videoEl.addEventListener('play', resume)
+    const resumeCtx = () => { if (ctx.state === 'suspended') ctx.resume().catch(() => {}) }
+    videoEl.addEventListener('play', resumeCtx)
 
-    const src = ctx.createMediaElementSource(videoEl)
+    let src: MediaElementAudioSourceNode
+    try {
+      src = ctx.createMediaElementSource(videoEl)
+    } catch {
+      teardown()
+      return
+    }
     sourceRef.current = src
 
-    const splitter = ctx.createChannelSplitter(2)
-    const aL = ctx.createAnalyser()
-    const aR = ctx.createAnalyser()
-    aL.fftSize = 256
-    aR.fftSize = 256
-    analyserL.current = aL
-    analyserR.current = aR
+    const analyser = ctx.createAnalyser()
+    analyser.fftSize = 512
+    analyserRef.current = analyser
 
     const gain = ctx.createGain()
     gain.gain.value = muted ? 0 : 1
     gainRef.current = gain
 
-    // signal chain: src → splitter → analysers (for VU, always active)
-    //                             → gain → destination (for monitoring, mutable)
-    src.connect(splitter)
-    splitter.connect(aL, 0)
-    splitter.connect(aR, 1)
-    src.connect(gain)
+    // Elemento fica muted no HTML (garante autoplay).
+    // createMediaElementSource captura o sinal ANTES do mute do elemento,
+    // então o VU analisa mesmo com videoEl.muted = true.
+    // O gain controla se o operador ouve ou não (independente do muted HTML).
+    src.connect(analyser)
+    analyser.connect(gain)
     gain.connect(ctx.destination)
 
-    const buf = new Float32Array(aL.fftSize)
+    resumeCtx()
 
-    function getRms(analyser: AnalyserNode): number {
+    const buf = new Float32Array(analyser.fftSize)
+    function getRms(): number {
       analyser.getFloatTimeDomainData(buf)
       let sum = 0
       for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i]
       const rms = Math.sqrt(sum / buf.length)
-      if (rms === 0) return -60
-      return Math.max(-60, Math.min(0, 20 * Math.log10(rms)))
+      return rms < 1e-6 ? -60 : Math.max(-60, Math.min(0, 20 * Math.log10(rms)))
     }
 
     function tick() {
-      if (!alive) return
-      if (!analyserL.current || !analyserR.current) return
+      if (!aliveRef.current) return
       const now = performance.now()
-      const dbL = getRms(analyserL.current)
-      const dbR = getRms(analyserR.current)
-
-      // Peak hold
-      if (dbL > peakVals.current[0]) { peakVals.current[0] = dbL; peakTimers.current[0] = now }
-      if (dbR > peakVals.current[1]) { peakVals.current[1] = dbR; peakTimers.current[1] = now }
-      if (now - peakTimers.current[0] > PEAK_HOLD_MS) peakVals.current[0] = dbL
-      if (now - peakTimers.current[1] > PEAK_HOLD_MS) peakVals.current[1] = dbR
-
-      setLevels([dbL, dbR])
+      const db = getRms()
+      if (db > peakVals.current[0]) { peakVals.current[0] = db; peakTimers.current[0] = now }
+      if (db > peakVals.current[1]) { peakVals.current[1] = db; peakTimers.current[1] = now }
+      if (now - peakTimers.current[0] > PEAK_HOLD_MS) peakVals.current[0] = db
+      if (now - peakTimers.current[1] > PEAK_HOLD_MS) peakVals.current[1] = db
+      setLevels([db, db])
       setPeaks([peakVals.current[0], peakVals.current[1]])
       rafRef.current = requestAnimationFrame(tick)
     }
-
     rafRef.current = requestAnimationFrame(tick)
-    if (ctx.state === 'running') resume()
 
     return () => {
-      alive = false
-      videoEl.removeEventListener('play', resume)
+      videoEl.removeEventListener('play', resumeCtx)
       teardown()
     }
   }, [videoEl]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Controla volume sem recriar o grafo
+  // Mute/unmute via gain — não toca no atributo muted do elemento
   useEffect(() => {
     if (gainRef.current) gainRef.current.gain.value = muted ? 0 : 1
   }, [muted])
