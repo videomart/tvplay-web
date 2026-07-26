@@ -89,13 +89,27 @@ export function getAudioLevels(channelId: string): { l: number; r: number } | nu
   return { l: lv.l, r: lv.r }
 }
 
-// Parseia linha de stderr do FFmpeg com medição ebur128:
-// "  M:  -14.3  -16.1  S:  -14.7  -17.0  I:  -15.4 LUFS  LRA:   0.3 LU"
-function parseEbur128(line: string, channelId: string) {
-  const m = line.match(/M:\s*([-\d.]+)\s+([-\d.]+)/)
-  if (!m) return
-  const l = Math.max(-60, Math.min(0, parseFloat(m[1])))
-  const r = Math.max(-60, Math.min(0, parseFloat(m[2])))
+// Parseia linhas de stderr do FFmpeg com medição astats:
+// "[Parsed_astats_0 @ ...] Channel: 1"  seguido de  "RMS level dB: -21.0"
+// Acumula por canal e atualiza audioLevels quando tem L+R (ou duplica mono para ambos).
+const _astatsBuffer = new Map<string, { ch: number; rms: number[] }>()
+
+function parseAstats(line: string, channelId: string) {
+  const chMatch = line.match(/Channel:\s*(\d+)/)
+  if (chMatch) {
+    _astatsBuffer.set(channelId, { ch: parseInt(chMatch[1]), rms: _astatsBuffer.get(channelId)?.rms ?? [] })
+    return
+  }
+  const rmsMatch = line.match(/RMS level dB:\s*([-\d.]+|nan|-?inf)/)
+  if (!rmsMatch) return
+  const buf = _astatsBuffer.get(channelId)
+  if (!buf) return
+  const val = parseFloat(rmsMatch[1])
+  const db = isNaN(val) || !isFinite(val) ? -60 : Math.max(-60, Math.min(0, val))
+  buf.rms[buf.ch - 1] = db
+  // Atualiza quando temos ao menos o canal 1 (mono duplica, stereo aguarda canal 2)
+  const l = buf.rms[0] ?? -60
+  const r = buf.rms[1] ?? l   // mono: duplica L para R
   audioLevels.set(channelId, { l, r, updatedAt: Date.now() })
 }
 
@@ -769,8 +783,8 @@ function buildArgs(
     return [
       ...input, ...videoCodec,
       '-f', 'mpegts', `udp://127.0.0.1:${relayPort}?pkt_size=1316`,
-      // VU meter: mede nível momentâneo L/R via ebur128, descarta frames (null muxer)
-      '-af', 'ebur128=metadata=1:peak=true', '-f', 'null', '-',
+      // VU meter: mede nível RMS L/R via astats por bloco, descarta frames (null muxer)
+      '-af', 'astats=metadata=1:reset=1', '-f', 'null', '-',
     ]
   }
 
@@ -846,12 +860,12 @@ function spawnOutput(
   proc.stdout?.on('data', () => {})
   proc.stderr?.on('data', (d: Buffer) => {
     const raw = d.toString()
-    // Parseia medição de nível de áudio ebur128 (presente em modo relay)
-    if (relayPort && raw.includes('M:')) parseEbur128(raw, channelId)
+    // Parseia medição de nível de áudio astats (presente em modo relay)
+    if (relayPort && raw.includes('astats')) parseAstats(raw, channelId)
     // In relay mode, relay process tracks stats (external output); skip stats from content process
     if (!relayPort && raw.includes('bitrate=')) {
       parseStats(channelId, output.id, raw)
-    } else if (!raw.includes('bitrate=') && !raw.includes('M:')) {
+    } else if (!raw.includes('bitrate=') && !raw.includes('astats')) {
       const msg = raw.replace(/\r/g, '\n').trim()
       if (msg) console.log(`[stream/${channelId}/${output.name}] ${msg}`)
     }

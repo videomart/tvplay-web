@@ -22,6 +22,22 @@ export function usePlayoutSocket(channelId: string) {
   const mounted  = useRef(true)
   const token    = useAuthStore((s) => s.token)
 
+  // Busca estado inicial via REST para garantir playlistId imediato sem cache
+  useEffect(() => {
+    if (!token || !channelId) return
+    const base = import.meta.env.DEV ? 'http://localhost:3001' : ''
+    fetch(`${base}/api/playout/${channelId}/state`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data: PlayoutState | null) => {
+        if (!data || !mounted.current) return
+        writeCache(channelId, data)
+        setState((prev) => prev ?? data)
+      })
+      .catch(() => {})
+  }, [channelId, token])
+
   const connect = useCallback(() => {
     if (!mounted.current) return
     if (wsRef.current?.readyState === WebSocket.OPEN) return
