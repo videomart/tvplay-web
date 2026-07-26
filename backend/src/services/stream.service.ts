@@ -1130,7 +1130,11 @@ function buildConcatArgs(
 
   // Relay mode: redirect to UDP loopback
   if (relayPort !== null && isRelayCapable(output.type)) {
-    return [...input, ...videoCodec, '-f', 'mpegts', `udp://127.0.0.1:${relayPort}?pkt_size=1316`]
+    return [
+      ...input, ...videoCodec,
+      '-f', 'mpegts', `udp://127.0.0.1:${relayPort}?pkt_size=1316`,
+      '-map', '0:a:0', '-af', 'astats=metadata=1:reset=1', '-f', 'null', '-',
+    ]
   }
 
   switch (output.type) {
@@ -1179,9 +1183,13 @@ function spawnOutputFromConcat(
   proc.stdout?.on('data', () => {})
   proc.stderr?.on('data', (d: Buffer) => {
     const raw = d.toString()
-    if (!relayPort && raw.includes('bitrate=')) {
+    if (relayPort) {
+      parseAstats(raw, channelId)
+      return
+    }
+    if (raw.includes('bitrate=')) {
       parseStats(channelId, output.id, raw)
-    } else if (!raw.includes('bitrate=')) {
+    } else {
       const msg = raw.replace(/\r/g, '\n').trim()
       if (msg) console.log(`[stream/${channelId}/${output.name}] ${msg}`)
     }
