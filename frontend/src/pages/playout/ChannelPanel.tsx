@@ -661,6 +661,8 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
   const [outputsOpen, setOutputsOpen] = useState(false)
   const [playlistOpen, setPlaylistOpen] = useState(true)
   const [defaultsApplied, setDefaultsApplied] = useState(false)
+  const [monitorVideoEl, setMonitorVideoEl] = useState<HTMLVideoElement | null>(null)
+  const [monitorMuted, setMonitorMuted] = useState(true)
   const playlistScrollRef = useRef<HTMLDivElement>(null)
   const currentItemRef = useRef<HTMLDivElement>(null)
   const userScrolledRef = useRef(false)        // operador moveu o scroll manualmente
@@ -1224,7 +1226,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
             {(status === 'PLAYING' || status === 'PAUSED') && !item?.isBreak ? (
               monitorSrc
                 ? <>
-                    <VideoPlayer src={monitorSrc} startAt={monitorStartAt} autoPlay muted className="w-full h-full" />
+                    <VideoPlayer src={monitorSrc} startAt={monitorStartAt} autoPlay className="w-full h-full" onVideoRef={setMonitorVideoEl} />
                     {state?.activeGraphic && <GraphicOverlay graphic={state.activeGraphic} />}
                   </>
                 : item?.sourceType === 'URL'
@@ -1342,7 +1344,14 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
       {fallbackOpen && (
         <div className="border-b border-gray-800 flex items-stretch">
           <div className="flex items-center gap-1 px-2 py-1 flex-1 min-w-0">
-            <VuMeter levels={state?.audioLevels ?? null} className="flex-shrink-0 mr-0.5" />
+            <VuMeter videoEl={monitorVideoEl} muted={monitorMuted} className="flex-shrink-0" />
+            <button
+              onClick={() => setMonitorMuted(m => !m)}
+              title={monitorMuted ? 'Ativar áudio do monitor' : 'Silenciar monitor'}
+              className="text-[9px] px-1 py-0.5 rounded flex-shrink-0 text-gray-500 hover:text-gray-300 transition-colors"
+            >
+              {monitorMuted ? '🔇' : '🔊'}
+            </button>
             <span className="text-[9px] font-black px-1 py-0.5 rounded bg-red-900/40 text-red-400 flex-shrink-0">CUT</span>
             <div className="flex-1" />
 

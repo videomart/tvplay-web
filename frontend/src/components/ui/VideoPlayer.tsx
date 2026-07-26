@@ -35,6 +35,12 @@ export function VideoPlayer({ src, poster, className, autoPlay = false, startAt,
   const [state, setState] = useState<State>('loading')
   const [errorMsg, setErrorMsg] = useState('')
 
+  // Expõe o elemento video para uso externo (ex.: VuMeter Web Audio API)
+  useEffect(() => {
+    onVideoRef?.(videoRef.current)
+    return () => onVideoRef?.(null)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Cria a instância HLS uma única vez ao montar — evita destroy/recreate ao trocar src
   useEffect(() => {
     const video = videoRef.current
