@@ -783,8 +783,8 @@ function buildArgs(
     return [
       ...input, ...videoCodec,
       '-f', 'mpegts', `udp://127.0.0.1:${relayPort}?pkt_size=1316`,
-      // VU meter: mede nível RMS L/R via astats por bloco, descarta frames (null muxer)
-      '-af', 'astats=metadata=1:reset=1', '-f', 'null', '-',
+      // VU meter: segundo output null — re-mapeia áudio da entrada para astats
+      '-map', '0:a:0', '-af', 'astats=metadata=1:reset=1', '-f', 'null', '-',
     ]
   }
 
@@ -860,12 +860,14 @@ function spawnOutput(
   proc.stdout?.on('data', () => {})
   proc.stderr?.on('data', (d: Buffer) => {
     const raw = d.toString()
-    // Parseia medição de nível de áudio astats (presente em modo relay)
-    if (relayPort && raw.includes('astats')) parseAstats(raw, channelId)
-    // In relay mode, relay process tracks stats (external output); skip stats from content process
-    if (!relayPort && raw.includes('bitrate=')) {
+    if (relayPort) {
+      // Em modo relay: parseia astats em todo chunk (Channel/RMS chegam em chunks separados)
+      parseAstats(raw, channelId)
+      return
+    }
+    if (raw.includes('bitrate=')) {
       parseStats(channelId, output.id, raw)
-    } else if (!raw.includes('bitrate=') && !raw.includes('astats')) {
+    } else {
       const msg = raw.replace(/\r/g, '\n').trim()
       if (msg) console.log(`[stream/${channelId}/${output.name}] ${msg}`)
     }
