@@ -11,6 +11,7 @@ interface VideoPlayerProps {
   startAt?: number     // segundos para seek após carregar
   muted?: boolean
   onTimeUpdate?: (time: number) => void
+  onVideoRef?: (el: HTMLVideoElement | null) => void
 }
 
 type State = 'loading' | 'ready' | 'error'
@@ -26,7 +27,7 @@ function getToken(): string | null {
   }
 }
 
-export function VideoPlayer({ src, poster, className, autoPlay = false, startAt, muted = false, onTimeUpdate }: VideoPlayerProps) {
+export function VideoPlayer({ src, poster, className, autoPlay = false, startAt, muted = false, onTimeUpdate, onVideoRef }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<Hls | null>(null)
   // Guarda o listener pendente de MANIFEST_PARSED para cancelar em troca de src
@@ -72,6 +73,12 @@ export function VideoPlayer({ src, poster, className, autoPlay = false, startAt,
       hlsRef.current = null
     }
   }, [])
+
+  // Expõe o elemento <video> ao pai para uso externo (ex.: VU meter via Web Audio API)
+  useEffect(() => {
+    onVideoRef?.(videoRef.current)
+    return () => onVideoRef?.(null)
+  }, [onVideoRef])
 
   // Carrega nova fonte quando src muda — reutiliza instância HLS existente
   useEffect(() => {

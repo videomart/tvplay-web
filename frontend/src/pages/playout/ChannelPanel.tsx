@@ -22,6 +22,7 @@ import { Button } from '../../components/ui/Button'
 import { Badge } from '../../components/ui/Badge'
 import { Modal } from '../../components/ui/Modal'
 import { VideoPlayer } from '../../components/ui/VideoPlayer'
+import { VuMeter } from '../../components/ui/VuMeter'
 
 function hlsStreamUrl(hlsPath: string) {
   const mediaId = hlsPath.split('/')[1]
@@ -686,6 +687,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
   }
   const [monitorSrc, setMonitorSrc] = useState<string | null>(null)
   const [monitorStartAt, setMonitorStartAt] = useState(0)
+  const [monitorVideoEl, setMonitorVideoEl] = useState<HTMLVideoElement | null>(null)
   const [serverPreviewUrl, setServerPreviewUrl] = useState<string | null>(null)
   const [serverPreviewLoading, setServerPreviewLoading] = useState(false)
   const [serverPreviewError, setServerPreviewError] = useState<string | null>(null)
@@ -1223,7 +1225,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
             {(status === 'PLAYING' || status === 'PAUSED') && !item?.isBreak ? (
               monitorSrc
                 ? <>
-                    <VideoPlayer src={monitorSrc} startAt={monitorStartAt} autoPlay muted className="w-full h-full" />
+                    <VideoPlayer src={monitorSrc} startAt={monitorStartAt} autoPlay muted className="w-full h-full" onVideoRef={setMonitorVideoEl} />
                     {state?.activeGraphic && <GraphicOverlay graphic={state.activeGraphic} />}
                   </>
                 : item?.sourceType === 'URL'
@@ -1248,7 +1250,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                         </>
                       ) : serverPreviewUrl ? (
                         <>
-                          <VideoPlayer src={serverPreviewUrl} autoPlay muted className="w-full h-full" />
+                          <VideoPlayer src={serverPreviewUrl} autoPlay muted className="w-full h-full" onVideoRef={setMonitorVideoEl} />
                           {streamingUp && (
                             <div className="absolute top-2 right-2 flex items-center gap-1 bg-emerald-600/80 backdrop-blur-sm px-1.5 py-0.5 rounded text-[9px] font-bold text-white">
                               <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
@@ -1341,6 +1343,9 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
       {fallbackOpen && (
         <div className="border-b border-gray-800 flex items-stretch">
           <div className="flex items-center gap-1 px-2 py-1 flex-1 min-w-0">
+            {monitorVideoEl && (
+              <VuMeter videoEl={monitorVideoEl} className="flex-shrink-0 mr-0.5" />
+            )}
             <span className="text-[9px] font-black px-1 py-0.5 rounded bg-red-900/40 text-red-400 flex-shrink-0">CUT</span>
             <div className="flex-1" />
 
