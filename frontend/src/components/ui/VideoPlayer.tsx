@@ -101,7 +101,13 @@ export function VideoPlayer({ src, poster, className, autoPlay = false, startAt,
         manifestHandlerRef.current = null
         setState('ready')
         if (startAt && startAt > 0) video.currentTime = startAt
-        if (autoPlay) video.play().catch(() => {})
+        if (autoPlay) {
+          video.play().catch(() => {
+            // Autoplay sem mute bloqueado — inicia muted para garantir reprodução
+            video.muted = true
+            video.play().catch(() => {})
+          })
+        }
       }
       manifestHandlerRef.current = handler
       hls.once(Hls.Events.MANIFEST_PARSED, handler)

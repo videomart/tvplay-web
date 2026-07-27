@@ -1226,7 +1226,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
             {(status === 'PLAYING' || status === 'PAUSED') && !item?.isBreak ? (
               monitorSrc
                 ? <>
-                    <VideoPlayer src={monitorSrc} startAt={monitorStartAt} autoPlay muted={monitorMuted} className="w-full h-full" onVideoRef={setMonitorVideoEl} />
+                    <VideoPlayer src={monitorSrc} startAt={monitorStartAt} autoPlay className="w-full h-full" onVideoRef={setMonitorVideoEl} />
                     {state?.activeGraphic && <GraphicOverlay graphic={state.activeGraphic} />}
                   </>
                 : item?.sourceType === 'URL'
