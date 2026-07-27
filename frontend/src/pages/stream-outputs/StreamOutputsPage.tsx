@@ -384,7 +384,7 @@ export default function StreamOutputsPage() {
                     />
                   </div>
                   <div className="col-span-2">
-                    <Input label="Porta *" value={srtCfg.port} onChange={(e) => setSrtCfg((v) => ({ ...v, port: e.target.value }))} placeholder="4000" />
+                    <Input label="Porta * (4100–4199)" value={srtCfg.port} onChange={(e) => setSrtCfg((v) => ({ ...v, port: e.target.value }))} placeholder="4100–4199" />
                   </div>
                 </div>
                 {buildSrtUrl(srtCfg) && (
@@ -441,7 +441,7 @@ export default function StreamOutputsPage() {
                   placeholder={AGENT_DEVICE_PLACEHOLDER[agentCfg.deviceDriver] ?? 'DeckLink SDI'}
                 />
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <Input label="Porta SRT (listener)" type="number" value={agentCfg.srtPort} onChange={(e) => setAgentCfg((v) => ({ ...v, srtPort: e.target.value }))} placeholder="4010" />
+                  <Input label="Porta SRT — listener (4100–4199)" type="number" value={agentCfg.srtPort} onChange={(e) => setAgentCfg((v) => ({ ...v, srtPort: e.target.value }))} placeholder="4100–4199" />
                   <Input
                     label="IP deste servidor (para o agente)"
                     value={agentCfg.serverIp}

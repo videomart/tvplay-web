@@ -5,8 +5,8 @@ import { config } from './config'
 import authPlugin from './plugins/auth.plugin'
 import corsPlugin from './plugins/cors.plugin'
 import { registerRoutes } from './routes'
-import { initFromDb, handleStreamFailure, resolveSourceUrl, handleScteInputEvent, setYoutubeContentEnabled } from './services/playout.service'
-import { setStreamFailureCallback, setClockOffsetHours, startRelayCycleWatcher } from './services/stream.service'
+import { initFromDb, handleStreamFailure, handleInputSourceGaveUp, resolveSourceUrl, handleScteInputEvent, setYoutubeContentEnabled } from './services/playout.service'
+import { setStreamFailureCallback, setInputSourceGaveUpCallback, setClockOffsetHours, startRelayCycleWatcher } from './services/stream.service'
 import { setUrlResolver, initActiveInputs, startActiveInputsSyncWatcher } from './services/active-inputs.service'
 import { onScteInputEvent } from './services/scte35-watcher.service'
 import { startScheduler } from './services/scheduler.service'
@@ -37,6 +37,7 @@ async function bootstrap() {
   app.log.info(`TVPlay API rodando na porta ${config.port}`)
 
   setStreamFailureCallback(handleStreamFailure)
+  setInputSourceGaveUpCallback(handleInputSourceGaveUp)
   // Câmera é fonte persistente — NÃO para ao trocar clipes ou comutar saídas
 
   // Carrega offset do relógio e toggle de conteúdo YouTube/Twitch das configurações do sistema

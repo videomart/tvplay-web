@@ -1431,6 +1431,18 @@ export function handleStreamFailure(channelId: string): void {
   state.position = Math.max(state.position, state.currentItem?.duration ?? 0)
 }
 
+// Chamado quando uma fonte ao vivo (INPUT_SOURCE) falhou repetidamente e o stream
+// desistiu de reconectar. Ativa o fallback de canal (BLACK/COLORBARS) para não deixar
+// o operador sem sinal — o active-inputs service tentará reconectar em background.
+export function handleInputSourceGaveUp(channelId: string): void {
+  const state = states.get(channelId)
+  if (!state) return
+  // Só age se o canal ainda está em modo CUT para INPUT_SOURCE (nada mudou manualmente)
+  if (state.activeCut?.type !== 'INPUT_SOURCE') return
+  console.warn(`[playout] Fonte ao vivo desistiu ch=${channelId} — ativando fallback BLACK`)
+  streamService.startStreamingFromFallback(channelId, 'BLACK').catch(() => {})
+}
+
 // Atualiza o flag de loop do item atual em memória (chamado após toggle no DB)
 export function updateCurrentItemLoop(channelId: string, itemId: string, loop: boolean) {
   const state = states.get(channelId)

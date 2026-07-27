@@ -401,6 +401,14 @@ export function setStreamFailureCallback(cb: (channelId: string) => void) {
   onUnexpectedExitCb = cb
 }
 
+// Chamado quando uma fonte ao vivo (INPUT_SOURCE) falha repetidamente e o stream desiste de reconectar.
+// Permite que o playout ative o fallback de canal (BLACK/COLORBARS) sem loop infinito.
+let onInputSourceGaveUpCb: ((channelId: string) => void) | null = null
+
+export function setInputSourceGaveUpCallback(cb: (channelId: string) => void) {
+  onInputSourceGaveUpCb = cb
+}
+
 // Offset do relógio (horas em relação ao UTC). Atualizado pelas configurações do sistema.
 let clockOffsetHours = 0
 
@@ -842,6 +850,7 @@ function spawnOutput(
   isLive = false,
   contentGraphic: GraphicConfig | null = null,
   relayPort: number | null = null,
+  failCount = 0,
 ): StreamProcess | null {
   // Prioridade: gráfico do conteúdo (clip/playlist) > gráfico da saída
   const effectiveGraphic = contentGraphic ?? output.graphic ?? null
@@ -881,7 +890,16 @@ function spawnOutput(
     }
     const isError = code !== null && code !== 0 && code !== 255
     if (isError && !sp.stopped) {
-      console.warn(`[stream/${channelId}/${output.name}] Saiu com código ${code} — notificando playout e reconectando em 5s...`)
+      const nextFailCount = failCount + 1
+      // Desiste após 3 falhas consecutivas de uma fonte ao vivo — evita loop infinito
+      // quando a fonte (SRT/RTMP/webcam) está offline. O active-inputs service tentará
+      // reconectar em background; quando voltar, refreshInputSourceConsumers() reativa.
+      if (nextFailCount >= 3) {
+        console.warn(`[stream/${channelId}/${output.name}] Fonte falhou ${nextFailCount}x — desistindo de reconectar, ativando fallback do canal`)
+        onInputSourceGaveUpCb?.(channelId)
+        return
+      }
+      console.warn(`[stream/${channelId}/${output.name}] Saiu com código ${code} (tentativa ${nextFailCount}/3) — notificando playout e reconectando em 5s...`)
       // Notifica o playout service para avançar ao próximo clipe (sem importação circular)
       onUnexpectedExitCb?.(channelId)
       setTimeout(async () => {
@@ -894,7 +912,7 @@ function spawnOutput(
           include: { graphic: { include: { template: { include: { elements: { where: { active: true }, orderBy: { order: 'asc' } } } } } } },
         })
         if (!dbOutput?.active) return
-        const newSp = spawnOutput(channelId, dbOutput, hlsUrl, 0, false, sp.contentGraphic, relayPort)
+        const newSp = spawnOutput(channelId, dbOutput, hlsUrl, 0, false, sp.contentGraphic, relayPort, nextFailCount)
         if (!newSp) return
         if (!channelProcs.has(channelId)) channelProcs.set(channelId, new Map())
         channelProcs.get(channelId)!.set(output.id, newSp)

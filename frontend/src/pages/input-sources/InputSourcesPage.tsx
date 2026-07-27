@@ -628,16 +628,16 @@ export default function InputSourcesPage() {
                 </div>
                 <div className="col-span-2">
                   <Input
-                    label="Porta *"
+                    label="Porta * (4100–4199)"
                     value={srtCfg.port}
                     onChange={(e) => setSrtCfg((v) => ({ ...v, port: e.target.value }))}
-                    placeholder="4000"
+                    placeholder="4100–4199"
                   />
                 </div>
               </div>
               {srtCfg.mode === 'listener' && (
                 <p className="text-[11px] text-amber-400/80 bg-amber-950/30 border border-amber-800/40 rounded px-2.5 py-1.5">
-                  Listener: aguarda o encoder/câmera enviar para esta porta. A porta deve estar no range 4000–4100 (mapeado no docker-compose).
+                  Listener: aguarda o encoder/câmera enviar para esta porta. Use portas no range 4100–4199 (mapeado no docker-compose).
                 </p>
               )}
               <div className="text-[11px] font-mono text-gray-500 bg-gray-800/60 rounded px-2.5 py-1.5 break-all">
@@ -732,13 +732,13 @@ export default function InputSourcesPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Input
-                  label="Porta SRT (listener no TVPlay) *"
+                  label="Porta SRT — listener (4100–4199) *"
                   type="number"
-                  min={4000}
-                  max={4020}
+                  min={4100}
+                  max={4199}
                   value={localDeviceCfg.srtPort}
                   onChange={(e) => setLocalDeviceCfg((v) => ({ ...v, srtPort: e.target.value }))}
-                  placeholder="4010"
+                  placeholder="4100–4199"
                 />
                 <Input
                   label="IP ou hostname do servidor TVPlay"

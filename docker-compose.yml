@@ -89,16 +89,10 @@ services:
       NODE_ENV: production
       JWT_SECRET: tvplay-dev-secret-change-in-production
       JWT_EXPIRES_IN: 8h
-      # Cookies do YouTube — necessário em IPs de datacenter/VPS
-      # Coloque o arquivo em ./cookies/youtube-cookies.txt (pasta persistida fora do git)
       YTDLP_COOKIES_FILE: /app/cookies/youtube-cookies.txt
-      # Sinalização direta de SCTE-35 para receptor remoto (bypass do FFmpeg relay).
-      # M3 (emissor): preencher URL, SOURCE_ID e SECRET; M1 (receptor): preencher só SECRET.
       SCTE_SIGNAL_URL: 'http://vps1.tvtupi.com.br:3001/api/input-sources/scte-signal'
       SCTE_SIGNAL_SOURCE_ID: 'cmqd364tm0001vrwcs5uyfdyi'
       SCTE_SIGNAL_SECRET: '618e65acac41441bda7bd691d58b10203c7c231f7c11a511'
-      # SMTP para envio de email de redefinição de senha — preencher via .env de cada
-      # servidor (não commitar credenciais reais aqui). Deixe em branco para desabilitar.
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_SECURE: ${SMTP_SECURE:-false}
@@ -108,8 +102,7 @@ services:
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
     ports:
       - '3001:3001'
-      - '4000:4000/udp'
-      - '4002-4020:4002-4020/udp'  # SRT / UDP listener (skip 4001 — ocupado pelo host)
+      - '4100-4199:4100-4199/udp'  # SRT / UDP listener
     depends_on:
       postgres:
         condition: service_healthy
