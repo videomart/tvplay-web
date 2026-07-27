@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 
 interface Props {
   videoEl: HTMLVideoElement | null
-  muted?: boolean
   className?: string
 }
 
@@ -44,14 +43,13 @@ function Bar({ db, peak, label }: { db: number; peak: number; label: string }) {
   )
 }
 
-export function VuMeter({ videoEl, muted = true, className }: Props) {
+export function VuMeter({ videoEl, className }: Props) {
   const [levels, setLevels] = useState<[number, number]>([-60, -60])
   const [peaks, setPeaks] = useState<[number, number]>([-60, -60])
 
   const ctxRef      = useRef<AudioContext | null>(null)
   const sourceRef   = useRef<MediaElementAudioSourceNode | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
-  const gainRef     = useRef<GainNode | null>(null)
   const rafRef      = useRef<number>(0)
   const peakTimers  = useRef<[number, number]>([0, 0])
   const peakVals    = useRef<[number, number]>([-60, -60])
@@ -61,12 +59,10 @@ export function VuMeter({ videoEl, muted = true, className }: Props) {
     aliveRef.current = false
     cancelAnimationFrame(rafRef.current)
     try { sourceRef.current?.disconnect() } catch {}
-    try { gainRef.current?.disconnect() } catch {}
     try { ctxRef.current?.close() } catch {}
-    ctxRef.current    = null
-    sourceRef.current = null
+    ctxRef.current      = null
+    sourceRef.current   = null
     analyserRef.current = null
-    gainRef.current   = null
   }, [])
 
   useEffect(() => {
@@ -93,18 +89,8 @@ export function VuMeter({ videoEl, muted = true, className }: Props) {
     analyser.fftSize = 512
     analyserRef.current = analyser
 
-    const gain = ctx.createGain()
-    gain.gain.value = muted ? 0 : 1
-    gainRef.current = gain
-
-    // Elemento fica muted no HTML (garante autoplay).
-    // createMediaElementSource captura o sinal ANTES do mute do elemento,
-    // então o VU analisa mesmo com videoEl.muted = true.
-    // O gain controla se o operador ouve ou não (independente do muted HTML).
+    // Análise pura — não conecta ao destination, não afeta volume do player
     src.connect(analyser)
-    analyser.connect(gain)
-    gain.connect(ctx.destination)
-
     resumeCtx()
 
     const buf = new Float32Array(analyser.fftSize)
@@ -135,11 +121,6 @@ export function VuMeter({ videoEl, muted = true, className }: Props) {
       teardown()
     }
   }, [videoEl]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Mute/unmute via gain — não toca no atributo muted do elemento
-  useEffect(() => {
-    if (gainRef.current) gainRef.current.gain.value = muted ? 0 : 1
-  }, [muted])
 
   return (
     <div className={`flex flex-col gap-px ${className ?? ''}`}>
