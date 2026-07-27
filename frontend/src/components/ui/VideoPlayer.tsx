@@ -140,7 +140,6 @@ export function VideoPlayer({ src, poster, className, autoPlay = false, startAt,
       <video
         ref={videoRef}
         poster={poster}
-        controls
         muted={muted}
         className="w-full h-full"
         style={{ display: state === 'error' ? 'none' : 'block' }}

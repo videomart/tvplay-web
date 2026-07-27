@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 
 interface Props {
   videoEl: HTMLVideoElement | null
+  muted?: boolean
   className?: string
 }
 
@@ -43,13 +44,14 @@ function Bar({ db, peak, label }: { db: number; peak: number; label: string }) {
   )
 }
 
-export function VuMeter({ videoEl, className }: Props) {
+export function VuMeter({ videoEl, muted = true, className }: Props) {
   const [levels, setLevels] = useState<[number, number]>([-60, -60])
   const [peaks, setPeaks] = useState<[number, number]>([-60, -60])
 
   const ctxRef      = useRef<AudioContext | null>(null)
   const sourceRef   = useRef<MediaElementAudioSourceNode | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
+  const gainRef     = useRef<GainNode | null>(null)
   const rafRef      = useRef<number>(0)
   const peakTimers  = useRef<[number, number]>([0, 0])
   const peakVals    = useRef<[number, number]>([-60, -60])
@@ -63,6 +65,7 @@ export function VuMeter({ videoEl, className }: Props) {
     ctxRef.current      = null
     sourceRef.current   = null
     analyserRef.current = null
+    gainRef.current     = null
   }, [])
 
   useEffect(() => {
@@ -89,8 +92,15 @@ export function VuMeter({ videoEl, className }: Props) {
     analyser.fftSize = 512
     analyserRef.current = analyser
 
-    // Análise pura — não conecta ao destination, não afeta volume do player
+    const gain = ctx.createGain()
+    gain.gain.value = muted ? 0 : 1
+    gainRef.current = gain
+
+    // src → analyser (VU sempre ativo) → gain → destination (controlado pelo botão)
     src.connect(analyser)
+    analyser.connect(gain)
+    gain.connect(ctx.destination)
+
     resumeCtx()
 
     const buf = new Float32Array(analyser.fftSize)
@@ -121,6 +131,11 @@ export function VuMeter({ videoEl, className }: Props) {
       teardown()
     }
   }, [videoEl]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Controla volume via gain sem recriar o grafo
+  useEffect(() => {
+    if (gainRef.current) gainRef.current.gain.value = muted ? 0 : 1
+  }, [muted])
 
   return (
     <div className={`flex flex-col gap-px ${className ?? ''}`}>
