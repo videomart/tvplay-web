@@ -1302,7 +1302,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                       </div>
                     )
                   if (src.type === 'IP' && src.url?.match(/\.m3u8/i))
-                    return <VideoPlayer src={src.url} autoPlay muted className="w-full h-full" />
+                    return <VideoPlayer src={src.url} autoPlay className="w-full h-full" onVideoRef={setMonitorVideoEl} />
                   if (serverPreviewLoading) {
                     const isYtUrl = /youtube\.com|youtu\.be|twitch\.tv/i.test(src.url ?? '')
                     const isYt = src.type === 'YOUTUBE' || isYtUrl
@@ -1323,7 +1323,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                     </div>
                   )
                   if (serverPreviewUrl)
-                    return <VideoPlayer src={serverPreviewUrl} autoPlay muted className="w-full h-full" />
+                    return <VideoPlayer src={serverPreviewUrl} autoPlay className="w-full h-full" onVideoRef={setMonitorVideoEl} />
                   return (
                     <div className="w-full h-full flex flex-col items-center justify-center gap-1">
                       <Antenna className="h-5 w-5 text-gray-600" />

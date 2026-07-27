@@ -761,26 +761,29 @@ function buildArgs(
     videoCodec = ['-c', 'copy', '-map', '0:v:0', '-map', '0:a:0']
   } else if (useTemplate && templateResult) {
     // Sistema novo: template com múltiplos elementos
+    const tmplMap = templateResult.mapArgs.length ? templateResult.mapArgs : ['-map', '0:v:0', '-map', '0:a:0']
     videoCodec = [
       ...templateResult.filterArgs,
       '-c:v', 'libx264', '-preset', 'veryfast', '-profile:v', 'high',
       ...videoBitrateArgs,
       '-g', '60', '-keyint_min', '60', '-sc_threshold', '0', ...cfrArgs,
       '-c:a', 'aac', '-ar', '44100', '-b:a', `${aBitrate}k`,
-      ...templateResult.mapArgs,
+      ...tmplMap,
     ]
   } else {
     // Sistema legado: Graphic simples
     const { filterArgs, mapArgs } = buildVideoFilter(output.videoResolution, resolvedGraphic, !!legacyLogoUrl)
     // DASH (video+audio separados): mapa explícito 0:v + 1:a
-    const dashMap = audioUrl ? ['-map', '0:v:0', '-map', '1:a:0'] : mapArgs
+    // Sem logo (mapArgs=[]): força mapa explícito para garantir áudio no primeiro output
+    // quando há segundo output (relay null) com -map próprio — sem isso o FFmpeg descarta o áudio.
+    const explicitMap = audioUrl ? ['-map', '0:v:0', '-map', '1:a:0'] : mapArgs.length ? mapArgs : ['-map', '0:v:0', '-map', '0:a:0']
     videoCodec = [
       ...filterArgs,
       '-c:v', 'libx264', '-preset', 'veryfast', '-profile:v', 'high',
       ...videoBitrateArgs,
       '-g', '60', '-keyint_min', '60', '-sc_threshold', '0', ...cfrArgs,
       '-c:a', 'aac', '-ar', '44100', '-b:a', `${aBitrate}k`,
-      ...dashMap,
+      ...explicitMap,
     ]
   }
 

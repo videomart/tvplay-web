@@ -182,10 +182,15 @@ function buildArgs(inputUrl: string, outputDir: string): string[] {
     '-i', url,
   ]
 
-  // Streams broadcast (SRT/RTMP/RTSP) já vêm em H.264/AAC — copy direto.
+  // Remux com PIDs explícitos para corrigir streams SRT que emitem áudio com PID 0x0
+  // (PID reservado/inválido no MPEG-TS, rejeitado pelo hls.js no browser).
+  // -map explícito força o muxer a reatribuir PIDs normais mesmo com -c copy.
   return [
     ...base,
+    '-map', '0:v:0', '-map', '0:a:0',
     '-c', 'copy',
+    '-mpegts_pmt_start_pid', '0x1000',
+    '-mpegts_start_pid', '0x0100',
     '-f', 'hls',
     '-hls_time', '2',
     '-hls_list_size', '6',
