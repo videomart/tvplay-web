@@ -228,10 +228,13 @@ export function sendCueOut(channelId: string, outputId: string, durationSecs?: n
     ? `<break_duration auto_return="true" duration="${Math.round(durationSecs * 90000)}"/>`
     : ''
 
+  // TSDuck spliceinject exige <tsduck> como elemento raiz (não <splice_information_table>)
   const xml = `<?xml version="1.0" encoding="UTF-8"?>\
+<tsduck>\
 <splice_information_table protocol_version="0" pts_adjustment="0" tier="0xFFF">\
 <splice_insert splice_event_id="${s.eventId}" splice_event_cancel="false" out_of_network="true" splice_immediate="true" unique_program_id="1" avail_num="0" avails_expected="0">\
-${breakDur}</splice_insert></splice_information_table>`
+${breakDur}</splice_insert></splice_information_table>\
+</tsduck>`
 
   sendUdpCmd(s.cmdPort, xml)
   console.log(`[scte35-injector/${channelId}/${outputId}] CUE-OUT eventId=${s.eventId}${durationSecs ? ` dur=${durationSecs}s` : ''}`)
@@ -247,9 +250,11 @@ export function sendCueIn(channelId: string, outputId: string): void {
   s.eventId++
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>\
+<tsduck>\
 <splice_information_table protocol_version="0" pts_adjustment="0" tier="0xFFF">\
 <splice_insert splice_event_id="${s.eventId}" splice_event_cancel="false" out_of_network="false" splice_immediate="true" unique_program_id="1" avail_num="0" avails_expected="0"/>\
-</splice_information_table>`
+</splice_information_table>\
+</tsduck>`
 
   sendUdpCmd(s.cmdPort, xml)
   console.log(`[scte35-injector/${channelId}/${outputId}] CUE-IN eventId=${s.eventId}`)
