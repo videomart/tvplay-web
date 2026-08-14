@@ -1,12 +1,21 @@
 FROM mwader/static-ffmpeg:latest AS ffmpeg-static
 
-FROM node:22-alpine
+FROM node:22-bookworm-slim
 
 COPY --from=ffmpeg-static /ffmpeg /usr/local/bin/ffmpeg
 COPY --from=ffmpeg-static /ffprobe /usr/local/bin/ffprobe
 
-RUN apk add --no-cache python3 py3-pip make g++ openssl openssl-dev libc6-compat v4l-utils \
-        fontconfig ttf-freefont && \
+# Instala dependências de sistema + TSDuck (para injeção SCTE-35 real via tsp)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        python3 python3-pip make g++ openssl libssl-dev \
+        v4l-utils fontconfig fonts-freefont-ttf curl ca-certificates \
+        libgomp1 libatomic1 && \
+    ARCH="$(dpkg --print-architecture)" && \
+    curl -fsSL -o /tmp/tsduck.deb \
+      "https://github.com/tsduck/tsduck/releases/download/v3.44-4676/tsduck_3.44-4676.ubuntu24_${ARCH}.deb" && \
+    apt-get install -y --no-install-recommends /tmp/tsduck.deb && \
+    rm -rf /tmp/tsduck.deb /var/lib/apt/lists/* && \
     fc-cache -f && \
     pip3 install --no-cache-dir --break-system-packages yt-dlp
 

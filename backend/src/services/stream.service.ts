@@ -6,6 +6,7 @@ import { prisma } from '../lib/prisma'
 import { config } from '../config'
 import { tickerFilePath } from './ticker.service'
 import { computeBarLayout, computeElementXY, type BarLayout, type LayoutElement } from './graphicLayout'
+import * as scteInjector from './scte35-injector.service'
 
 // Hook registrado pelo camera.service para parar câmera quando qualquer
 // operação de streaming iniciar — evita dois FFmpeg escrevendo na mesma saída.
@@ -72,6 +73,8 @@ type OutputConfig = {
   videoBitrate?: number | null
   audioBitrate?: number | null
   graphic?: GraphicConfig | null
+  // true quando o canal tem scteEnabled=true — ativa tsp injector entre relay e SRT externo
+  scteEnabled?: boolean
 }
 
 // Map: channelId → Map<outputId, StreamProcess> (content processes)
@@ -156,7 +159,7 @@ function isRelayCapable(type: string): boolean {
   return ['RTMP', 'SRT', 'LOCAL_DEVICE'].includes(type)
 }
 
-function buildRelayArgs(output: OutputConfig, port: number): string[] | null {
+function buildRelayArgs(output: OutputConfig, port: number, channelId: string): string[] | null {
   if (!isRelayCapable(output.type)) return null
   // -re: lê o buffer UDP na taxa nativa do stream (evita burst ao vivo para o YouTube/RTMP).
   // Restrito a RTMP — em relays SRT/LOCAL_DEVICE de longa duração, pequena diferença de
@@ -227,7 +230,14 @@ function buildRelayArgs(output: OutputConfig, port: number): string[] | null {
     }
     case 'SRT': {
       if (!output.url) return null
-      return [...inputArgs, ...copyAll, ...codec, '-f', 'mpegts', appendSrtPassphrase(output.url, output.streamKey)]
+      // Quando SCTE-35 está ativo, o relay FFmpeg envia para a porta intermédia do tsp injector,
+      // que por sua vez reencaminha ao SRT externo após inserir os pacotes splice_insert.
+      const injectorPort = output.scteEnabled ? scteInjector.getInjectorPort(channelId, output.id) : null
+      const dest = injectorPort
+        ? `udp://127.0.0.1:${injectorPort}`
+        : appendSrtPassphrase(output.url, output.streamKey)
+      const fmt  = injectorPort ? ['-f', 'mpegts'] : ['-f', 'mpegts']
+      return [...inputArgs, ...copyAll, ...codec, ...fmt, dest]
     }
     case 'LOCAL_DEVICE': {
       if (!output.url) return null
@@ -239,7 +249,7 @@ function buildRelayArgs(output: OutputConfig, port: number): string[] | null {
 }
 
 function spawnRelay(channelId: string, output: OutputConfig, port: number): RelayProcess | null {
-  const args = buildRelayArgs(output, port)
+  const args = buildRelayArgs(output, port, channelId)
   if (!args) return null
 
   const entry: RelayProcess = { proc: null as any, port, stopped: false, startedAt: Date.now() }
@@ -287,12 +297,27 @@ function spawnRelay(channelId: string, output: OutputConfig, port: number): Rela
   return entry
 }
 
+/** Anota scteEnabled do canal em cada output — evita N queries extras por output. */
+async function withChannelScte(channelId: string, outputs: any[]): Promise<OutputConfig[]> {
+  const ch = await prisma.channel.findUnique({ where: { id: channelId }, select: { scteEnabled: true } })
+  const flag = ch?.scteEnabled ?? false
+  return outputs.map(o => ({ ...o, scteEnabled: flag }))
+}
+
 async function ensureRelays(channelId: string, outputs: OutputConfig[]): Promise<void> {
   if (!relayProcs.has(channelId)) relayProcs.set(channelId, new Map())
   const relayMap = relayProcs.get(channelId)!
 
   for (const output of outputs) {
     if (!isRelayCapable(output.type) || !output.url) continue
+
+    // Para saídas SRT com SCTE-35: garante o tsp injector ativo antes do relay FFmpeg,
+    // pois o relay precisa da porta intermédia que o tsp expõe para saber para onde enviar.
+    if (output.type === 'SRT' && output.scteEnabled && output.url) {
+      if (!scteInjector.isInjectorActive(channelId, output.id)) {
+        await scteInjector.startInjector(channelId, output.id, output.url)
+      }
+    }
 
     const relayPort = getOrAllocRelayPort(output.id)  // sempre aloca (idempotente)
     const existing = relayMap.get(output.id)
@@ -328,15 +353,18 @@ function killAndWait(p: ChildProcess | null, escalateMs = 2_000): Promise<void> 
 // o próximo retry de 2s ou um toggle manual (2026-06-22).
 async function stopRelays(channelId: string): Promise<void> {
   const map = relayProcs.get(channelId)
-  if (!map?.size) return
-  const procs: ChildProcess[] = []
-  for (const entry of map.values()) {
-    entry.stopped = true
-    procs.push(entry.proc)
+  if (map?.size) {
+    const procs: ChildProcess[] = []
+    for (const entry of map.values()) {
+      entry.stopped = true
+      procs.push(entry.proc)
+    }
+    relayProcs.delete(channelId)
+    await Promise.all(procs.map((p) => killAndWait(p)))
+    console.log(`[relay/${channelId}] Todos os relays parados`)
   }
-  relayProcs.delete(channelId)
-  await Promise.all(procs.map((p) => killAndWait(p)))
-  console.log(`[relay/${channelId}] Todos os relays parados`)
+  // Para os injetores tsp junto com os relays
+  await scteInjector.stopAllInjectors(channelId)
 }
 
 // Recicla a conexão RTMP de um relay específico: mata o processo atual e sobe um novo
@@ -942,13 +970,14 @@ export async function startStreaming(
 ) {
   if (!mediaId) return
 
-  const outputs = await prisma.streamOutput.findMany({
+  let outputs: OutputConfig[] = await prisma.streamOutput.findMany({
     where: { channelId, active: true },
     include: { graphic: { include: { template: { include: { elements: { where: { active: true }, orderBy: { order: 'asc' } } } } } } },
-  })
+  }) as any
   if (!outputs.length) return
 
   // Ensure relay processes are running before restarting content
+  outputs = await withChannelScte(channelId, outputs)
   await ensureRelays(channelId, outputs)
   await stopStreaming(channelId)
 
@@ -1010,8 +1039,19 @@ export async function stopAllStreaming(channelId: string): Promise<void> {
  * @param durationSecs duração do break em segundos (opcional)
  */
 export function injectScte35(channelId: string, outOfNetwork: boolean, durationSecs?: number): void {
+  // Injeção real via tsp nas saídas SRT ativas com SCTE habilitado
+  const relayMap = relayProcs.get(channelId)
+  if (relayMap) {
+    for (const [outputId] of relayMap) {
+      if (scteInjector.isInjectorActive(channelId, outputId)) {
+        if (outOfNetwork) scteInjector.sendCueOut(channelId, outputId, durationSecs)
+        else scteInjector.sendCueIn(channelId, outputId)
+      }
+    }
+  }
+  // Bypass HTTP para sinalizar outras instâncias TVPlay (comportamento anterior preservado)
   signalRemoteScte35(outOfNetwork, durationSecs)
-  console.log(`[scte35/${channelId}] splice_insert out_of_network=${outOfNetwork}${durationSecs ? ` dur=${durationSecs}s` : ''} (sinalização HTTP apenas)`)
+  console.log(`[scte35/${channelId}] splice_insert out_of_network=${outOfNetwork}${durationSecs ? ` dur=${durationSecs}s` : ''}`)
 }
 
 function signalRemoteScte35(outOfNetwork: boolean, durationSecs?: number): void {
@@ -1246,13 +1286,14 @@ export async function startStreamingFromPlaylist(
 ): Promise<void> {
   if (!items.length) return
 
-  const outputs = await prisma.streamOutput.findMany({
+  let outputs: OutputConfig[] = await prisma.streamOutput.findMany({
     where: { channelId, active: true },
     include: { graphic: { include: { template: { include: { elements: { where: { active: true }, orderBy: { order: 'asc' } } } } } } },
-  })
+  }) as any
   if (!outputs.length) return
 
   // Ensure relay processes are running before restarting content
+  outputs = await withChannelScte(channelId, outputs)
   await ensureRelays(channelId, outputs)
   await stopStreaming(channelId)
 
@@ -1344,16 +1385,17 @@ export async function startStreamingFromUrl(
   inputUrl: string,
   contentGraphic: GraphicConfig | null = null,
 ) {
-  const outputs = await prisma.streamOutput.findMany({
+  let outputs: OutputConfig[] = await prisma.streamOutput.findMany({
     where: { channelId, active: true },
     include: { graphic: { include: { template: { include: { elements: { where: { active: true }, orderBy: { order: 'asc' } } } } } } },
-  })
+  }) as any
   if (!outputs.length) return
 
   // Ensure relay processes are running before restarting content — sem isso o
   // FFmpeg escreve direto na URL final (RTMP/YouTube) sem o relay intermediário
   // que mantém a conexão viva durante gaps/transições (causa de "conexão ok
   // mas tela preta" até o primeiro PLAY da playlist reiniciar via relay).
+  outputs = await withChannelScte(channelId, outputs)
   await ensureRelays(channelId, outputs)
   await stopStreaming(channelId)
 
@@ -1376,13 +1418,14 @@ export async function startStreamingFromUrlReencode(
   inputUrl: string,
   contentGraphic: GraphicConfig | null = null,
 ) {
-  const outputs = await prisma.streamOutput.findMany({
+  let outputs: OutputConfig[] = await prisma.streamOutput.findMany({
     where: { channelId, active: true },
     include: { graphic: { include: { template: { include: { elements: { where: { active: true }, orderBy: { order: 'asc' } } } } } } },
-  })
+  }) as any
   if (!outputs.length) return
 
   // Ensure relay processes are running before restarting content
+  outputs = await withChannelScte(channelId, outputs)
   await ensureRelays(channelId, outputs)
   await stopStreaming(channelId)
 
@@ -1399,13 +1442,14 @@ export async function startStreamingFromUrlReencode(
 // Inicia streaming com fonte gerada (BLACK ou COLORBARS).
 // Preserva o relay ativo para manter a conexão RTMP/SRT sem dropout.
 export async function startStreamingFromFallback(channelId: string, fallbackType: 'BLACK' | 'COLORBARS' | string) {
-  const outputs = await prisma.streamOutput.findMany({
+  let outputs: OutputConfig[] = await prisma.streamOutput.findMany({
     where: { channelId, active: true },
     include: { graphic: { include: { template: { include: { elements: { where: { active: true }, orderBy: { order: 'asc' } } } } } } },
-  })
+  }) as any
   if (!outputs.length) return
 
   // Garante que os relays estão ativos ANTES de parar o content process
+  outputs = await withChannelScte(channelId, outputs)
   await ensureRelays(channelId, outputs)
   await stopStreaming(channelId)   // para só o content — relay continua vivo
 
