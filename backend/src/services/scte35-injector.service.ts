@@ -116,36 +116,24 @@ function buildTspArgs(relayPort: number, cmdPort: number, srtUrl: string): strin
   return [
     // Input: TS vindo do FFmpeg relay via UDP local (unicast: só porta no parâmetro,
     // --local-address vincula ao loopback para não aceitar tráfego externo).
-    // --buffer-size 4MB: evita drops UDP quando o spliceinject processa pacotes —
-    //   sem buffer grande, drops desalinham o TS e corrompem a saída SRT.
+    // --buffer-size 4MB: evita drops UDP quando o spliceinject processa pacotes.
     '-I', 'ip', `${relayPort}`,
     '--local-address', '127.0.0.1',
     '--buffer-size', '4194304',
 
-    // Plugin pmt: declara o PID 0x0200 (SCTE-35, stream_type=0x86) no PMT.
-    // O astits do MediaMTX v1.20 rejeita streams com PIDs não declarados no PMT
-    // ("max recorded size exceeded"). Este plugin recria o pacote PMT sem PCR
-    // no adaptation field (pacotes SI não devem ter PCR), resolvendo o parse error.
-    '-P', 'pmt',
-    '--service', '1',
-    '--add-pid', '0x0200/0x86',
-
     // Plugin: injeta splice_insert SCTE-35 via comandos XML recebidos por UDP.
     // --pts-pid 0x0100: referência de clock (PID de vídeo do FFmpeg).
-    // splice_immediate=true: o splice não precisa de PTS — mas o spliceinject
-    // exige --pts-pid OU --service para operar. Com --pts-pid, os pacotes SCTE-35
-    // injetados NÃO têm adaptation field PCR (tabelas SI não carregam PCR).
-    // O erro astits "offset > 188" era do plugin pmt com --service, não do spliceinject.
+    // Nota: NÃO usamos -P pmt --add-pid aqui porque o receptor (scte_monitor)
+    // remove o PID SCTE-35 do PMT e substitui os pacotes por nulos antes de
+    // repassar ao MediaMTX, evitando o "max recorded size exceeded" do astits.
     '-P', 'spliceinject',
     '--udp', `127.0.0.1:${cmdPort}`,
     '--poll-interval', '100',
     '--pid', '0x0200',
     '--pts-pid', '0x0100',
 
-    // Output: SRT caller para o destino externo.
-    // --stream-id: requerido pelo MediaMTX para aceitar a publicação — deve ser
-    //   "publish:<streamName>" conforme configurado no receptor (publish:videomart).
-    //   Extraído da query string da URL SRT (?streamid=publish:videomart).
+    // Output: SRT caller para o scte_monitor (porta dedicada por cliente).
+    // O scte_monitor detecta SCTE-35, remove os pacotes, e faz relay ao MediaMTX.
     '-O', 'srt',
     '--caller', srtTarget,
     ...ppArgs,
