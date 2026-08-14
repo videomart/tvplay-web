@@ -124,13 +124,16 @@ function buildTspArgs(relayPort: number, cmdPort: number, srtUrl: string): strin
     //   0x0200 é convencional para SCTE-35 em streams MPEG-TS simples sem SDT.
     // --pts-pid: PID de vídeo para referência de clock; 0x0100 é o que o
     //   active-inputs.service.ts e o FFmpeg relay alocam (-mpegts_start_pid 0x0100).
-    // Sem --service: streams SRT gerados pelo TVPlay não carregam SDT, logo o
-    //   spliceinject não consegue descobrir o service_id automaticamente.
+    // --service-id 1: streams SRT do TVPlay têm program_number=1 (sem SDT).
+    //   Isso força o spliceinject a atualizar o PMT declarando PID 0x0200
+    //   com stream_type=0x86 — sem isso o MediaMTX/astits rejeita o stream
+    //   com "max recorded size exceeded" por ver PID não declarado no PMT.
     '-P', 'spliceinject',
     '--udp', `127.0.0.1:${cmdPort}`,
     '--poll-interval', '100',
     '--pid', '0x0200',
     '--pts-pid', '0x0100',
+    '--service-id', '1',
 
     // Output: SRT caller para o destino externo.
     // --stream-id: requerido pelo MediaMTX para aceitar a publicação — deve ser
