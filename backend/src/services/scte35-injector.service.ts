@@ -122,25 +122,20 @@ function buildTspArgs(relayPort: number, cmdPort: number, srtUrl: string): strin
     '--local-address', '127.0.0.1',
     '--buffer-size', '4194304',
 
-    // Plugin pmt: adiciona PID 0x0200 com stream_type=0x86 (SCTE-35) ao PMT do
-    // serviço 1. Feito ANTES do spliceinject para que o astits do MediaMTX veja
-    // o PID declarado no PMT antes de receber os pacotes SCTE-35 — sem isso,
-    // o MediaMTX rejeita o stream com "max recorded size exceeded".
-    // O spliceinject não usa --service para não tentar re-editar o PMT (geraria
-    // adaptation fields que o astits v0.x não consegue parsear).
+    // Plugin pmt: declara o PID 0x0200 (SCTE-35) no PMT. O astits do MediaMTX
+    // v1.20 rejeita streams com PIDs não declarados ("max recorded size exceeded").
     '-P', 'pmt',
     '--service', '1',
     '--add-pid', '0x0200/0x86',
 
     // Plugin: injeta splice_insert — recebe XML de cue via UDP (latência ~0ms).
-    // --pid: PID onde o spliceinject injeta os pacotes SCTE-35 (declarado no PMT acima).
-    // --pts-pid: PID de vídeo para referência de clock (0x0100 = vídeo FFmpeg).
-    // Sem --service: o PMT já foi atualizado pelo plugin pmt acima.
+    // Sem --pts-pid: splice_immediate=true não precisa de referência de PTS;
+    // remover --pts-pid evita pacotes com adaptation field PCR que o astits
+    // do MediaMTX v1.20 falha ao parsear (slice length 188, offset > 188).
     '-P', 'spliceinject',
     '--udp', `127.0.0.1:${cmdPort}`,
     '--poll-interval', '100',
     '--pid', '0x0200',
-    '--pts-pid', '0x0100',
 
     // Output: SRT caller para o destino externo.
     // --stream-id: requerido pelo MediaMTX para aceitar a publicação — deve ser
