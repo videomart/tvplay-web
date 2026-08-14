@@ -100,8 +100,10 @@ function buildTspArgs(relayPort: number, cmdPort: number, srtUrl: string): strin
   const ppArgs = passphrase ? ['--passphrase', passphrase] : []
 
   return [
-    // Input: TS vindo do FFmpeg relay via UDP local
-    '-I', 'ip', `127.0.0.1:${relayPort}`,
+    // Input: TS vindo do FFmpeg relay via UDP local (unicast: só porta no parâmetro,
+    // --local-address vincula ao loopback para não aceitar tráfego externo)
+    '-I', 'ip', `${relayPort}`,
+    '--local-address', '127.0.0.1',
 
     // Plugin: injeta splice_insert — recebe XML de cue via UDP (latência ~0ms)
     '-P', 'spliceinject',
