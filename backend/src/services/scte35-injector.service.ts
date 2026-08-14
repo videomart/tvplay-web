@@ -105,10 +105,18 @@ function buildTspArgs(relayPort: number, cmdPort: number, srtUrl: string): strin
     '-I', 'ip', `${relayPort}`,
     '--local-address', '127.0.0.1',
 
-    // Plugin: injeta splice_insert — recebe XML de cue via UDP (latência ~0ms)
+    // Plugin: injeta splice_insert — recebe XML de cue via UDP (latência ~0ms).
+    // --pid: PID onde o spliceinject cria a stream_type=0x86 (SCTE-35).
+    //   0x0200 é convencional para SCTE-35 em streams MPEG-TS simples sem SDT.
+    // --pts-pid: PID de vídeo para referência de clock; 0x0100 é o que o
+    //   active-inputs.service.ts e o FFmpeg relay alocam (-mpegts_start_pid 0x0100).
+    // Sem --service: streams SRT gerados pelo TVPlay não carregam SDT, logo o
+    //   spliceinject não consegue descobrir o service_id automaticamente.
     '-P', 'spliceinject',
     '--udp', `127.0.0.1:${cmdPort}`,
     '--poll-interval', '100',
+    '--pid', '0x0200',
+    '--pts-pid', '0x0100',
 
     // Output: SRT caller para o destino externo
     '-O', 'srt',
