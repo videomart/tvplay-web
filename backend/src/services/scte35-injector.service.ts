@@ -122,21 +122,23 @@ function buildTspArgs(relayPort: number, cmdPort: number, srtUrl: string): strin
     '--local-address', '127.0.0.1',
     '--buffer-size', '4194304',
 
+    // Plugin pmt: adiciona PID 0x0200 com stream_type=0x86 (SCTE-35) ao PMT do
+    // serviço 1. Feito ANTES do spliceinject para que o astits do MediaMTX veja
+    // o PID declarado no PMT antes de receber os pacotes SCTE-35 — sem isso,
+    // o MediaMTX rejeita o stream com "max recorded size exceeded".
+    // O spliceinject não usa --service para não tentar re-editar o PMT (geraria
+    // adaptation fields que o astits v0.x não consegue parsear).
+    '-P', 'pmt',
+    '--service', '1',
+    '--add-pid', '0x0200/0x86',
+
     // Plugin: injeta splice_insert — recebe XML de cue via UDP (latência ~0ms).
-    // --pid: PID onde o spliceinject cria a stream_type=0x86 (SCTE-35).
-    //   0x0200 é convencional para SCTE-35 em streams MPEG-TS simples sem SDT.
-    // --pts-pid: PID de vídeo para referência de clock; 0x0100 é o que o
-    //   active-inputs.service.ts e o FFmpeg relay alocam (-mpegts_start_pid 0x0100).
-    // --service 1: streams SRT do TVPlay têm program_number=1 (sem SDT).
-    //   Quando não há SDT, o valor numérico é tratado como service_id direto.
-    //   Isso força o spliceinject a atualizar o PMT declarando PID 0x0200
-    //   com stream_type=0x86 — sem isso o MediaMTX/astits rejeita o stream
-    //   com "max recorded size exceeded" por ver PID não declarado no PMT.
-    //   Com --service, os --pid e --pts-pid ficam redundantes mas inofensivos.
+    // --pid: PID onde o spliceinject injeta os pacotes SCTE-35 (declarado no PMT acima).
+    // --pts-pid: PID de vídeo para referência de clock (0x0100 = vídeo FFmpeg).
+    // Sem --service: o PMT já foi atualizado pelo plugin pmt acima.
     '-P', 'spliceinject',
     '--udp', `127.0.0.1:${cmdPort}`,
     '--poll-interval', '100',
-    '--service', '1',
     '--pid', '0x0200',
     '--pts-pid', '0x0100',
 
