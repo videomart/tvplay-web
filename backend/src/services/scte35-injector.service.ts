@@ -87,6 +87,20 @@ function extractPassphrase(url: string): string | null {
   }
 }
 
+/** Extrai streamid da query string e retorna args do tsp (--stream-id) */
+function buildStreamIdArgs(url: string): string[] {
+  try {
+    const normalized = url.startsWith('srt://') ? url : `srt://${url}`
+    const u = new URL(normalized)
+    const sid = u.searchParams.get('streamid')
+    if (sid) return ['--stream-id', sid]
+  } catch {
+    const m = url.match(/[?&]streamid=([^&]+)/)
+    if (m) return ['--stream-id', decodeURIComponent(m[1])]
+  }
+  return []
+}
+
 /**
  * Constrói os args do tsp:
  *   -I ip relayPort        — recebe TS bruto do FFmpeg relay via UDP
@@ -118,10 +132,14 @@ function buildTspArgs(relayPort: number, cmdPort: number, srtUrl: string): strin
     '--pid', '0x0200',
     '--pts-pid', '0x0100',
 
-    // Output: SRT caller para o destino externo
+    // Output: SRT caller para o destino externo.
+    // --stream-id: requerido pelo MediaMTX para aceitar a publicação — deve ser
+    //   "publish:<streamName>" conforme configurado no receptor (publish:videomart).
+    //   Extraído da query string da URL SRT (?streamid=publish:videomart).
     '-O', 'srt',
     '--caller', srtTarget,
     ...ppArgs,
+    ...buildStreamIdArgs(srtUrl),
   ]
 }
 
