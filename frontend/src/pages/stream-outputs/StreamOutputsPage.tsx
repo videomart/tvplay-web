@@ -33,11 +33,11 @@ const empty = {
   graphicId: '', outputNumber: '',
 }
 
-type SrtConfig    = { host: string; port: string; mode: 'caller' | 'listener'; passphrase: string }
+type SrtConfig    = { host: string; port: string; mode: 'caller' | 'listener'; passphrase: string; streamId: string }
 type UdpConfig    = { address: string; port: string }
 type AgentConfig  = { deviceOs: 'WINDOWS' | 'LINUX'; deviceDriver: string; deviceName: string; srtPort: string; serverIp: string }
 
-const emptySrt:   SrtConfig   = { host: '', port: '', mode: 'caller', passphrase: '' }
+const emptySrt:   SrtConfig   = { host: '', port: '', mode: 'caller', passphrase: '', streamId: '' }
 const emptyUdp:   UdpConfig   = { address: '', port: '' }
 const emptyAgent: AgentConfig = { deviceOs: 'WINDOWS', deviceDriver: 'DECKLINK', deviceName: '', srtPort: '4010', serverIp: '' }
 
@@ -81,14 +81,15 @@ const AGENT_DEVICE_PLACEHOLDER: Record<string, string> = {
 function buildSrtUrl(c: SrtConfig): string {
   if (!c.port) return ''
   if (c.mode === 'listener') {
-    // Listener faz bind em 0.0.0.0 — sem host na URL
     let url = `srt://:${c.port}?mode=listener`
     if (c.passphrase) url += `&passphrase=${c.passphrase}`
+    if (c.streamId)   url += `&streamid=${encodeURIComponent(c.streamId)}`
     return url
   }
   if (!c.host) return ''
   let url = `srt://${c.host}:${c.port}?mode=caller`
   if (c.passphrase) url += `&passphrase=${c.passphrase}`
+  if (c.streamId)   url += `&streamid=${encodeURIComponent(c.streamId)}`
   return url
 }
 
@@ -98,14 +99,16 @@ function buildUdpUrl(c: UdpConfig): string {
 }
 
 function parseSrtUrl(url: string, passphrase?: string): SrtConfig {
+  const sidMatch = url.match(/[?&]streamid=([^&]+)/)
+  const streamId = sidMatch ? decodeURIComponent(sidMatch[1]) : ''
   if (url.includes('mode=listener')) {
     const m = url.match(/^srt:\/\/:(\d+)/)
-    if (m) return { host: '', port: m[1], mode: 'listener', passphrase: '' }
+    if (m) return { host: '', port: m[1], mode: 'listener', passphrase: '', streamId }
   }
   const m = url.match(/^srt:\/\/([^:?/]+):(\d+)/)
   if (!m) return emptySrt
   const ppMatch = url.match(/passphrase=([^&]+)/)
-  return { host: m[1], port: m[2], mode: 'caller', passphrase: ppMatch?.[1] ?? passphrase ?? '' }
+  return { host: m[1], port: m[2], mode: 'caller', passphrase: ppMatch?.[1] ?? passphrase ?? '', streamId }
 }
 
 function parseUdpUrl(url: string): UdpConfig {
@@ -372,6 +375,7 @@ export default function StreamOutputsPage() {
                     <option value="listener">Listener</option>
                   </Select>
                   <Input label="Passphrase (criptografia)" value={srtCfg.passphrase} onChange={(e) => setSrtCfg((v) => ({ ...v, passphrase: e.target.value }))} placeholder="Vazio = sem criptografia" />
+                  <Input label="Stream ID (opcional)" value={srtCfg.streamId} onChange={(e) => setSrtCfg((v) => ({ ...v, streamId: e.target.value }))} placeholder="ex: publish:videomart" />
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                   <div className="col-span-3">
