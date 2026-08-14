@@ -87,16 +87,16 @@ function extractPassphrase(url: string): string | null {
   }
 }
 
-/** Extrai streamid da query string e retorna args do tsp (--stream-id) */
+/** Extrai streamid da query string e retorna args do tsp (--streamid) */
 function buildStreamIdArgs(url: string): string[] {
   try {
     const normalized = url.startsWith('srt://') ? url : `srt://${url}`
     const u = new URL(normalized)
     const sid = u.searchParams.get('streamid')
-    if (sid) return ['--stream-id', sid]
+    if (sid) return ['--streamid', decodeURIComponent(sid)]
   } catch {
     const m = url.match(/[?&]streamid=([^&]+)/)
-    if (m) return ['--stream-id', decodeURIComponent(m[1])]
+    if (m) return ['--streamid', decodeURIComponent(m[1])]
   }
   return []
 }
