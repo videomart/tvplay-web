@@ -1,16 +1,22 @@
 FROM mwader/static-ffmpeg:latest AS ffmpeg-static
 
-FROM node:22-bookworm-slim
+# Ubuntu 24.04 — compatível com os pacotes .deb do TSDuck (mesma base do scte-monitor)
+FROM ubuntu:24.04
 
 COPY --from=ffmpeg-static /ffmpeg /usr/local/bin/ffmpeg
 COPY --from=ffmpeg-static /ffprobe /usr/local/bin/ffprobe
 
-# Instala dependências de sistema + TSDuck (para injeção SCTE-35 real via tsp)
+# Node.js 22 + TSDuck (injeção SCTE-35 via tsp) + dependências de sistema
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        python3 python3-pip make g++ openssl libssl-dev \
-        v4l-utils fontconfig fonts-freefont-ttf curl ca-certificates \
+        curl ca-certificates gnupg make g++ \
+        python3 python3-pip \
+        v4l-utils fontconfig fonts-freefont-ttf \
         libgomp1 libatomic1 && \
+    # Node.js 22 via NodeSource
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    apt-get install -y --no-install-recommends nodejs && \
+    # TSDuck — pacote oficial para Ubuntu 24
     ARCH="$(dpkg --print-architecture)" && \
     curl -fsSL -o /tmp/tsduck.deb \
       "https://github.com/tsduck/tsduck/releases/download/v3.44-4676/tsduck_3.44-4676.ubuntu24_${ARCH}.deb" && \
