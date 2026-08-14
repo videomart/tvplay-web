@@ -115,9 +115,12 @@ function buildTspArgs(relayPort: number, cmdPort: number, srtUrl: string): strin
 
   return [
     // Input: TS vindo do FFmpeg relay via UDP local (unicast: só porta no parâmetro,
-    // --local-address vincula ao loopback para não aceitar tráfego externo)
+    // --local-address vincula ao loopback para não aceitar tráfego externo).
+    // --buffer-size 4MB: evita drops UDP quando o spliceinject processa pacotes —
+    //   sem buffer grande, drops desalinham o TS e corrompem a saída SRT.
     '-I', 'ip', `${relayPort}`,
     '--local-address', '127.0.0.1',
+    '--buffer-size', '4194304',
 
     // Plugin: injeta splice_insert — recebe XML de cue via UDP (latência ~0ms).
     // --pid: PID onde o spliceinject cria a stream_type=0x86 (SCTE-35).
