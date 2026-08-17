@@ -7,6 +7,17 @@
  *      feedRawBuffer() com cada chunk. Latência ≈ 0. Preferido.
  *   2. File (startWatcher): fallback legado — monitora seg*.ts via fs.watch.
  *      Requer -copy_unknown -map 0 no FFmpeg. Latência ~1 segmento (2 s).
+ *
+ * PID do SCTE-35: NÃO é fixo. Diferentes fontes usam PIDs diferentes (ex.:
+ * o próprio injector deste repo usa 0x0200; um TVPlay SE+/Delphi via SDK
+ * Medialooks pode escolher outro; o hls-scte35-server/TSDuck splicemonitor
+ * também não fixam PID — detectam table_id=0xFC em qualquer PID). Hardcodar
+ * um PID (era 0x0500, herdado da config de teste original) faz o watcher
+ * ignorar silenciosamente cues legítimos vindos em qualquer outro PID — bug
+ * confirmado como causa de "cues gerados não reconhecidos do outro lado".
+ * `scanTsBuffer` varre todos os PIDs; `knownSctePids` (por sourceId) lembra
+ * qual PID já carregou SCTE-35 nesta sessão, só para lidar com o caso PUSI=0
+ * do remux duplo (ver comentário em scanTsBuffer).
  */
 
 import fs from 'fs'
@@ -29,35 +40,13 @@ const udpSockets = new Map<string, dgram.Socket>()
 const callbacks  = new Set<(sourceId: string, ev: ScteInputEvent) => void>()
 const rawBuffers = new Map<string, Buffer>()   // buffer de alinhamento para feedRawBuffer
 
-interface DiagState { pidsDone: boolean; pid0500Seen: boolean; totalBytes: number; pid0500LogCount: number }
-const diagState  = new Map<string, DiagState>()
+// PID(s) que já carregaram um splice_insert válido (PUSI=1) nesta sessão --
+// usado só para o workaround de PUSI=0 no remux duplo (não limita a detecção
+// inicial, que escaneia qualquer PID com PUSI=1).
+const knownSctePids = new Map<string, Set<number>>()
 
-/** Diagnóstico temporário: descreve um pacote TS no índice `i` que tem PID 0x0500. */
-function describePid0500Packet(buf: Buffer, i: number): string {
-  const pusi          = (buf[i + 1] & 0x40) !== 0
-  const adaptCtrl     = (buf[i + 3] & 0x30) >> 4
-  const hasAdaptation = adaptCtrl === 3 || adaptCtrl === 2
-  const hasPayload    = adaptCtrl !== 2
-  let info = `pusi=${pusi} adaptCtrl=${adaptCtrl}`
-  if (hasPayload) {
-    const adaptLen = hasAdaptation ? (buf[i + 4] + 1) : 0
-    const payload  = i + 4 + adaptLen
-    const pf       = buf[payload]
-    const section  = payload + 1 + pf
-    info += ` pf=0x${pf.toString(16)}`
-    if (section < buf.length) {
-      const tableId = buf[section]
-      info += ` table_id=0x${tableId.toString(16)}`
-      if (tableId === 0xFC && section + 13 < buf.length) {
-        const cmdType = buf[section + 3 + 10]
-        info += ` cmd_type=0x${cmdType.toString(16)}`
-      }
-    }
-    const end = Math.min(payload + 20, buf.length)
-    info += ` payload=${buf.slice(payload, end).toString('hex')}`
-  }
-  return info
-}
+interface DiagState { pidsDone: boolean; sctePidsSeen: Set<number>; totalBytes: number; logCount: number }
+const diagState  = new Map<string, DiagState>()
 
 export function onScteInputEvent(cb: (sourceId: string, ev: ScteInputEvent) => void): void {
   callbacks.add(cb)
@@ -69,12 +58,20 @@ function emit(sourceId: string, ev: ScteInputEvent): void {
 }
 
 /**
- * Escaneia um buffer MPEG-TS em busca de pacotes SCTE-35 (table_id 0xFC).
- * PUSI=1 obrigatório, exceto para PID 0x0500 (o duplo remux do pipeline pode
- * zerar o bit PUSI desse PID privado, mas preserva o pointer_field do payload).
- * Verifica table_id=0xFC e splice_command_type=0x05.
+ * Escaneia um buffer MPEG-TS em busca de pacotes SCTE-35 (table_id 0xFC),
+ * em QUALQUER PID — não assume um PID fixo, já que diferentes encoders
+ * (TVPlay SE+/Delphi, este próprio injector, hls-scte35-server) escolhem
+ * PIDs diferentes para o SCTE-35.
+ *
+ * PUSI=1 obrigatório, exceto para um PID já confirmado (`knownPids`) como
+ * portador de SCTE-35 nesta sessão: o duplo remux do pipeline (-copy_unknown
+ * em dois hops) pode zerar o bit PUSI desse PID privado, mas preserva o
+ * pointer_field do payload — daí a mesma fórmula de seção se aplicar mesmo
+ * sem PUSI, uma vez que o PID já foi identificado por um pacote com PUSI=1.
+ * `knownPids`, quando fornecido, é atualizado in-place ao encontrar um novo
+ * PID válido.
  */
-export function scanTsBuffer(buf: Buffer): ScteInputEvent | null {
+export function scanTsBuffer(buf: Buffer, knownPids?: Set<number>): ScteInputEvent | null {
   let i = 0
   while (i + TS_PACKET_SIZE <= buf.length) {
     if (buf[i] !== SYNC_BYTE) { i++; continue }
@@ -84,24 +81,22 @@ export function scanTsBuffer(buf: Buffer): ScteInputEvent | null {
     const adaptCtrl          = (buf[i + 3] & 0x30) >> 4
     const hasAdaptation      = adaptCtrl === 3 || adaptCtrl === 2
     // adaptCtrl=00 é reservado/inválido pela spec, mas o muxer mpegts do FFmpeg
-    // o produz ao reempacotar PIDs privados (-copy_unknown, ex.: PID 0x0500) —
-    // trata-se igual a 01 (payload a partir do byte 4, sem adaptation field).
+    // o produz ao reempacotar PIDs privados (-copy_unknown) — trata-se igual
+    // a 01 (payload a partir do byte 4, sem adaptation field).
     const hasPayload         = adaptCtrl !== 2
 
     if (!hasPayload) { i += TS_PACKET_SIZE; continue }
+    if (pid === 0x1FFF) { i += TS_PACKET_SIZE; continue } // null packet, nunca carrega SI
 
     const adaptLen  = hasAdaptation ? (buf[i + 4] + 1) : 0
     const payload   = i + 4 + adaptLen        // offset do início do payload no buffer
 
     let section: number
-    if (pusi || pid === 0x0500) {
-      // O remux duplo (relay M3 + active-input M1, ambos -copy_unknown) zera o
-      // bit PUSI deste PID privado, mas preserva os bytes do payload — que
-      // continuam começando pelo pointer_field original (0x00) seguido do
-      // table_id. Por isso aplica-se a mesma fórmula independente do PUSI
-      // quando o PID é 0x0500 (única PID que transporta SCTE-35 aqui).
-      const pf = buf[payload]                 // pointer_field
-      section  = payload + 1 + pf             // offset do início da seção PSI
+    if (pusi || knownPids?.has(pid)) {
+      // pointer_field aponta o início da seção PSI dentro do payload (0 no
+      // caso comum de a seção começar logo no primeiro byte do payload).
+      const pf = buf[payload]
+      section  = payload + 1 + pf
     } else {
       i += TS_PACKET_SIZE; continue
     }
@@ -113,6 +108,10 @@ export function scanTsBuffer(buf: Buffer): ScteInputEvent | null {
     // header (3) + body: protocol_version(1)+pts_adj(5)+cw_index(1)+tier+cmdlen(3) = 10 bytes → cmd_type em +13
     const cmdTypeOff = section + 3 + 10
     if (cmdTypeOff >= buf.length || buf[cmdTypeOff] !== 0x05) { i += TS_PACKET_SIZE; continue }
+
+    // Pacote válido de SCTE-35 confirmado neste PID -- registra para tolerar
+    // PUSI=0 em pacotes futuros do mesmo PID (remux duplo).
+    knownPids?.add(pid)
 
     // Parse splice_insert: eventId(4) + cancel+reserved(1) + flags(1) ...
     const cmd = cmdTypeOff + 1
@@ -148,7 +147,7 @@ export function feedRawBuffer(sourceId: string, chunk: Buffer): void {
   const existing = rawBuffers.get(sourceId)
   if (!existing) {
     console.log(`[scte35-watcher/${sourceId}] pipe ativo — recebendo TS bruto (primeiro chunk: ${chunk.length} bytes)`)
-    diagState.set(sourceId, { pidsDone: false, pid0500Seen: false, totalBytes: 0, pid0500LogCount: 0 })
+    diagState.set(sourceId, { pidsDone: false, sctePidsSeen: new Set(), totalBytes: 0, logCount: 0 })
   }
   let buf = existing ?? Buffer.alloc(0)
   buf = Buffer.concat([buf, chunk])
@@ -156,45 +155,36 @@ export function feedRawBuffer(sourceId: string, chunk: Buffer): void {
   if (aligned === 0) { rawBuffers.set(sourceId, buf); return }
   const slice = buf.slice(0, aligned)
 
-  // Diagnóstico: lista de PIDs e detecção de PID 0x0500
-  const ds = diagState.get(sourceId) ?? { pidsDone: false, pid0500Seen: false, totalBytes: 0, pid0500LogCount: 0 }
+  // Diagnóstico: lista todos os PIDs vistos uma vez, e loga qualquer pacote
+  // com table_id=0xFC (SCTE-35) em qualquer PID -- não assume PID fixo.
+  const ds = diagState.get(sourceId) ?? { pidsDone: false, sctePidsSeen: new Set(), totalBytes: 0, logCount: 0 }
   ds.totalBytes += slice.length
-  let found0500 = false
   if (!ds.pidsDone && ds.totalBytes >= 100 * TS_PACKET_SIZE) {
     ds.pidsDone = true
     const pids = new Set<number>()
     for (let i = 0; i + TS_PACKET_SIZE <= slice.length; i += TS_PACKET_SIZE) {
       if (slice[i] !== SYNC_BYTE) continue
-      const pid = ((slice[i + 1] & 0x1F) << 8) | slice[i + 2]
-      pids.add(pid)
-      if (pid === 0x0500) {
-        found0500 = true
-        if (ds.pid0500LogCount < 40) {
-          ds.pid0500LogCount++
-          console.log(`[scte35-watcher/${sourceId}] pacote PID 0x0500: ${describePid0500Packet(slice, i)}`)
-        }
-      }
+      pids.add(((slice[i + 1] & 0x1F) << 8) | slice[i + 2])
     }
     console.log(`[scte35-watcher/${sourceId}] PIDs no pipe: ${[...pids].map(p => '0x' + p.toString(16).padStart(4, '0')).join(', ')}`)
-  } else {
-    for (let i = 0; i + TS_PACKET_SIZE <= slice.length; i += TS_PACKET_SIZE) {
-      if (slice[i] !== SYNC_BYTE) continue
-      if ((((slice[i + 1] & 0x1F) << 8) | slice[i + 2]) === 0x0500) {
-        found0500 = true
-        if (ds.pid0500LogCount < 40) {
-          ds.pid0500LogCount++
-          console.log(`[scte35-watcher/${sourceId}] pacote PID 0x0500: ${describePid0500Packet(slice, i)}`)
-        }
+  }
+  const knownPids = knownSctePids.get(sourceId) ?? new Set<number>()
+  knownSctePids.set(sourceId, knownPids)
+  const sizeBefore = knownPids.size
+
+  const ev = scanTsBuffer(slice, knownPids)
+  rawBuffers.set(sourceId, buf.slice(aligned))
+
+  if (knownPids.size > sizeBefore) {
+    for (const pid of knownPids) {
+      if (!ds.sctePidsSeen.has(pid)) {
+        ds.sctePidsSeen.add(pid)
+        console.log(`[scte35-watcher/${sourceId}] SCTE-35 (table_id=0xFC) detectado no PID 0x${pid.toString(16).padStart(4, '0')}`)
       }
     }
   }
-  if (found0500 && !ds.pid0500Seen) {
-    ds.pid0500Seen = true
-    console.log(`[scte35-watcher/${sourceId}] PID 0x0500 (SCTE-35) detectado no pipe`)
-  }
+  diagState.set(sourceId, ds)
 
-  const ev = scanTsBuffer(slice)
-  rawBuffers.set(sourceId, buf.slice(aligned))
   if (!ev) return
   const last = lastEvent.get(sourceId)
   if (last && last.eventId === ev.eventId && last.outOfNetwork === ev.outOfNetwork) return
@@ -220,7 +210,7 @@ export function startWatcher(sourceId: string, hlsDir: string): void {
       try {
         if (!fs.existsSync(filePath)) { seen.delete(filename); return }
         const buf = fs.readFileSync(filePath)
-        const ev  = scanTsBuffer(buf)
+        const ev  = scanTsBuffer(buf, new Set())
         if (ev) {
           const last = lastEvent.get(sourceId)
           // Evita disparar evento duplicado com o mesmo eventId consecutivamente
@@ -245,6 +235,7 @@ export function stopWatcher(sourceId: string): void {
   lastEvent.delete(sourceId)
   rawBuffers.delete(sourceId)
   diagState.delete(sourceId)
+  knownSctePids.delete(sourceId)
 }
 
 /**
@@ -267,6 +258,10 @@ export function startUdpWatcher(sourceId: string, port: number): void {
 export function stopUdpWatcher(sourceId: string): void {
   const sock = udpSockets.get(sourceId)
   if (sock) { try { sock.close() } catch {}; udpSockets.delete(sourceId) }
+  lastEvent.delete(sourceId)
+  rawBuffers.delete(sourceId)
+  diagState.delete(sourceId)
+  knownSctePids.delete(sourceId)
 }
 
 export function getLastEvent(sourceId: string): ScteInputEvent | null {
