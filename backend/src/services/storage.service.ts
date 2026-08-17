@@ -1,17 +1,27 @@
 import { Client as MinioClient } from 'minio'
 import { config } from '../config'
 import fs from 'fs'
+import http from 'http'
+import https from 'https'
 
 class StorageService {
   private client: MinioClient
 
   constructor() {
+    // keepAlive evita reabrir a conexão TCP a cada request ao MinIO -- o
+    // proxy de mídia (media/graphics/settings.route.ts) serve manifest +
+    // cada segmento .ts de uma playlist HLS via chamadas separadas ao MinIO,
+    // então isso soma vários handshakes TCP por vídeo carregado sem isso.
+    const Agent = config.minio.useSSL ? https.Agent : http.Agent
+    const transportAgent = new Agent({ keepAlive: true, maxSockets: 64 })
+
     this.client = new MinioClient({
       endPoint: config.minio.endpoint,
       port: config.minio.port,
       useSSL: config.minio.useSSL,
       accessKey: config.minio.accessKey,
       secretKey: config.minio.secretKey,
+      transportAgent,
     })
   }
 

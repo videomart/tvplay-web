@@ -32,8 +32,12 @@ export default async function mediaRoutes(app: FastifyInstance) {
     })
     if (!media?.thumbnail) return reply.status(404).send({ error: 'Thumbnail não disponível' })
     try {
-      const stat = await storageService.getObjectStat(media.thumbnail)
-      const stream = await storageService.getObjectStream(media.thumbnail)
+      // stat + stream não dependem um do outro -- paralelizar evita pagar dois
+      // round-trips sequenciais ao MinIO para servir um único arquivo.
+      const [stat, stream] = await Promise.all([
+        storageService.getObjectStat(media.thumbnail),
+        storageService.getObjectStream(media.thumbnail),
+      ])
       reply.header('Content-Type', 'image/jpeg')
       reply.header('Content-Length', stat.size)
       reply.header('Cache-Control', 'public, max-age=3600')
@@ -75,8 +79,14 @@ export default async function mediaRoutes(app: FastifyInstance) {
     const objectName = `hls/${mediaId}/${file}`
 
     try {
-      const stat = await storageService.getObjectStat(objectName)
-      const stream = await storageService.getObjectStream(objectName)
+      // stat + stream não dependem um do outro -- paralelizar evita pagar dois
+      // round-trips sequenciais ao MinIO por request (manifest OU cada segmento
+      // .ts), que se acumula rápido: uma playlist de 6 segmentos soma 12
+      // round-trips seriais antes desta mudança.
+      const [stat, stream] = await Promise.all([
+        storageService.getObjectStat(objectName),
+        storageService.getObjectStream(objectName),
+      ])
 
       const isPlaylist = file.endsWith('.m3u8')
       reply.header('Content-Type', isPlaylist ? 'application/x-mpegURL' : 'video/MP2T')

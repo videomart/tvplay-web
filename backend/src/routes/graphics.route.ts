@@ -73,8 +73,10 @@ export default async function graphicRoutes(app: FastifyInstance) {
   app.get('/image/:filename', async (request: any, reply) => {
     const objectName = `graphics/${request.params.filename}`
     try {
-      const stat = await storageService.getObjectStat(objectName)
-      const stream = await storageService.getObjectStream(objectName)
+      const [stat, stream] = await Promise.all([
+        storageService.getObjectStat(objectName),
+        storageService.getObjectStream(objectName),
+      ])
       const ext = path.extname(request.params.filename).toLowerCase()
       const mime: Record<string, string> = {
         '.png': 'image/png', '.svg': 'image/svg+xml',
