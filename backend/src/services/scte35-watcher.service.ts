@@ -213,6 +213,25 @@ export function feedRawBuffer(sourceId: string, chunk: Buffer): void {
   if (aligned === 0) { rawBuffers.set(sourceId, buf); return }
   const slice = buf.slice(0, aligned)
 
+  // Diagnóstico temporário: confirma que o pipe segue vivo e reamostra os
+  // PIDs periodicamente (não só uma vez) -- útil para distinguir "não chegam
+  // mais bytes" de "bytes chegam mas SCTE-35 não é reconhecido".
+  if (process.env.SCTE_DEBUG_PIDS) {
+    const dbg = (feedRawBuffer as any)._dbg ?? { bytesTotal: 0, lastLog: 0 }
+    dbg.bytesTotal += slice.length
+    const now = Date.now()
+    if (now - dbg.lastLog > 5000) {
+      dbg.lastLog = now
+      const pids = new Set<number>()
+      for (let i = 0; i + TS_PACKET_SIZE <= slice.length; i += TS_PACKET_SIZE) {
+        if (slice[i] !== SYNC_BYTE) continue
+        pids.add(((slice[i + 1] & 0x1F) << 8) | slice[i + 2])
+      }
+      console.log(`[scte35-watcher/${sourceId}] [debug] vivo, total=${dbg.bytesTotal}b, PIDs neste chunk: ${[...pids].map(p => '0x' + p.toString(16).padStart(4, '0')).join(', ')}`)
+    }
+    ;(feedRawBuffer as any)._dbg = dbg
+  }
+
   // Diagnóstico: lista todos os PIDs vistos uma vez, e loga qualquer pacote
   // com table_id=0xFC (SCTE-35) em qualquer PID -- não assume PID fixo.
   const ds = diagState.get(sourceId) ?? { pidsDone: false, sctePidsSeen: new Set(), totalBytes: 0, logCount: 0 }
