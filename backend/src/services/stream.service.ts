@@ -290,7 +290,14 @@ function spawnRelay(channelId: string, output: OutputConfig, port: number): Rela
         if (current && current.proc !== proc) return
         const dbOutput = await prisma.streamOutput.findUnique({ where: { id: output.id }, include: { graphic: { include: { template: { include: { elements: { where: { active: true }, orderBy: { order: 'asc' } } } } } } } })
         if (!dbOutput?.active) return
-        const newEntry = spawnRelay(channelId, dbOutput, port)
+        // withChannelScte: sem isso, dbOutput.scteEnabled fica undefined (falsy) --
+        // o relay reconectado ignora silenciosamente o injetor SCTE-35 e escreve
+        // direto para a URL externa, mesmo com o canal tendo scteEnabled=true.
+        // Bug confirmado em produção (2026-08-17): dois processos concorrentes
+        // escrevendo para o mesmo destino SRT, um via injector (correto) e um
+        // direto (sem SCTE-35) depois de uma reconexão automática do relay.
+        const [scteOutput] = await withChannelScte(channelId, [dbOutput])
+        const newEntry = spawnRelay(channelId, scteOutput, port)
         if (!newEntry) return
         relayProcs.get(channelId)!.set(output.id, newEntry)
       }, 2000)
