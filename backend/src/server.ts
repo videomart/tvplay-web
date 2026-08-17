@@ -56,11 +56,15 @@ async function bootstrap() {
 
   // Registra callback para eventos SCTE-35 detectados nas entradas monitoradas
   onScteInputEvent(async (sourceId, ev) => {
+    console.log(`[scte-bridge] callback disparado sourceId=${sourceId} outOfNetwork=${ev.outOfNetwork}`)
     const src = await prisma.inputSource.findUnique({
       where: { id: sourceId },
       select: { scteAction: true },
-    }).catch(() => null)
-    handleScteInputEvent(sourceId, ev.outOfNetwork, ev.durationSecs, src?.scteAction ?? 'LOG').catch(() => {})
+    }).catch((err) => { console.error(`[scte-bridge] erro ao buscar inputSource: ${err.message}`); return null })
+    console.log(`[scte-bridge] scteAction=${src?.scteAction ?? 'LOG (fallback)'}, chamando handleScteInputEvent`)
+    handleScteInputEvent(sourceId, ev.outOfNetwork, ev.durationSecs, src?.scteAction ?? 'LOG')
+      .then(() => console.log('[scte-bridge] handleScteInputEvent concluído com sucesso'))
+      .catch((err) => console.error(`[scte-bridge] erro em handleScteInputEvent: ${err.message}`))
   })
 
   startScheduler()
