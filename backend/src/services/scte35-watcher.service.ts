@@ -83,10 +83,16 @@ function findSpliceSection(buf: Buffer, payload: number): number {
 
   // PES sem pointer_field: start_code_prefix 00 00 01 direto no início do
   // payload, seguido de stream_id (SCTE-35 observado com stream_id 0xFC;
-  // a spec também permite 0xBD/private_stream_1).
+  // a spec também permite 0xBD/private_stream_1). O start_code_prefix
+  // "00 00 01" sozinho NÃO é suficiente — é o prefixo de qualquer NAL unit
+  // H.264/H.265 também, então sem checar o stream_id este caminho combina
+  // por acaso com vídeo/áudio real (confirmado em produção: PIDs de vídeo
+  // gerando dezenas de falsos "SCTE-35 detectado" com eventId de ruído,
+  // afogando a detecção dos cues reais — bug pós-v1.1.51, 2026-08-17).
   if (
     payload + 9 < buf.length &&
-    buf[payload] === 0x00 && buf[payload + 1] === 0x00 && buf[payload + 2] === 0x01
+    buf[payload] === 0x00 && buf[payload + 1] === 0x00 && buf[payload + 2] === 0x01 &&
+    (buf[payload + 3] === 0xFC || buf[payload + 3] === 0xBD)
   ) {
     const pesHeaderDataLen = buf[payload + 8]
     const section = payload + 9 + pesHeaderDataLen
@@ -155,6 +161,13 @@ function findNextEvent(
     if (section === -1) { i += TS_PACKET_SIZE; continue }
 
     if (section + 18 >= buf.length) { i += TS_PACKET_SIZE; continue }
+
+    // protocol_version é o byte logo após os 3 bytes de header da seção
+    // (table_id + section_length) -- fixo em 0x00 pela spec SCTE-35 §9.6.
+    // Checagem barata que descarta boa parte dos falsos positivos que
+    // sobrevivem ao match de table_id=0xFC sozinho (comum em vídeo/áudio
+    // real por coincidência de bytes, ver findSpliceSection).
+    if (buf[section + 3] !== 0x00) { i += TS_PACKET_SIZE; continue }
 
     // Verifica splice_command_type = 0x05 (splice_insert)
     // header (3) + body: protocol_version(1)+pts_adj(5)+cw_index(1)+tier+cmdlen(3) = 10 bytes → cmd_type em +13
