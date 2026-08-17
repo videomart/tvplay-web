@@ -114,7 +114,7 @@ function buildTspArgs(relayPort: number, cmdPort: number, srtUrl: string): strin
   const ppArgs = passphrase ? ['--passphrase', passphrase] : []
 
   return [
-    '--debug=2', // TEMP: diagnóstico de injeção não chegando ao scte_monitor (2026-08-17)
+    '--debug=5', // TEMP: diagnóstico de injeção não chegando ao scte_monitor (2026-08-17)
     // Input: TS vindo do FFmpeg relay via UDP local (unicast: só porta no parâmetro,
     // --local-address vincula ao loopback para não aceitar tráfego externo).
     // --buffer-size 4MB: evita drops UDP quando o spliceinject processa pacotes.
