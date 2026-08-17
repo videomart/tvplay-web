@@ -1764,12 +1764,24 @@ export async function handleScteInputEvent(
   durationSecs: number | undefined,
   action: string,
 ): Promise<void> {
-  console.log(`[scte-bridge2] handleScteInputEvent: states.size=${states.size}, channelIds=${[...states.keys()].join(',')}`)
+  // O canal dono desta InputSource pode não estar em `states` ainda --
+  // initFromDb só carrega no boot os canais com status PLAYING/PAUSED
+  // (getState() para um canal IDLE devolve um defaultState() descartável,
+  // nunca inserido no Map). Sem isso, um canal parado nunca recebe o
+  // badge de SCTE-35 mesmo com o watcher detectando cues normalmente --
+  // bug confirmado em produção (2026-08-16).
+  const source = await prisma.inputSource.findUnique({
+    where: { id: sourceId },
+    select: { channelId: true },
+  }).catch(() => null)
+  if (source?.channelId && !states.has(source.channelId)) {
+    states.set(source.channelId, defaultState(source.channelId))
+  }
+
   // Registra o evento em todos os canais que têm esta fonte como activeCut
   for (const [channelId, state] of states.entries()) {
     state.scteInputLastEvent = { sourceId, outOfNetwork, durationSecs, sentAt: Date.now() }
     broadcast(channelId, state)
-    console.log(`[scte-bridge2] gravado em ch=${channelId}: ${JSON.stringify(state.scteInputLastEvent)}`)
   }
 
   if (action !== 'BREAK') return
