@@ -1764,10 +1764,12 @@ export async function handleScteInputEvent(
   durationSecs: number | undefined,
   action: string,
 ): Promise<void> {
+  console.log(`[scte-bridge2] handleScteInputEvent: states.size=${states.size}, channelIds=${[...states.keys()].join(',')}`)
   // Registra o evento em todos os canais que têm esta fonte como activeCut
   for (const [channelId, state] of states.entries()) {
     state.scteInputLastEvent = { sourceId, outOfNetwork, durationSecs, sentAt: Date.now() }
     broadcast(channelId, state)
+    console.log(`[scte-bridge2] gravado em ch=${channelId}: ${JSON.stringify(state.scteInputLastEvent)}`)
   }
 
   if (action !== 'BREAK') return
