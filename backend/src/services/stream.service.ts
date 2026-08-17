@@ -232,9 +232,14 @@ function buildRelayArgs(output: OutputConfig, port: number, channelId: string): 
       if (!output.url) return null
       // Quando SCTE-35 está ativo, o relay FFmpeg envia para a porta intermédia do tsp injector,
       // que por sua vez reencaminha ao SRT externo após inserir os pacotes splice_insert.
+      // pkt_size=1316 (=7×188, múltiplo exato de pacote TS) é obrigatório aqui -- sem ele o
+      // FFmpeg usa o default de 1472 bytes/datagrama, que NÃO é múltiplo de 188 e corta
+      // pacotes TS no meio. Isso chegava ao MediaMTX como stream desalinhado (astits: "slice
+      // length is 188, offset X is invalid", ~800 erros/4h confirmados em produção,
+      // 2026-08-17) e o HLS nunca era gerado apesar da conexão SRT ser aceita normalmente.
       const injectorPort = output.scteEnabled ? scteInjector.getInjectorPort(channelId, output.id) : null
       const dest = injectorPort
-        ? `udp://127.0.0.1:${injectorPort}`
+        ? `udp://127.0.0.1:${injectorPort}?pkt_size=1316`
         : appendSrtPassphrase(output.url, output.streamKey)
       const fmt  = injectorPort ? ['-f', 'mpegts'] : ['-f', 'mpegts']
       return [...inputArgs, ...copyAll, ...codec, ...fmt, dest]
