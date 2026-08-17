@@ -376,15 +376,29 @@ export function stopWatcher(sourceId: string): void {
  * Inicia monitoramento via UDP local (relay dedicado de active-inputs faz
  * `tee` do TS bruto, incluindo bin_data, para 127.0.0.1:port).
  */
+// Buffer de recepção do socket -- o padrão do Linux (net.core.rmem_default,
+// tipicamente ~208KB) não aguenta o TS bruto completo (vídeo+áudio+SCTE-35)
+// do tee do relay em taxa real; confirmado em produção via /proc/net/udp
+// (coluna `drops` crescendo ~14/s com o canal PLAYING) -- o socket enche e o
+// kernel derruba datagramas antes do Node ler, então o watcher nunca recebe
+// bytes suficientes para reconstruir um pacote TS de 188 bytes alinhado.
+// 4MB fica dentro de net.core.rmem_max (também confirmado, 4194304).
+const UDP_RECV_BUFFER_SIZE = 4 * 1024 * 1024
+
 export function startUdpWatcher(sourceId: string, port: number): void {
   if (udpSockets.has(sourceId)) return
-  const sock = dgram.createSocket('udp4')
+  const sock = dgram.createSocket({ type: 'udp4', recvBufferSize: UDP_RECV_BUFFER_SIZE })
   sock.on('message', (msg) => feedRawBuffer(sourceId, msg))
   sock.on('error', (err) => {
     console.warn(`[scte35-watcher/${sourceId}] erro UDP: ${err.message}`)
   })
   sock.bind(port, '127.0.0.1', () => {
-    console.log(`[scte35-watcher/${sourceId}] ouvindo UDP local 127.0.0.1:${port}`)
+    try {
+      const actual = sock.getRecvBufferSize()
+      console.log(`[scte35-watcher/${sourceId}] ouvindo UDP local 127.0.0.1:${port} (recvBuffer=${actual}b)`)
+    } catch {
+      console.log(`[scte35-watcher/${sourceId}] ouvindo UDP local 127.0.0.1:${port}`)
+    }
   })
   udpSockets.set(sourceId, sock)
 }
