@@ -270,17 +270,24 @@ export function feedRawBuffer(sourceId: string, chunk: Buffer): void {
   // PIDs periodicamente (não só uma vez) -- útil para distinguir "não chegam
   // mais bytes" de "bytes chegam mas SCTE-35 não é reconhecido".
   if (process.env.SCTE_DEBUG_PIDS) {
-    const dbg = (feedRawBuffer as any)._dbg ?? { bytesTotal: 0, lastLog: 0 }
+    const dbg = (feedRawBuffer as any)._dbg ?? { bytesTotal: 0, lastLog: 0, allPids: new Map<number, number>(), fcCandidates: 0 }
     dbg.bytesTotal += slice.length
+    for (let i = 0; i + TS_PACKET_SIZE <= slice.length; i += TS_PACKET_SIZE) {
+      if (slice[i] !== SYNC_BYTE) continue
+      const p = ((slice[i + 1] & 0x1F) << 8) | slice[i + 2]
+      dbg.allPids.set(p, (dbg.allPids.get(p) ?? 0) + 1)
+      const adaptCtrl2 = (slice[i + 3] & 0x30) >> 4
+      const hasAdapt2  = adaptCtrl2 === 3 || adaptCtrl2 === 2
+      const adaptLen2  = hasAdapt2 ? (slice[i + 4] + 1) : 0
+      const pay2       = i + 4 + adaptLen2
+      if (pay2 < slice.length && slice[pay2] === 0xFC) dbg.fcCandidates++
+      if (pay2 + 3 < slice.length && slice[pay2] === 0x00 && slice[pay2 + 1] === 0x00 && slice[pay2 + 2] === 0x01 && slice[pay2 + 3] === 0xFC) dbg.fcCandidates++
+    }
     const now = Date.now()
     if (now - dbg.lastLog > 5000) {
       dbg.lastLog = now
-      const pids = new Set<number>()
-      for (let i = 0; i + TS_PACKET_SIZE <= slice.length; i += TS_PACKET_SIZE) {
-        if (slice[i] !== SYNC_BYTE) continue
-        pids.add(((slice[i + 1] & 0x1F) << 8) | slice[i + 2])
-      }
-      console.log(`[scte35-watcher/${sourceId}] [debug] vivo, total=${dbg.bytesTotal}b, PIDs neste chunk: ${[...pids].map(p => '0x' + p.toString(16).padStart(4, '0')).join(', ')}`)
+      const allPidsStr = [...dbg.allPids.entries()].map(([p, c]) => `0x${p.toString(16).padStart(4, '0')}=${c}`).join(', ')
+      console.log(`[scte35-watcher/${sourceId}] [debug] vivo, total=${dbg.bytesTotal}b, TODOS os PIDs desde boot: ${allPidsStr}, fcCandidates=${dbg.fcCandidates}`)
     }
     ;(feedRawBuffer as any)._dbg = dbg
   }
