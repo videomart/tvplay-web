@@ -14,6 +14,8 @@ import path from 'path'
 import { config } from '../config'
 import * as scteWatcher from './scte35-watcher.service'
 
+const TSP_PATH = process.env.TSP_PATH ?? 'tsp'
+
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
 export type InputSourceMeta = {
@@ -201,26 +203,47 @@ function buildArgs(inputUrl: string, outputDir: string): string[] {
 }
 
 /**
+ * Extrai host/porta/passphrase de uma URL srt://[host]:port?params para os
+ * flags equivalentes do tsp (TSDuck), que não aceita query string na URL.
+ * Não usa o parser `URL` nativo: `srt://:4100?...` (host vazio, comum em
+ * listener local) é uma authority inválida e `new URL()` lança ERR_INVALID_URL.
+ */
+function parseSrtForTsp(srtUrl: string): { listenAddr: string; passphrase: string | null } {
+  const m = srtUrl.match(/^srt:\/\/([^:/?]*):(\d+)/)
+  const host = m?.[1] || ''
+  const port = m?.[2] || '0'
+  const qsIdx = srtUrl.indexOf('?')
+  const qs = qsIdx >= 0 ? new URLSearchParams(srtUrl.slice(qsIdx)) : new URLSearchParams()
+  const passphrase = qs.get('passphrase')
+  return { listenAddr: host ? `${host}:${port}` : port, passphrase }
+}
+
+/**
  * Args do relay dedicado para entradas SRT com SCTE-35 habilitado.
  *
- * `-map 0 -copy_unknown` ao vivo a partir de SRT com bin_data (PID 0x0500) é
- * estável em saída ÚNICA e contínua (sem `-t`), mas crasha quando combinado
- * num mesmo processo com um segundo muxer HLS (dois-outputs, v1.0.53/55).
- * Por isso este processo faz SOMENTE a leitura do SRT + replicação via `tee`
- * para dois destinos UDP locais (loopback): um para o FFmpeg do active-input
- * (HLS, mapeamento padrão — descarta bin_data) e outro para o scte35-watcher
- * (Node, lê bin_data via dgram).
+ * Usa `tsp` (TSDuck) como listener SRT em vez de FFmpeg -- o FFmpeg
+ * (`-map 0 -copy_unknown -c copy`) declara o PID privado SCTE-35 no PMT de
+ * saída (log "muxed as a private data stream and may not be recognized upon
+ * reading") mas na prática não repassa os pacotes desse PID de forma
+ * confiável: confirmado em produção (2026-08-17) com o TVPlay SE+ enviando
+ * cues reais a cada 10s -- zero eventos chegavam ao watcher via o relay
+ * FFmpeg, enquanto a MESMA conexão SRT apontada para o scte_monitor
+ * (hls-scte35-server, que usa tsp puro como listener) detectava os cues
+ * perfeitamente. tsp, sendo o processador nativo de MPEG-TS do TSDuck, não
+ * faz esse tipo de remux/filtragem implícita de PIDs privados.
+ *
+ * Replica a topologia de dois destinos UDP (hls/scte) que o FFmpeg `tee`
+ * fazia, usando o plugin `fork` do tsp para encadear um segundo processo tsp
+ * que envia ao segundo destino -- tsp só suporta um `-O` por processo.
  */
 function buildRelayArgs(srtUrl: string, ports: { hls: number; scte: number }): string[] {
+  const { listenAddr, passphrase } = parseSrtForTsp(withSrtTimeout(srtUrl))
+  const passphraseArgs = passphrase ? ['--passphrase', passphrase] : []
+  const forkCmd = `${TSP_PATH} -I file - -O ip 127.0.0.1:${ports.scte}`
   return [
-    '-hide_banner', '-loglevel', 'warning',
-    '-err_detect', 'ignore_err',
-    '-fflags', '+discardcorrupt+genpts',
-    '-i', withSrtTimeout(srtUrl),
-    '-map', '0', '-copy_unknown',
-    '-c', 'copy',
-    '-f', 'tee',
-    `[f=mpegts]udp://127.0.0.1:${ports.hls}|[f=mpegts]udp://127.0.0.1:${ports.scte}`,
+    '-I', 'srt', '--listener', listenAddr, ...passphraseArgs,
+    '-P', 'fork', '-n', forkCmd,
+    '-O', 'ip', `127.0.0.1:${ports.hls}`,
   ]
 }
 
@@ -247,16 +270,12 @@ async function launchSession(source: InputSourceMeta, session: Session): Promise
 
   if (useRelay) {
     ports = allocatePortPair()
-    relayProc = spawn(config.ffmpeg.path, buildRelayArgs(url, ports), { stdio: ['ignore', 'pipe', 'pipe'] })
+    relayProc = spawn(TSP_PATH, buildRelayArgs(url, ports), { stdio: ['ignore', 'pipe', 'pipe'] })
     relayProc.stdout?.on('data', () => {})
     relayProc.stderr?.on('data', (d: Buffer) => {
       const msg = d.toString().trim()
       if (msg) console.log(`[active-input/${source.id}/relay] ${msg}`)
     })
-    // fifo_size é em pacotes de 188 bytes (default ffmpeg = 28672 ≈ 5.1MB) — NÃO em bytes.
-    // Um valor de 10000000 aqui alocava ~1.8GB e era preenchido gradualmente até o
-    // watchdog de memória (300MB) matar o processo a cada ~2-3min, achando que era
-    // vazamento. Sem o parâmetro, usa o default do ffmpeg (suficiente p/ loopback local).
     mainInputUrl = `udp://127.0.0.1:${ports.hls}?overrun_nonfatal=1`
     scteWatcher.startUdpWatcher(source.id, ports.scte)
   }
