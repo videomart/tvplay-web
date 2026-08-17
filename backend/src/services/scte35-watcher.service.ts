@@ -58,10 +58,50 @@ function emit(sourceId: string, ev: ScteInputEvent): void {
 }
 
 /**
+ * Localiza o offset do início de uma seção splice_information_table
+ * (table_id=0xFC) dentro do payload de um pacote TS, tentando os
+ * encapsulamentos observados na prática:
+ *
+ *   1. Seção PSI/SI direta: payload = pointer_field(1) + section. É o
+ *      formato que TSDuck/tsp e a maioria dos encoders usam.
+ *   2. SCTE-35 empacotado em PES, SEM pointer_field: payload = PES_header
+ *      (start_code 00-00-01 + stream_id + PES_packet_length(2) + flags(2) +
+ *      PES_header_data_length(1) + header_data) + section, direto no início
+ *      do payload. Confirmado em captura real do TVPlay SE+/Delphi (SDK
+ *      Medialooks): apesar de PUSI=1 (que normalmente indica pointer_field
+ *      antes de uma seção), este encoder emite PES diretamente sem esse
+ *      byte -- convenção legítima para PES (só seções PSI/SI usam
+ *      pointer_field, PES nunca usa).
+ *
+ * Retorna o offset da seção (onde buf[offset] deveria ser 0xFC), ou -1 se
+ * nenhum formato encontrar table_id=0xFC de forma plausível.
+ */
+function findSpliceSection(buf: Buffer, payload: number): number {
+  const pf = buf[payload] // pointer_field (só se aplica ao caso 1)
+  const direct = payload + 1 + pf
+  if (direct < buf.length && buf[direct] === 0xFC) return direct
+
+  // PES sem pointer_field: start_code_prefix 00 00 01 direto no início do
+  // payload, seguido de stream_id (SCTE-35 observado com stream_id 0xFC;
+  // a spec também permite 0xBD/private_stream_1).
+  if (
+    payload + 9 < buf.length &&
+    buf[payload] === 0x00 && buf[payload + 1] === 0x00 && buf[payload + 2] === 0x01
+  ) {
+    const pesHeaderDataLen = buf[payload + 8]
+    const section = payload + 9 + pesHeaderDataLen
+    if (section < buf.length && buf[section] === 0xFC) return section
+  }
+
+  return -1
+}
+
+/**
  * Escaneia um buffer MPEG-TS em busca de pacotes SCTE-35 (table_id 0xFC),
  * em QUALQUER PID — não assume um PID fixo, já que diferentes encoders
  * (TVPlay SE+/Delphi, este próprio injector, hls-scte35-server) escolhem
- * PIDs diferentes para o SCTE-35.
+ * PIDs diferentes para o SCTE-35. Aceita tanto seção PSI direta quanto
+ * SCTE-35 empacotado em PES (ver findSpliceSection).
  *
  * PUSI=1 obrigatório, exceto para um PID já confirmado (`knownPids`) como
  * portador de SCTE-35 nesta sessão: o duplo remux do pipeline (-copy_unknown
@@ -91,18 +131,13 @@ export function scanTsBuffer(buf: Buffer, knownPids?: Set<number>): ScteInputEve
     const adaptLen  = hasAdaptation ? (buf[i + 4] + 1) : 0
     const payload   = i + 4 + adaptLen        // offset do início do payload no buffer
 
-    let section: number
-    if (pusi || knownPids?.has(pid)) {
-      // pointer_field aponta o início da seção PSI dentro do payload (0 no
-      // caso comum de a seção começar logo no primeiro byte do payload).
-      const pf = buf[payload]
-      section  = payload + 1 + pf
-    } else {
-      i += TS_PACKET_SIZE; continue
-    }
+    if (!pusi && !knownPids?.has(pid)) { i += TS_PACKET_SIZE; continue }
+    if (payload >= buf.length) { i += TS_PACKET_SIZE; continue }
+
+    const section = findSpliceSection(buf, payload)
+    if (section === -1) { i += TS_PACKET_SIZE; continue }
 
     if (section + 18 >= buf.length) { i += TS_PACKET_SIZE; continue }
-    if (buf[section] !== 0xFC) { i += TS_PACKET_SIZE; continue } // table_id
 
     // Verifica splice_command_type = 0x05 (splice_insert)
     // header (3) + body: protocol_version(1)+pts_adj(5)+cw_index(1)+tier+cmdlen(3) = 10 bytes → cmd_type em +13
@@ -113,7 +148,9 @@ export function scanTsBuffer(buf: Buffer, knownPids?: Set<number>): ScteInputEve
     // PUSI=0 em pacotes futuros do mesmo PID (remux duplo).
     knownPids?.add(pid)
 
-    // Parse splice_insert: eventId(4) + cancel+reserved(1) + flags(1) ...
+    // Parse splice_insert (SCTE-35 4.3.1): eventId(4) + cancel+reserved(1) +
+    // flags(1) [out_of_network(1)+program_splice(1)+duration(1)+immediate(1)
+    // +reserved(4)] + campos condicionais.
     const cmd = cmdTypeOff + 1
     if (cmd + 6 > buf.length) { i += TS_PACKET_SIZE; continue }
 
@@ -121,14 +158,35 @@ export function scanTsBuffer(buf: Buffer, knownPids?: Set<number>): ScteInputEve
     const cancelFlag    = (buf[cmd + 4] & 0x80) !== 0
     if (cancelFlag) { i += TS_PACKET_SIZE; continue }
 
-    const flags2        = buf[cmd + 5]
-    const outOfNetwork  = (flags2 & 0x80) !== 0
-    const hasDuration   = (flags2 & 0x20) !== 0
+    const flags2         = buf[cmd + 5]
+    const outOfNetwork   = (flags2 & 0x80) !== 0
+    const programSplice  = (flags2 & 0x40) !== 0
+    const hasDuration    = (flags2 & 0x20) !== 0
+    const spliceImmediate = (flags2 & 0x10) !== 0
+
+    // Offset onde os campos pós-flags começam -- varia conforme
+    // program_splice_flag e splice_immediate_flag (spec SCTE-35 §9.7.3.1):
+    //  - program_splice=1 && immediate=0: +5 bytes de splice_time (pts_time)
+    //  - program_splice=0: sem pts_time aqui; em vez disso vem
+    //    component_count(1) + component_tag(1) por componente (e, se
+    //    immediate=0, mais splice_time(5) por componente) -- casos com
+    //    componentes não são tratados aqui (raro; cai no "não reconhecido"
+    //    abaixo, sem crashar).
+    let off = cmd + 6
+    if (programSplice) {
+      if (!spliceImmediate) off += 5 // pts_time (32+1 bits = 5 bytes)
+    } else {
+      if (off >= buf.length) { i += TS_PACKET_SIZE; continue }
+      const componentCount = buf[off]
+      off += 1
+      if (!spliceImmediate) off += componentCount * 6 // component_tag(1)+pts_time(5) cada
+      else off += componentCount * 1 // só component_tag(1) cada
+    }
 
     let durationSecs: number | undefined
-    if (hasDuration && outOfNetwork && cmd + 11 <= buf.length) {
-      const high = (buf[cmd + 6] & 0x01)
-      const low  = buf.readUInt32BE(cmd + 7)
+    if (hasDuration && off + 5 <= buf.length) {
+      const high = buf[off] & 0x01
+      const low  = buf.readUInt32BE(off + 1)
       durationSecs = (high * 0x100000000 + low) / 90000
     }
 
