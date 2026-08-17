@@ -111,8 +111,25 @@ function findSpliceSection(buf: Buffer, payload: number): number {
  * `knownPids`, quando fornecido, é atualizado in-place ao encontrar um novo
  * PID válido.
  */
-export function scanTsBuffer(buf: Buffer, knownPids?: Set<number>): ScteInputEvent | null {
-  let i = 0
+export function scanTsBuffer(buf: Buffer, knownPids?: Set<number>, startOffset = 0): ScteInputEvent | null {
+  return findNextEvent(buf, knownPids, startOffset)?.event ?? null
+}
+
+/**
+ * Como scanTsBuffer, mas devolve também o offset logo após o pacote onde o
+ * evento foi encontrado (ou null se nada foi achado) -- permite ao chamador
+ * continuar buscando por MAIS eventos no restante do mesmo buffer, em vez de
+ * parar no primeiro achado. Importante porque um buffer acumulado (após
+ * perda de datagrama UDP, por exemplo) pode conter várias seções SCTE-35 --
+ * um cue-out e um cue-in em sequência, ou vários cues perdidos que chegaram
+ * juntos num único chunk grande.
+ */
+function findNextEvent(
+  buf: Buffer,
+  knownPids: Set<number> | undefined,
+  startOffset: number
+): { event: ScteInputEvent; nextOffset: number } | null {
+  let i = startOffset
   while (i + TS_PACKET_SIZE <= buf.length) {
     if (buf[i] !== SYNC_BYTE) { i++; continue }
 
@@ -190,9 +207,32 @@ export function scanTsBuffer(buf: Buffer, knownPids?: Set<number>): ScteInputEve
       durationSecs = (high * 0x100000000 + low) / 90000
     }
 
-    return { outOfNetwork, durationSecs, eventId, detectedAt: Date.now() }
+    // Filtro de plausibilidade: splice_event_id é um contador incremental na
+    // prática (visto em produção: sequência 333, 334, ... 538, 562...), nunca
+    // perto do limite de 32 bits. Um valor absurdamente alto é sinal de
+    // desalinhamento de buffer (ex.: perda de datagrama UDP quebrando o
+    // alinhamento de 188 bytes assumido por feedRawBuffer) fazendo o parser
+    // "acertar" um 0xFC/0x05 por acaso em dados que não são de fato SCTE-35 --
+    // não é um erro de spec, é ruído de sincronização. Descarta e continua a
+    // busca no restante do buffer em vez de propagar um evento espúrio.
+    if (eventId > 0xFFFFFF) { i += TS_PACKET_SIZE; continue }
+
+    return { event: { outOfNetwork, durationSecs, eventId, detectedAt: Date.now() }, nextOffset: i + TS_PACKET_SIZE }
   }
   return null
+}
+
+/** Escaneia o buffer inteiro, devolvendo TODOS os eventos SCTE-35 válidos encontrados (não só o primeiro). */
+function scanAllTsEvents(buf: Buffer, knownPids?: Set<number>): ScteInputEvent[] {
+  const events: ScteInputEvent[] = []
+  let offset = 0
+  for (;;) {
+    const found = findNextEvent(buf, knownPids, offset)
+    if (!found) break
+    events.push(found.event)
+    offset = found.nextOffset
+  }
+  return events
 }
 
 /**
@@ -249,7 +289,10 @@ export function feedRawBuffer(sourceId: string, chunk: Buffer): void {
   knownSctePids.set(sourceId, knownPids)
   const sizeBefore = knownPids.size
 
-  const ev = scanTsBuffer(slice, knownPids)
+  // Escaneia TODOS os eventos no buffer, não só o primeiro -- um chunk
+  // acumulado após perda de datagrama UDP (ou um chunk grande vindo de uma
+  // vez) pode conter mais de um cue (ex.: cue-out seguido de cue-in).
+  const events = scanAllTsEvents(slice, knownPids)
   rawBuffers.set(sourceId, buf.slice(aligned))
 
   if (knownPids.size > sizeBefore) {
@@ -262,11 +305,12 @@ export function feedRawBuffer(sourceId: string, chunk: Buffer): void {
   }
   diagState.set(sourceId, ds)
 
-  if (!ev) return
-  const last = lastEvent.get(sourceId)
-  if (last && last.eventId === ev.eventId && last.outOfNetwork === ev.outOfNetwork) return
-  console.log(`[scte35-watcher/${sourceId}] splice_insert out_of_network=${ev.outOfNetwork} eventId=${ev.eventId}${ev.durationSecs ? ` dur=${ev.durationSecs.toFixed(1)}s` : ''}`)
-  emit(sourceId, ev)
+  for (const ev of events) {
+    const last = lastEvent.get(sourceId)
+    if (last && last.eventId === ev.eventId && last.outOfNetwork === ev.outOfNetwork) continue
+    console.log(`[scte35-watcher/${sourceId}] splice_insert out_of_network=${ev.outOfNetwork} eventId=${ev.eventId}${ev.durationSecs ? ` dur=${ev.durationSecs.toFixed(1)}s` : ''}`)
+    emit(sourceId, ev)
+  }
 }
 
 /** Inicia monitoramento do diretório HLS de uma entrada. */
