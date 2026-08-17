@@ -1791,9 +1791,10 @@ export async function handleScteInputEvent(
 
     if (outOfNetwork) {
       // SCTE OUT: avança para o próximo BREAK do canal (inserção de conteúdo local)
-      if (state.status !== 'PLAYING' || state.currentItem?.isBreak) continue
+      if (state.status !== 'PLAYING') { console.log(`[playout/scte-in] ch=${channelId} — SCTE OUT ignorado: canal não está PLAYING (${state.status})`); continue }
+      if (state.currentItem?.isBreak) { console.log(`[playout/scte-in] ch=${channelId} — SCTE OUT ignorado: já está num BREAK`); continue }
       const breakIdx = await findNextBreakIndex(state.playlistId, state.currentIndex).catch(() => null)
-      if (breakIdx == null) continue
+      if (breakIdx == null) { console.log(`[playout/scte-in] ch=${channelId} — SCTE OUT ignorado: nenhum item BREAK após o índice atual (${state.currentIndex}) na playlist`); continue }
 
       // Atualiza maxDuration do BREAK com a duração sinalizada pelo cue SCTE-35
       if (durationSecs && durationSecs > 0) {
@@ -1818,9 +1819,9 @@ export async function handleScteInputEvent(
       )
     } else {
       // SCTE IN: retorna à programação normal (sai do BREAK atual)
-      if (!state.currentItem?.isBreak) continue
+      if (!state.currentItem?.isBreak) { console.log(`[playout/scte-in] ch=${channelId} — SCTE IN ignorado: item atual não é um BREAK`); continue }
       const nextIdx = await findNextNonBreakIndex(state.playlistId, state.currentIndex).catch(() => null)
-      if (nextIdx == null) continue
+      if (nextIdx == null) { console.log(`[playout/scte-in] ch=${channelId} — SCTE IN ignorado: nenhum item não-BREAK após o índice atual (${state.currentIndex}) na playlist`); continue }
       console.log(`[playout/scte-in] ch=${channelId} — SCTE IN (src=${sourceId}) → resuming at #${nextIdx}`)
       jumpTo(channelId, nextIdx).catch((err) =>
         console.error(`[playout/scte-in] Falha ao retomar após BREAK: ${err.message}`)

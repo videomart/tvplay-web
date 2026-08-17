@@ -1151,7 +1151,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
 
       {/* ── Header ────────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-800">
-        {/* Esquerda: número + nome */}
+        {/* Esquerda: número + nome + status */}
         <div className="flex items-center gap-1.5 min-w-0 flex-1">
           <div className={clsx(
             'h-6 w-6 rounded flex items-center justify-center text-[11px] font-bold flex-shrink-0',
@@ -1160,17 +1160,17 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
             {channel.number}
           </div>
           <p className="text-sm font-semibold text-white truncate">{channel.name}</p>
-        </div>
-
-        {/* Centro: status */}
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          <p className={clsx('text-[11px] font-bold tracking-wider', statusColor)}>{statusLabel}</p>
+          <p className={clsx('text-[11px] font-bold tracking-wider flex-shrink-0', statusColor)}>{statusLabel}</p>
           {(status === 'PLAYING' || ((status === 'STOPPED' || status === 'IDLE') && streamingUp)) && (
-            <span className={`flex items-center gap-0.5 text-[10px] font-semibold ${status === 'PLAYING' ? 'text-emerald-400' : 'text-sky-400'}`}>
+            <span className={`flex items-center gap-0.5 text-[10px] font-semibold flex-shrink-0 ${status === 'PLAYING' ? 'text-emerald-400' : 'text-sky-400'}`}>
               <span className={`h-1.5 w-1.5 rounded-full animate-pulse ${status === 'PLAYING' ? 'bg-emerald-400' : 'bg-sky-400'}`} />
               {status === 'PLAYING' ? 'LIVE' : `${activeOutputs} UP`}
             </span>
           )}
+        </div>
+
+        {/* Centro: badge SCTE */}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
           {(() => {
             const now = Date.now()
             const inEv  = state?.scteInputLastEvent
