@@ -1181,16 +1181,21 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
             if (age >= 60_000) return null
             const ev = inAge <= outAge ? inEv! : outEv!
             const isFresh = age < 8_000
-            const durLabel = (ev as any).durationSecs ? ` ${Math.round((ev as any).durationSecs)}s` : ''
+            const durLabel  = ev.durationSecs ? ` ${Math.round(ev.durationSecs)}s` : ''
+            const timeLabel = new Date(ev.sentAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
             return (
-              <span className={clsx(
-                'text-[9px] font-bold tracking-wider px-1.5 py-0.5 rounded border',
-                isFresh && 'animate-pulse',
-                ev.outOfNetwork
-                  ? 'bg-red-600/30 text-red-300 border-red-500/50'
-                  : 'bg-emerald-600/30 text-emerald-300 border-emerald-500/50'
-              )}>
+              <span
+                title={`Último cue às ${timeLabel}${durLabel ? ` — duração ${durLabel.trim()}` : ''}`}
+                className={clsx(
+                  'flex items-center gap-1 text-[9px] font-bold tracking-wider px-1.5 py-0.5 rounded border',
+                  isFresh && 'animate-pulse',
+                  ev.outOfNetwork
+                    ? 'bg-red-600/30 text-red-300 border-red-500/50'
+                    : 'bg-emerald-600/30 text-emerald-300 border-emerald-500/50'
+                )}
+              >
                 SCTE-{ev.outOfNetwork ? 'OUT' : 'IN'}{durLabel}
+                <span className="font-normal opacity-70">{timeLabel}</span>
               </span>
             )
           })()}

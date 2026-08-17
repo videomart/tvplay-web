@@ -67,8 +67,8 @@ export interface PlayoutState {
   activeGraphic: ActiveGraphic | null
   activeCut: { type: 'INPUT_SOURCE' | 'BLACK' | 'COLORBARS'; sourceId?: string | null } | null
   scteEnabled: boolean
-  scteLastEvent: { outOfNetwork: boolean; sentAt: number } | null
-  scteInputLastEvent: { sourceId: string; outOfNetwork: boolean; sentAt: number } | null
+  scteLastEvent: { outOfNetwork: boolean; sentAt: number; durationSecs?: number } | null
+  scteInputLastEvent: { sourceId: string; outOfNetwork: boolean; sentAt: number; durationSecs?: number } | null
   audioLevels: { l: number; r: number } | null
 }
 
