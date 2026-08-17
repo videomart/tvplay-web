@@ -385,17 +385,35 @@ export function stopWatcher(sourceId: string): void {
 // 4MB fica dentro de net.core.rmem_max (também confirmado, 4194304).
 const UDP_RECV_BUFFER_SIZE = 4 * 1024 * 1024
 
-export function startUdpWatcher(sourceId: string, port: number): void {
+const forwardSockets = new Map<string, dgram.Socket>()  // socket de saída do tee (porta scte → porta hls)
+
+/**
+ * @param forwardToPort Quando informado, cada datagrama recebido é
+ * retransmitido para 127.0.0.1:<forwardToPort> antes de ser processado --
+ * "tee" feito em JS. Usado porque nem `tsp -P fork` nem multicast (`-O ip`
+ * para grupo + dois receptores independentes) se mostraram confiáveis para
+ * duplicar o stream do relay tsp neste ambiente (testado isoladamente em
+ * produção, 2026-08-17): `fork` nunca repassou dados ao processo filho, e a
+ * combinação FFmpeg+Node no mesmo grupo multicast falhou de forma
+ * inconsistente. O relay agora envia só para a porta que este watcher
+ * escuta, e é este código que encaminha ao FFmpeg do HLS.
+ */
+export function startUdpWatcher(sourceId: string, port: number, forwardToPort?: number): void {
   if (udpSockets.has(sourceId)) return
   const sock = dgram.createSocket({ type: 'udp4', recvBufferSize: UDP_RECV_BUFFER_SIZE })
-  sock.on('message', (msg) => feedRawBuffer(sourceId, msg))
+  const fwdSock = forwardToPort ? dgram.createSocket('udp4') : null
+  if (fwdSock) forwardSockets.set(sourceId, fwdSock)
+  sock.on('message', (msg) => {
+    if (fwdSock && forwardToPort) fwdSock.send(msg, forwardToPort, '127.0.0.1')
+    feedRawBuffer(sourceId, msg)
+  })
   sock.on('error', (err) => {
     console.warn(`[scte35-watcher/${sourceId}] erro UDP: ${err.message}`)
   })
   sock.bind(port, '127.0.0.1', () => {
     try {
       const actual = sock.getRecvBufferSize()
-      console.log(`[scte35-watcher/${sourceId}] ouvindo UDP local 127.0.0.1:${port} (recvBuffer=${actual}b)`)
+      console.log(`[scte35-watcher/${sourceId}] ouvindo UDP local 127.0.0.1:${port} (recvBuffer=${actual}b)${forwardToPort ? `, encaminhando para 127.0.0.1:${forwardToPort}` : ''}`)
     } catch {
       console.log(`[scte35-watcher/${sourceId}] ouvindo UDP local 127.0.0.1:${port}`)
     }
@@ -406,6 +424,8 @@ export function startUdpWatcher(sourceId: string, port: number): void {
 export function stopUdpWatcher(sourceId: string): void {
   const sock = udpSockets.get(sourceId)
   if (sock) { try { sock.close() } catch {}; udpSockets.delete(sourceId) }
+  const fwdSock = forwardSockets.get(sourceId)
+  if (fwdSock) { try { fwdSock.close() } catch {}; forwardSockets.delete(sourceId) }
   lastEvent.delete(sourceId)
   rawBuffers.delete(sourceId)
   diagState.delete(sourceId)

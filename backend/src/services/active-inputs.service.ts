@@ -232,18 +232,21 @@ function parseSrtForTsp(srtUrl: string): { listenAddr: string; passphrase: strin
  * perfeitamente. tsp, sendo o processador nativo de MPEG-TS do TSDuck, não
  * faz esse tipo de remux/filtragem implícita de PIDs privados.
  *
- * Replica a topologia de dois destinos UDP (hls/scte) que o FFmpeg `tee`
- * fazia, usando o plugin `fork` do tsp para encadear um segundo processo tsp
- * que envia ao segundo destino -- tsp só suporta um `-O` por processo.
+ * Envia SÓ para a porta do watcher (`ports.scte`), unicast simples -- o
+ * watcher é quem retransmite ("tee" em JS) para o FFmpeg do HLS, ver
+ * `scteWatcher.startUdpWatcher`. Testado isoladamente em produção
+ * (2026-08-17): nem `-P fork` nem multicast (`-O ip` para grupo + dois
+ * receptores independentes) se mostraram confiáveis nesta versão do TSDuck
+ * dentro do container -- `fork` nunca repassou dados ao processo filho em
+ * testes repetidos, e a combinação FFmpeg+Node no mesmo grupo multicast
+ * falhou de forma inconsistente (um consumidor "rouba" os pacotes do outro).
  */
 function buildRelayArgs(srtUrl: string, ports: { hls: number; scte: number }): string[] {
   const { listenAddr, passphrase } = parseSrtForTsp(withSrtTimeout(srtUrl))
   const passphraseArgs = passphrase ? ['--passphrase', passphrase] : []
-  const forkCmd = `${TSP_PATH} -I file - -O ip 127.0.0.1:${ports.scte}`
   return [
     '-I', 'srt', '--listener', listenAddr, ...passphraseArgs,
-    '-P', 'fork', '-n', forkCmd,
-    '-O', 'ip', `127.0.0.1:${ports.hls}`,
+    '-O', 'ip', `127.0.0.1:${ports.scte}`,
   ]
 }
 
@@ -276,8 +279,12 @@ async function launchSession(source: InputSourceMeta, session: Session): Promise
       const msg = d.toString().trim()
       if (msg) console.log(`[active-input/${source.id}/relay] ${msg}`)
     })
+    // O relay tsp envia só para ports.scte (unicast simples). O watcher
+    // retransmite ("tee" em JS) cada pacote recebido para ports.hls, onde o
+    // FFmpeg do HLS abaixo já espera -- ver buildRelayArgs para o porquê de
+    // não usar `-P fork`/multicast do tsp para isso.
     mainInputUrl = `udp://127.0.0.1:${ports.hls}?overrun_nonfatal=1`
-    scteWatcher.startUdpWatcher(source.id, ports.scte)
+    scteWatcher.startUdpWatcher(source.id, ports.scte, ports.hls)
   }
 
   const args = buildArgs(mainInputUrl, session.outputDir)
