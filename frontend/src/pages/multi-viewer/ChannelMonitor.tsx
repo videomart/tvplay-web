@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { playoutApi } from '../../api/playout.api'
 import { VideoPlayer } from '../../components/ui/VideoPlayer'
@@ -22,13 +23,30 @@ export function ChannelMonitor({ channelId, channelLabel }: Props) {
     refetchInterval: 5000,
   })
 
-  const hlsPath = state?.currentItem?.hlsPath
-  const src = hlsPath ? hlsStreamUrl(hlsPath) : null
+  const item = state?.currentItem
+
+  // src/startAt só recalculam quando o CLIPE muda (item.clipId), não a cada
+  // refetch de 5s -- se recalculássemos startAt a partir de state.position
+  // inline no render, o VideoPlayer recarregaria o vídeo do zero a cada
+  // poll (hls.loadSource depende de [src, startAt]), causando a "piscada"
+  // reportada em produção. Mesmo padrão de ChannelPanel.tsx:734-741.
+  const [monitorSrc, setMonitorSrc] = useState<string | null>(null)
+  const [monitorStartAt, setMonitorStartAt] = useState(0)
+
+  useEffect(() => {
+    if (item?.hlsPath) {
+      setMonitorSrc(hlsStreamUrl(item.hlsPath))
+      setMonitorStartAt((item.cueIn ?? 0) + (state?.position ?? 0))
+    } else {
+      setMonitorSrc(null)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item?.clipId])
 
   return (
     <div className="relative w-full h-full bg-black overflow-hidden">
-      {src ? (
-        <VideoPlayer src={src} className="w-full h-full" autoPlay muted startAt={(state?.currentItem?.cueIn ?? 0) + (state?.position ?? 0)} />
+      {monitorSrc ? (
+        <VideoPlayer src={monitorSrc} className="w-full h-full" autoPlay muted startAt={monitorStartAt} />
       ) : (
         <ColorBars label={channelId ? 'SEM SINAL' : 'CANAL NÃO CONFIGURADO'} />
       )}
