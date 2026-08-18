@@ -3,6 +3,12 @@ import { inputSourcesApi, type InputSource } from '../../api/input-sources.api'
 import { VideoPlayer } from '../../components/ui/VideoPlayer'
 import { ColorBars } from './ColorBars'
 
+// preview/start no backend pode levar até 60s para desistir de uma fonte SRT
+// sem sinal (preview.service.ts) — bom para uma tela de edição, ruim para um
+// mural de monitoração. Aqui mostramos o colorbars bem antes disso; a
+// requisição HTTP original segue em voo e é ignorada se chegar depois.
+const LOADING_TIMEOUT_MS = 12_000
+
 interface Props {
   source?: InputSource
   slotLabel: string
@@ -24,12 +30,25 @@ export function InputMonitor({ source, slotLabel }: Props) {
     }
 
     let cancelled = false
+    const timeoutId = setTimeout(() => {
+      if (!cancelled) setErrored(true)
+    }, LOADING_TIMEOUT_MS)
+
     inputSourcesApi.startPreview(source.id)
-      .then(({ hlsUrl }) => { if (!cancelled) setStreamUrl(hlsUrl) })
-      .catch(() => { if (!cancelled) setErrored(true) })
+      .then(({ hlsUrl }) => {
+        if (cancelled) return
+        clearTimeout(timeoutId)
+        setStreamUrl(hlsUrl)
+      })
+      .catch(() => {
+        if (cancelled) return
+        clearTimeout(timeoutId)
+        setErrored(true)
+      })
 
     return () => {
       cancelled = true
+      clearTimeout(timeoutId)
       if (!(source.type === 'IP' && source.url?.match(/^https?:\/\//i))) {
         inputSourcesApi.stopPreview(source.id).catch(() => {})
       }

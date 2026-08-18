@@ -11,7 +11,7 @@ const primaryNav = [
   { to: '/roteiros',  icon: ListVideo,       label: 'Roteiros' },
   { to: '/media',     icon: HardDrive,       label: 'Mídias' },
   { to: '/graphics', icon: Layers, label: 'Gráficos' },
-  { to: '/multi-viewer', icon: Grid2x2, label: 'Multi-viewer' },
+  { to: '/multi-viewer', icon: Grid2x2, label: 'Multi-viewer', openInNewWindow: true },
 ]
 
 const setupNav = [
@@ -84,17 +84,31 @@ export default function Sidebar({ isOpen = true, onClose }: SidebarProps) {
       <nav className="flex-1 p-2 overflow-y-auto">
         {/* Área principal */}
         <div className="space-y-0.5">
-          {primaryNav.map(({ to, icon: Icon, label }) => (
-            <NavLink
-              key={to}
-              to={to}
-              onClick={onClose}
-              className={({ isActive }) => clsx('sidebar-item', isActive && 'active')}
-            >
-              <Icon className="h-4 w-4 flex-shrink-0" />
-              {label}
-            </NavLink>
-          ))}
+          {primaryNav.map(({ to, icon: Icon, label, openInNewWindow }) =>
+            openInNewWindow ? (
+              <a
+                key={to}
+                href={to}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={onClose}
+                className="sidebar-item"
+              >
+                <Icon className="h-4 w-4 flex-shrink-0" />
+                {label}
+              </a>
+            ) : (
+              <NavLink
+                key={to}
+                to={to}
+                onClick={onClose}
+                className={({ isActive }) => clsx('sidebar-item', isActive && 'active')}
+              >
+                <Icon className="h-4 w-4 flex-shrink-0" />
+                {label}
+              </NavLink>
+            )
+          )}
         </div>
 
         {/* Divisor — Configuração */}

@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Maximize, Minimize, X } from 'lucide-react'
 import { channelsApi } from '../../api/channels.api'
@@ -8,7 +7,6 @@ import { ChannelMonitor } from './ChannelMonitor'
 import { InputMonitor } from './InputMonitor'
 
 export default function MultiViewerPage() {
-  const navigate = useNavigate()
   const containerRef = useRef<HTMLDivElement>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
 
@@ -48,7 +46,7 @@ export default function MultiViewerPage() {
           {isFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
         </button>
         <button
-          onClick={() => navigate('/playout')}
+          onClick={() => window.close()}
           className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium text-gray-300 hover:bg-gray-800 transition-colors"
         >
           <X className="h-3.5 w-3.5" />
