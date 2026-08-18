@@ -88,7 +88,7 @@ services:
       MINIO_BUCKET: tvplay-media
       NODE_ENV: production
       JWT_SECRET: tvplay-dev-secret-change-in-production
-      JWT_EXPIRES_IN: 8h
+      JWT_EXPIRES_IN: 30d
       YTDLP_COOKIES_FILE: /app/cookies/youtube-cookies.txt
       SCTE_SIGNAL_URL: 'http://vps1.tvtupi.com.br:3001/api/input-sources/scte-signal'
       SCTE_SIGNAL_SOURCE_ID: 'cmqd364tm0001vrwcs5uyfdyi'

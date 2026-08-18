@@ -3,7 +3,10 @@ export const config = {
   nodeEnv: process.env.NODE_ENV ?? 'development',
 
   jwtSecret: process.env.JWT_SECRET ?? 'dev-secret-change-in-production',
-  jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '8h',
+  // 30d: expiração curta derrubava sessões de sala de operação (tela aberta
+  // por horas sem interação) com logout forçado e sem aviso — confirmado
+  // pelo cliente (2026-08-18).
+  jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '30d',
 
   redis: {
     url: process.env.REDIS_URL ?? 'redis://localhost:6379',
