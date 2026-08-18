@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Tv2, Users, Tag, LogOut, Radio, ListVideo, Cast, Antenna, ClipboardList, UserCog, Settings, Layers, HardDrive, X } from 'lucide-react'
+import { LayoutDashboard, Tv2, Users, Tag, LogOut, Radio, ListVideo, Cast, Antenna, ClipboardList, UserCog, Settings, Layers, HardDrive, Grid2x2, X } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '../../stores/auth.store'
 import { settingsApi } from '../../api/settings.api'
@@ -11,6 +11,7 @@ const primaryNav = [
   { to: '/roteiros',  icon: ListVideo,       label: 'Roteiros' },
   { to: '/media',     icon: HardDrive,       label: 'Mídias' },
   { to: '/graphics', icon: Layers, label: 'Gráficos' },
+  { to: '/multi-viewer', icon: Grid2x2, label: 'Multi-viewer' },
 ]
 
 const setupNav = [

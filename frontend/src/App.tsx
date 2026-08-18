@@ -22,6 +22,7 @@ import MediaFilesPage from './pages/media/MediaFilesPage'
 import ClipsPage from './pages/clips/ClipsPage'
 import GraphicTemplatesPage from './pages/graphic-templates/GraphicTemplatesPage'
 import GraphicTemplateEditorPage from './pages/graphic-templates/GraphicTemplateEditorPage'
+import MultiViewerPage from './pages/multi-viewer/MultiViewerPage'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token)
@@ -35,6 +36,15 @@ export default function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
+        {/* Fora do AppLayout: página fullscreen sem sidebar */}
+        <Route
+          path="/multi-viewer"
+          element={
+            <PrivateRoute>
+              <MultiViewerPage />
+            </PrivateRoute>
+          }
+        />
         <Route
           path="/"
           element={
