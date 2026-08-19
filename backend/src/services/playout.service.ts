@@ -288,7 +288,13 @@ async function resolveViaYtDlp(rawUrl: string): Promise<string | null> {
 
 // Resolve a URL real de uma fonte de entrada (YouTube/Twitch via yt-dlp; outros direto)
 // Suporta tipo CLIP: resolve a partir do clipe cadastrado
-async function resolveInputUrl(
+// Exportada para reuso em input-sources.route.ts (preview) -- antes havia uma
+// segunda implementação de resolução yt-dlp duplicada e desatualizada ali,
+// sem o cache de falha recente, a rejeição de manifest ao vivo/DVR instável
+// (ver comentário em resolveViaYtDlp) e sem tratamento DASH -- causa raiz
+// confirmada de "CUT para entrada YouTube não mostra vídeo" divergir do
+// preview, que funcionava (2026-08-18).
+export async function resolveInputUrl(
   src: { type: string; url: string | null; device: string | null; clipId?: string | null },
   channelId?: string,
 ): Promise<string | null> {

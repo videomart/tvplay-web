@@ -8,7 +8,7 @@ import { promisify } from 'util'
 import { prisma } from '../lib/prisma'
 import * as previewService from '../services/preview.service'
 import * as activeInputsService from '../services/active-inputs.service'
-import { refreshInputSourceConsumers, isYoutubeContentEnabled, handleScteInputEvent } from '../services/playout.service'
+import { refreshInputSourceConsumers, isYoutubeContentEnabled, handleScteInputEvent, resolveInputUrl } from '../services/playout.service'
 import { getLastEvent } from '../services/scte35-watcher.service'
 import { config, YTDLP_DISABLED_ERROR } from '../config'
 
@@ -441,46 +441,22 @@ export default async function inputSourceRoutes(app: FastifyInstance) {
 
     if (!source.url && !source.device) return reply.status(400).send({ error: 'Fonte sem URL ou dispositivo' })
 
-    let inputUrl = source.url ?? source.device!
-
     // YouTube / Twitch via yt-dlp — também aplica quando tipo IP tem URL de plataforma compatível
     const needsYtDlp = source.type === 'YOUTUBE' ||
       (source.url ? /youtube\.com|youtu\.be|twitch\.tv/i.test(source.url) : false)
 
     if (needsYtDlp && !isYoutubeContentEnabled()) return reply.status(422).send({ error: YTDLP_DISABLED_ERROR })
 
-    if (needsYtDlp) {
-      const base = ['--no-playlist', '-g', '--socket-timeout', '15', '--no-warnings']
-      const fmt  = 'best[protocol=m3u8_native]/best[height<=720]/best'
-
-      const tryYt = async (...extra: string[]): Promise<string | null> => {
-        try {
-          const { stdout } = await execFileAsync('yt-dlp', [...base, '-f', fmt, ...extra, inputUrl], { timeout: 35000 })
-          return stdout.trim().split('\n')[0] || null
-        } catch { return null }
-      }
-
-      // Ordem: android (mais confiável para lives) → web → sem client (fallback)
-      const resolved =
-        await tryYt('--extractor-args', 'youtube:player_client=android') ||
-        await tryYt('--extractor-args', 'youtube:player_client=web')     ||
-        await tryYt()
-
-      if (!resolved) {
-        // Última tentativa sem filtro de formato — captura stderr para diagnóstico
-        try {
-          const { stdout } = await execFileAsync('yt-dlp', [...base, inputUrl], { timeout: 35000 })
-          const url = stdout.trim().split('\n')[0]
-          if (url) { inputUrl = url }
-          else throw new Error('Nenhum stream encontrado')
-        } catch (e: any) {
-          const detail = e.stderr?.toString()?.trim()?.split('\n').find((l: string) => l.includes('ERROR')) ?? e.message
-          return reply.status(422).send({ error: 'Não foi possível resolver o YouTube.', detail })
-        }
-      } else {
-        inputUrl = resolved
-      }
+    // resolveInputUrl (playout.service.ts) substitui a resolução yt-dlp que
+    // existia aqui antes -- eram duas implementações divergentes (formato
+    // preferido, ordem de clients, cookies, tratamento DASH), causa raiz de
+    // "preview funciona mas CUT no playout não mostra vídeo" para a mesma
+    // fonte YouTube (2026-08-18). Usar a mesma função dos dois lados.
+    const resolvedUrl = await resolveInputUrl({ type: source.type, url: source.url, device: source.device })
+    if (!resolvedUrl) {
+      return reply.status(422).send({ error: needsYtDlp ? 'Não foi possível resolver o YouTube.' : 'Não foi possível resolver a fonte.' })
     }
+    const inputUrl = resolvedUrl
 
     previewService.startPreview(source.id, inputUrl)
 

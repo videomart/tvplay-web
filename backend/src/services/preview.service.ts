@@ -58,7 +58,16 @@ export function startPreview(sourceId: string, inputUrl: string): string {
 
   const hlsPath = path.join(outputDir, 'index.m3u8')
 
-  const lowerUrl = inputUrl.toLowerCase()
+  // DASH: resolveInputUrl/resolveViaYtDlp (playout.service.ts) pode devolver
+  // vídeo+áudio separados por "\n" quando o YouTube não tem formato combinado
+  // (comum em lives) — sem tratar isso, "-i url" recebia a string com \n
+  // literal e o FFmpeg falhava. Mesmo padrão de stream.service.ts:712-716 e
+  // active-inputs.service.ts.
+  const dashUrls   = inputUrl.includes('\n') ? inputUrl.split('\n').filter(u => u.startsWith('http')) : null
+  const primaryUrl = dashUrls ? dashUrls[0] : inputUrl
+  const audioUrl   = dashUrls ? dashUrls[1] : null
+
+  const lowerUrl = primaryUrl.toLowerCase()
   const isSrt  = lowerUrl.startsWith('srt://')
   const isUdp  = lowerUrl.startsWith('udp://')
   const isRtmp = lowerUrl.startsWith('rtmp://')
@@ -66,13 +75,16 @@ export function startPreview(sourceId: string, inputUrl: string): string {
   // HLS source (YouTube live, IP HLS): stream copy — sem transcodar, só remux
   const isHlsSrc = lowerUrl.includes('googlevideo.com') || /\.m3u8/.test(lowerUrl)
 
-  const resolvedUrl = isSrt ? prepareSrtUrl(inputUrl)
-                    : isUdp ? prepareUdpUrl(inputUrl)
-                    : inputUrl
+  const resolvedUrl = isSrt ? prepareSrtUrl(primaryUrl)
+                    : isUdp ? prepareUdpUrl(primaryUrl)
+                    : primaryUrl
 
   const codecArgs = isHlsSrc
     ? ['-c', 'copy']
     : ['-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency', '-c:a', 'aac', '-ar', '44100']
+
+  // DASH (video+audio separados): mapa explícito 0:v (primeiro input) + 1:a (segundo)
+  const mapArgs = audioUrl ? ['-map', '0:v:0', '-map', '1:a:0'] : []
 
   const args = [
     '-hide_banner', '-loglevel', 'warning',
@@ -83,10 +95,20 @@ export function startPreview(sourceId: string, inputUrl: string): string {
     // RTSP: força TCP (mais estável que UDP) e define timeout
     ...(isRtsp ? ['-rtsp_transport', 'tcp', '-stimeout', '10000000'] : []),
     '-i', resolvedUrl,
+    ...(audioUrl ? ['-i', audioUrl] : []),
+    ...mapArgs,
     ...codecArgs,
     '-f', 'hls',
     '-hls_time', '2',
-    '-hls_list_size', '4',
+    // hls_list_size 4 (8s de janela) era curto demais: hls.js por padrão
+    // tenta ficar ~3 segmentos atrás da borda ao vivo (liveSyncDurationCount),
+    // então qualquer soluço no encoder/fonte estagnava o player em ~8s de
+    // reprodução (sem buffer restante) -- lido como "pausa sozinha" pelo
+    // usuário, mas é buffer stall do HLS ao vivo, não um pause() explícito.
+    // 6 segmentos (12s) alinha com o valor já usado no relay persistente
+    // (active-inputs.service.ts) e dá mais margem sem inflar muito a
+    // latência inicial de um preview.
+    '-hls_list_size', '6',
     '-hls_flags', 'delete_segments+append_list',
     '-hls_segment_filename', path.join(outputDir, 'seg%03d.ts'),
     hlsPath,

@@ -165,12 +165,24 @@ function withSrtTimeout(url: string): string {
 function buildArgs(inputUrl: string, outputDir: string): string[] {
   const hlsPath = path.join(outputDir, 'index.m3u8')
   const segPat  = path.join(outputDir, 'seg%03d.ts')
-  const lo = inputUrl.toLowerCase()
+
+  // DASH: resolveViaYtDlp (playout.service.ts) pode devolver vídeo+áudio
+  // separados por "\n" quando o YouTube não tem um formato combinado
+  // disponível (comum em lives). Sem tratar isso aqui, "-i url" recebia a
+  // string com \n literal e o FFmpeg falhava silenciosamente (log de
+  // warning + retry infinito) — CUT para entrada YouTube sem formato
+  // combinado nunca mostrava vídeo. Mesmo padrão já usado em
+  // stream.service.ts:712-716.
+  const dashUrls   = inputUrl.includes('\n') ? inputUrl.split('\n').filter(u => u.startsWith('http')) : null
+  const primaryUrl = dashUrls ? dashUrls[0] : inputUrl
+  const audioUrl   = dashUrls ? dashUrls[1] : null
+
+  const lo = primaryUrl.toLowerCase()
   const isRtmp = lo.startsWith('rtmp://')
   const isRtsp = lo.startsWith('rtsp://')
   const isHls  = lo.includes('.m3u8') || lo.includes('/api/media/') || lo.includes('/api/input-sources/')
 
-  const url = withSrtTimeout(inputUrl)
+  const url = withSrtTimeout(primaryUrl)
 
   const base = [
     '-hide_banner', '-loglevel', 'warning',
@@ -182,14 +194,18 @@ function buildArgs(inputUrl: string, outputDir: string): string[] {
     ...(isRtsp ? ['-rtsp_transport', 'tcp', '-stimeout', '15000000'] : []),
     ...(isHls  ? ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5', '-timeout', '30000000'] : []),
     '-i', url,
+    ...(audioUrl ? ['-i', audioUrl] : []),
   ]
 
   // Remux com PIDs explícitos para corrigir streams SRT que emitem áudio com PID 0x0
   // (PID reservado/inválido no MPEG-TS, rejeitado pelo hls.js no browser).
   // -map explícito força o muxer a reatribuir PIDs normais mesmo com -c copy.
+  // DASH (video+audio separados): mapa explícito 0:v (primeiro input) + 1:a (segundo).
+  const mapArgs = audioUrl ? ['-map', '0:v:0', '-map', '1:a:0'] : ['-map', '0:v:0', '-map', '0:a:0']
+
   return [
     ...base,
-    '-map', '0:v:0', '-map', '0:a:0',
+    ...mapArgs,
     '-c', 'copy',
     '-mpegts_pmt_start_pid', '0x1000',
     '-mpegts_start_pid', '0x0100',

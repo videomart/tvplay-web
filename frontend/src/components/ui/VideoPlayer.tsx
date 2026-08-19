@@ -51,6 +51,13 @@ export function VideoPlayer({ src, poster, className, autoPlay = false, startAt,
     const hls = new Hls({
       enableWorker: true,
       lowLatencyMode: false,
+      // Default (liveSyncDurationCount: 3) mantém o player só 3 segmentos
+      // atrás da borda ao vivo -- com playlists curtas no servidor (ex.:
+      // preview.service.ts, 6 segmentos de 2s), qualquer soluço no encoder
+      // esgota esse buffer e o player estagna (lido como "pausa sozinha").
+      // liveSyncDurationCount maior dá mais colchão sem mudar a latência
+      // de forma perceptível num preview.
+      liveSyncDurationCount: 5,
       xhrSetup: (xhr: XMLHttpRequest, url: string) => {
         const isInternal = !url || url.startsWith('/') || url.includes(window.location.hostname)
         if (!isInternal) return
