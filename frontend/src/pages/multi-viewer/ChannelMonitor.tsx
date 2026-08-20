@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { playoutApi } from '../../api/playout.api'
+import { inputSourcesApi } from '../../api/input-sources.api'
 import { VideoPlayer } from '../../components/ui/VideoPlayer'
 import { ColorBars } from './ColorBars'
 
@@ -24,6 +25,7 @@ export function ChannelMonitor({ channelId, channelLabel }: Props) {
   })
 
   const item = state?.currentItem
+  const cutSourceId = state?.activeCut?.type === 'INPUT_SOURCE' ? state.activeCut.sourceId : undefined
 
   // src/startAt só recalculam quando o CLIPE muda (item.clipId), não a cada
   // refetch de 5s -- se recalculássemos startAt a partir de state.position
@@ -43,10 +45,35 @@ export function ChannelMonitor({ channelId, channelLabel }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item?.clipId])
 
+  // CUT para uma InputSource: currentItem fica null (ver playout.service.ts
+  // cutToInput), então o efeito acima nunca preenche monitorSrc. Sobe uma
+  // sessão de preview server-side pro sourceId do activeCut, mesmo mecanismo
+  // usado por InputMonitor.tsx (linha de entradas) e por ChannelPanel.tsx
+  // (switcher) — sem isso o Multi-viewer cai em colorbars mesmo com o CUT
+  // funcionando normalmente no canal.
+  const [cutSrc, setCutSrc] = useState<string | null>(null)
+
+  useEffect(() => {
+    setCutSrc(null)
+    if (!cutSourceId) return
+
+    let cancelled = false
+    inputSourcesApi.startPreview(cutSourceId)
+      .then(({ hlsUrl }) => { if (!cancelled) setCutSrc(hlsUrl) })
+      .catch(() => {})
+
+    return () => {
+      cancelled = true
+      inputSourcesApi.stopPreview(cutSourceId).catch(() => {})
+    }
+  }, [cutSourceId])
+
+  const activeSrc = cutSourceId ? cutSrc : monitorSrc
+
   return (
     <div className="relative w-full h-full bg-black overflow-hidden">
-      {monitorSrc ? (
-        <VideoPlayer src={monitorSrc} className="w-full h-full" autoPlay muted startAt={monitorStartAt} />
+      {activeSrc ? (
+        <VideoPlayer src={activeSrc} className="w-full h-full" autoPlay muted startAt={cutSourceId ? 0 : monitorStartAt} />
       ) : (
         <ColorBars label={channelId ? 'SEM SINAL' : 'CANAL NÃO CONFIGURADO'} />
       )}

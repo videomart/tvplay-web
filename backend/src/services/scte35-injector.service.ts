@@ -114,6 +114,15 @@ function buildTspArgs(relayPort: number, cmdPort: number, srtUrl: string): strin
   const ppArgs = passphrase ? ['--passphrase', passphrase] : []
 
   return [
+    // Flag global (não é plugin): insere 1 pacote null artificial a cada 200
+    // pacotes de entrada (~0.5% de overhead de bitrate). O relay FFmpeg -c copy
+    // não carrega nenhum pacote null natural -- sem isso, o spliceinject nunca
+    // tem de onde tirar espaço para criar o PID 0x0200: o log mostra "enqueuing
+    // SpliceInsert" normalmente, mas nenhum pacote é de fato escrito (0
+    // nullified sempre). Confirmado por testes isolados em 2026-08-20 --
+    // --min-bitrate abaixo sozinho NÃO resolve, precisa dos dois juntos.
+    '-a', '1/200',
+
     // Input: TS vindo do FFmpeg relay via UDP local (unicast: só porta no parâmetro,
     // --local-address vincula ao loopback para não aceitar tráfego externo).
     // --buffer-size 4MB: evita drops UDP quando o spliceinject processa pacotes.
@@ -123,6 +132,8 @@ function buildTspArgs(relayPort: number, cmdPort: number, srtUrl: string): strin
 
     // Plugin: injeta splice_insert SCTE-35 via comandos XML recebidos por UDP.
     // --pts-pid 0x0100: referência de clock (PID de vídeo do FFmpeg).
+    // --min-bitrate: mantém o PID 0x0200 ativo consumindo os nulos artificiais
+    // do -a acima -- sem isso, o -a sozinho também não é suficiente.
     // Nota: NÃO usamos -P pmt --add-pid aqui porque o receptor (scte_monitor)
     // remove o PID SCTE-35 do PMT e substitui os pacotes por nulos antes de
     // repassar ao MediaMTX, evitando o "max recorded size exceeded" do astits.
@@ -131,6 +142,7 @@ function buildTspArgs(relayPort: number, cmdPort: number, srtUrl: string): strin
     '--poll-interval', '100',
     '--pid', '0x0200',
     '--pts-pid', '0x0100',
+    '--min-bitrate', '50000',
 
     // Output: SRT caller para o scte_monitor (porta dedicada por cliente).
     // O scte_monitor detecta SCTE-35, remove os pacotes, e faz relay ao MediaMTX.
