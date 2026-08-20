@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { Volume2, VolumeX } from 'lucide-react'
 import { playoutApi } from '../../api/playout.api'
 import { inputSourcesApi } from '../../api/input-sources.api'
 import { VideoPlayer } from '../../components/ui/VideoPlayer'
+import { VuMeter } from '../../components/ui/VuMeter'
 import { ColorBars } from './ColorBars'
+import { MonitorFrame } from './MonitorFrame'
 
 // Mesma lógica de ChannelPanel.tsx — hlsPath vem como "hls/<mediaId>/index.m3u8"
 function hlsStreamUrl(hlsPath: string) {
@@ -70,16 +73,51 @@ export function ChannelMonitor({ channelId, channelLabel }: Props) {
 
   const activeSrc = cutSourceId ? cutSrc : monitorSrc
 
+  const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null)
+  const [audioMuted, setAudioMuted] = useState(true)
+
+  const status: 'ok' | 'warn' | 'off' = !channelId
+    ? 'off'
+    : activeSrc
+      ? (state?.status === 'PLAYING' ? 'ok' : 'warn')
+      : 'off'
+
+  const statusLabel = !channelId
+    ? undefined
+    : activeSrc
+      ? (cutSourceId ? 'CUT' : state?.status)
+      : 'SEM SINAL'
+
   return (
-    <div className="relative w-full h-full bg-black overflow-hidden">
+    <MonitorFrame
+      label={channelLabel}
+      status={status}
+      statusLabel={statusLabel}
+      footer={
+        <>
+          <VuMeter videoEl={videoEl} muted={audioMuted} className="flex-shrink-0" />
+          <button
+            onClick={() => setAudioMuted((m) => !m)}
+            title={audioMuted ? 'Ativar áudio do monitor' : 'Silenciar monitor'}
+            className="p-0.5 rounded text-gray-500 hover:text-gray-300 transition-colors flex-shrink-0"
+          >
+            {audioMuted ? <VolumeX className="h-3 w-3" /> : <Volume2 className="h-3 w-3" />}
+          </button>
+        </>
+      }
+    >
       {activeSrc ? (
-        <VideoPlayer src={activeSrc} className="w-full h-full" autoPlay muted startAt={cutSourceId ? 0 : monitorStartAt} />
+        <VideoPlayer
+          src={activeSrc}
+          className="w-full h-full"
+          autoPlay
+          muted={audioMuted}
+          startAt={cutSourceId ? 0 : monitorStartAt}
+          onVideoRef={setVideoEl}
+        />
       ) : (
         <ColorBars label={channelId ? 'SEM SINAL' : 'CANAL NÃO CONFIGURADO'} />
       )}
-      <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-black/70 text-xs font-bold text-white tracking-wide">
-        {channelLabel}
-      </div>
-    </div>
+    </MonitorFrame>
   )
 }

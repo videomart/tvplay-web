@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react'
+import { Volume2, VolumeX } from 'lucide-react'
 import { inputSourcesApi, type InputSource } from '../../api/input-sources.api'
 import { VideoPlayer } from '../../components/ui/VideoPlayer'
+import { VuMeter } from '../../components/ui/VuMeter'
 import { ColorBars } from './ColorBars'
+import { MonitorFrame } from './MonitorFrame'
 
 // preview/start no backend pode levar até 60s para desistir de uma fonte SRT
 // sem sinal (preview.service.ts) — bom para uma tela de edição, ruim para um
@@ -55,16 +58,35 @@ export function InputMonitor({ source, slotLabel }: Props) {
     }
   }, [source?.id])
 
+  const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null)
+  const [audioMuted, setAudioMuted] = useState(true)
+
+  const status: 'ok' | 'warn' | 'off' = !source ? 'off' : errored ? 'off' : streamUrl ? 'ok' : 'warn'
+  const statusLabel = !source ? 'SEM ENTRADA' : errored ? 'SEM SINAL' : streamUrl ? undefined : 'CONECTANDO'
+
   return (
-    <div className="relative w-full h-full bg-black overflow-hidden">
+    <MonitorFrame
+      label={slotLabel}
+      status={status}
+      statusLabel={statusLabel}
+      footer={
+        <>
+          <VuMeter videoEl={videoEl} muted={audioMuted} className="flex-shrink-0" />
+          <button
+            onClick={() => setAudioMuted((m) => !m)}
+            title={audioMuted ? 'Ativar áudio do monitor' : 'Silenciar monitor'}
+            className="p-0.5 rounded text-gray-500 hover:text-gray-300 transition-colors flex-shrink-0"
+          >
+            {audioMuted ? <VolumeX className="h-3 w-3" /> : <Volume2 className="h-3 w-3" />}
+          </button>
+        </>
+      }
+    >
       {streamUrl && !errored ? (
-        <VideoPlayer src={streamUrl} className="w-full h-full" autoPlay muted />
+        <VideoPlayer src={streamUrl} className="w-full h-full" autoPlay muted={audioMuted} onVideoRef={setVideoEl} />
       ) : (
         <ColorBars label={!source ? 'SEM ENTRADA' : errored ? 'SEM SINAL' : undefined} />
       )}
-      <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-black/70 text-xs font-bold text-white tracking-wide">
-        {slotLabel}
-      </div>
-    </div>
+    </MonitorFrame>
   )
 }

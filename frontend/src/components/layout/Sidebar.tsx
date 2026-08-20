@@ -33,6 +33,45 @@ interface SidebarProps {
   onClose?: () => void
 }
 
+// Window Management API (Chrome/Edge, experimental) — ainda não faz parte do
+// lib.dom.d.ts do TypeScript, por isso os tipos mínimos abaixo.
+interface ScreenDetailed {
+  availLeft: number
+  availTop: number
+  availWidth: number
+  availHeight: number
+}
+interface ScreenDetails {
+  screens: ScreenDetailed[]
+  currentScreen: ScreenDetailed
+}
+
+// Abre o multi-viewer preferencialmente no monitor secundário (quando o
+// navegador suporta a Window Management API e o usuário concede a
+// permissão); sem suporte/permissão, cai no window.open padrão em nova aba.
+async function openInSecondaryScreen(url: string) {
+  const getScreenDetails = (window as unknown as { getScreenDetails?: () => Promise<ScreenDetails> }).getScreenDetails
+
+  if (getScreenDetails) {
+    try {
+      const details = await getScreenDetails()
+      const secondary = details.screens.find((s) => s !== details.currentScreen)
+      if (secondary) {
+        window.open(
+          url,
+          '_blank',
+          `left=${secondary.availLeft},top=${secondary.availTop},width=${secondary.availWidth},height=${secondary.availHeight}`
+        )
+        return
+      }
+    } catch {
+      // API indisponível ou permissão negada — segue para o fallback
+    }
+  }
+
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
+
 export default function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   const { user, logout } = useAuthStore()
   const isAdmin = user?.level === 'ADMIN'
@@ -91,7 +130,11 @@ export default function Sidebar({ isOpen = true, onClose }: SidebarProps) {
                 href={to}
                 target="_blank"
                 rel="noopener noreferrer"
-                onClick={onClose}
+                onClick={(e) => {
+                  e.preventDefault()
+                  onClose?.()
+                  openInSecondaryScreen(to)
+                }}
                 className="sidebar-item"
               >
                 <Icon className="h-4 w-4 flex-shrink-0" />
