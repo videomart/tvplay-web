@@ -57,6 +57,7 @@ interface StreamProcess {
   name:           string
   stopped:        boolean
   contentGraphic: GraphicConfig | null
+  loop:           boolean
 }
 
 type OutputConfig = {
@@ -705,6 +706,7 @@ function buildArgs(
   isLive = false,
   effectiveGraphic: GraphicConfig | null = null,
   relayPort: number | null = null,
+  loop = false,
 ): string[] | null {
   // Resolve URL do logo: relativa → http://localhost:PORT/... (acessível dentro do container)
   const logoUrl = (!isLive && effectiveGraphic?.logoUrl) ? resolveLogoUrl(effectiveGraphic.logoUrl) : null
@@ -779,6 +781,13 @@ function buildArgs(
     // pausadas pelo -re — ver isRemoteCdnInput acima).
     ...((!isLive || isLocalInputHls) && !isHlsLive && !isRemoteCdnInput ? ['-re'] : []),
     ...(cueIn > 0 && !isLive ? ['-ss', String(Math.floor(cueIn))] : []),
+    // CUT/fallback para uma InputSource tipo CLIP com arquivo local (VOD finito,
+    // ver activateFallbackSource em playout.service.ts): sem loop o FFmpeg chega
+    // ao fim do arquivo, sai com código 0 (não conta como falha em spawnOutput)
+    // e a saída trava no último frame, sem qualquer reconexão automática — a
+    // fonte precisa se comportar como um feed contínuo, já que nada mais (timer
+    // de playlist, etc.) vai reiniciá-la.
+    ...(loop ? ['-stream_loop', '-1'] : []),
     '-i', primaryUrl,
     // DASH: segundo input de áudio separado
     ...(audioUrl ? ['-i', audioUrl] : []),
@@ -894,10 +903,11 @@ function spawnOutput(
   contentGraphic: GraphicConfig | null = null,
   relayPort: number | null = null,
   failCount = 0,
+  loop = false,
 ): StreamProcess | null {
   // Prioridade: gráfico do conteúdo (clip/playlist) > gráfico da saída
   const effectiveGraphic = contentGraphic ?? output.graphic ?? null
-  const args = buildArgs(hlsUrl, cueIn, output, isLive, effectiveGraphic, relayPort)
+  const args = buildArgs(hlsUrl, cueIn, output, isLive, effectiveGraphic, relayPort, loop)
   if (!args) return null
 
   const proc = spawn(config.ffmpeg.path, args, {
@@ -906,7 +916,7 @@ function spawnOutput(
   })
   const sp: StreamProcess = {
     proc, outputId: output.id, type: output.type, name: output.name,
-    stopped: false, contentGraphic,
+    stopped: false, contentGraphic, loop,
   }
 
   proc.stdout?.on('data', () => {})
@@ -955,7 +965,7 @@ function spawnOutput(
           include: { graphic: { include: { template: { include: { elements: { where: { active: true }, orderBy: { order: 'asc' } } } } } } },
         })
         if (!dbOutput?.active) return
-        const newSp = spawnOutput(channelId, dbOutput, hlsUrl, 0, false, sp.contentGraphic, relayPort, nextFailCount)
+        const newSp = spawnOutput(channelId, dbOutput, hlsUrl, 0, false, sp.contentGraphic, relayPort, nextFailCount, sp.loop)
         if (!newSp) return
         if (!channelProcs.has(channelId)) channelProcs.set(channelId, new Map())
         channelProcs.get(channelId)!.set(output.id, newSp)
@@ -1250,7 +1260,7 @@ function spawnOutputFromConcat(
   })
   const sp: StreamProcess = {
     proc, outputId: output.id, type: output.type, name: output.name,
-    stopped: false, contentGraphic,
+    stopped: false, contentGraphic, loop: false,
   }
 
   proc.stdout?.on('data', () => {})
@@ -1396,6 +1406,7 @@ export async function startStreamingFromUrl(
   channelId: string,
   inputUrl: string,
   contentGraphic: GraphicConfig | null = null,
+  loop = false,
 ) {
   let outputs: OutputConfig[] = await prisma.streamOutput.findMany({
     where: { channelId, active: true },
@@ -1417,7 +1428,7 @@ export async function startStreamingFromUrl(
     // isLive=false → sempre re-encode (libx264/aac) quando passa pelo relay, mantendo
     // o mesmo bitstream que startStreamingFromUrlReencode/concat usam na mesma saída
     const live = port === null
-    const sp = spawnOutput(channelId, output, inputUrl, 0, live, contentGraphic, port)
+    const sp = spawnOutput(channelId, output, inputUrl, 0, live, contentGraphic, port, 0, loop)
     if (sp) map.set(output.id, sp)
   }
   if (map.size) channelProcs.set(channelId, map)
@@ -1485,7 +1496,7 @@ export async function startStreamingFromFallback(channelId: string, fallbackType
       stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, TZ: clockTz() },
     })
-    const sp: StreamProcess = { proc, outputId: output.id, type: output.type, name: output.name, stopped: false, contentGraphic: null }
+    const sp: StreamProcess = { proc, outputId: output.id, type: output.type, name: output.name, stopped: false, contentGraphic: null, loop: false }
     proc.stdout?.on('data', () => {})
     proc.stderr?.on('data', (d: Buffer) => {
       const msg = d.toString().trim()

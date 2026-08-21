@@ -111,6 +111,7 @@ export function ChannelMonitor({ channelId, channelLabel }: Props) {
           src={activeSrc}
           className="w-full h-full"
           autoPlay
+          loop={!!cutSourceId}
           muted={audioMuted}
           startAt={cutSourceId ? 0 : monitorStartAt}
           onVideoRef={setVideoEl}

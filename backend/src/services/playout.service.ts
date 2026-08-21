@@ -113,7 +113,12 @@ async function activateFallbackSource(
   }
 
   const url = await resolveFallbackUrl(source).catch(() => null)
-  if (url) streamService.startStreamingFromUrl(channelId, url, graphic).catch(() => {})
+  // CLIP com arquivo local resolve para /api/media/stream/... (VOD finito, ver
+  // resolveInputUrl acima) — ao contrário de uma fonte SRT/RTMP/YouTube, nada
+  // mais reinicia essa "entrada" quando o arquivo acaba, então precisa loopar
+  // no FFmpeg (ver comentário em buildArgs/stream.service.ts).
+  const loop = !!url?.includes('/api/media/')
+  if (url) streamService.startStreamingFromUrl(channelId, url, graphic, loop).catch(() => {})
 }
 
 /**

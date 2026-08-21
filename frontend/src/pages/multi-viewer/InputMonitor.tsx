@@ -83,7 +83,7 @@ export function InputMonitor({ source, slotLabel }: Props) {
       }
     >
       {streamUrl && !errored ? (
-        <VideoPlayer src={streamUrl} className="w-full h-full" autoPlay muted={audioMuted} onVideoRef={setVideoEl} />
+        <VideoPlayer src={streamUrl} className="w-full h-full" autoPlay loop muted={audioMuted} onVideoRef={setVideoEl} />
       ) : (
         <ColorBars label={!source ? 'SEM ENTRADA' : errored ? 'SEM SINAL' : undefined} />
       )}
