@@ -35,12 +35,43 @@ export function VideoPlayer({ src, poster, className, autoPlay = false, startAt,
   const manifestHandlerRef = useRef<((event: string, data: unknown) => void) | null>(null)
   const [state, setState] = useState<State>('loading')
   const [errorMsg, setErrorMsg] = useState('')
+  // Refs (não state) porque são lidos só dentro dos handlers do efeito de
+  // montagem (deps [], não recria o listener) — precisam sempre do valor mais
+  // recente de `loop`/`src`, que podem mudar em re-renders sem remontar o player.
+  const loopRef = useRef(loop)
+  loopRef.current = loop
+  const srcRef = useRef(src)
+  srcRef.current = src
 
   // Expõe o elemento video para uso externo (ex.: VuMeter Web Audio API)
   useEffect(() => {
     onVideoRef?.(videoRef.current)
     return () => onVideoRef?.(null)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Loop manual em vez do atributo nativo `loop`: com hls.js/MediaSource o VOD
+  // às vezes trava perto do fim (buffer stall no fechamento do MediaSource) sem
+  // nunca disparar 'ended' — o `timeupdate` chegando perto da duração cobre esse
+  // caso, e o listener de 'ended' cobre o caminho normal. Usado pelas entradas
+  // de arquivo do multi-viewer, que devem se comportar como um feed contínuo.
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video || !loop) return
+
+    const restart = () => {
+      video.currentTime = 0
+      video.play().catch(() => {})
+    }
+    const onTimeUpdate = () => {
+      if (video.duration && video.duration - video.currentTime < 0.3) restart()
+    }
+    video.addEventListener('ended', restart)
+    video.addEventListener('timeupdate', onTimeUpdate)
+    return () => {
+      video.removeEventListener('ended', restart)
+      video.removeEventListener('timeupdate', onTimeUpdate)
+    }
+  }, [loop])
 
   // Cria a instância HLS uma única vez ao montar — evita destroy/recreate ao trocar src
   useEffect(() => {
@@ -70,10 +101,23 @@ export function VideoPlayer({ src, poster, className, autoPlay = false, startAt,
     hls.attachMedia(video)
 
     hls.on(Hls.Events.ERROR, (_ev: string, data: ErrorData) => {
-      if (data.fatal) {
-        setState('error')
-        setErrorMsg(data.details ?? 'Erro ao carregar vídeo')
+      if (!data.fatal) return
+      // Fontes VOD em loop (ex.: arquivo de vídeo usado como entrada no
+      // multi-viewer) podem soltar um erro fatal no hls.js bem perto do fim
+      // (stall do MediaSource ao fechar o VOD) em vez de um 'ended' limpo --
+      // tratar como fim de loop e recuperar, em vez de travar na tela de erro.
+      if (loopRef.current) {
+        switch (data.type) {
+          case Hls.ErrorTypes.NETWORK_ERROR: hls.startLoad(0); break
+          case Hls.ErrorTypes.MEDIA_ERROR:   hls.recoverMediaError(); break
+          default:                           hls.loadSource(srcRef.current)
+        }
+        video.currentTime = 0
+        video.play().catch(() => {})
+        return
       }
+      setState('error')
+      setErrorMsg(data.details ?? 'Erro ao carregar vídeo')
     })
 
     hlsRef.current = hls
@@ -155,7 +199,6 @@ export function VideoPlayer({ src, poster, className, autoPlay = false, startAt,
         ref={videoRef}
         poster={poster}
         muted={muted}
-        loop={loop}
         className="w-full h-full"
         style={{ display: state === 'error' ? 'none' : 'block' }}
         onTimeUpdate={() => onTimeUpdate?.(videoRef.current?.currentTime ?? 0)}

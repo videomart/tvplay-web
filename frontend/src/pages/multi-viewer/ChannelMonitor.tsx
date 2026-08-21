@@ -107,12 +107,14 @@ export function ChannelMonitor({ channelId, channelLabel }: Props) {
       }
     >
       {activeSrc ? (
+        // muted não é passado para o <video> de propósito — ver comentário
+        // equivalente em InputMonitor.tsx: com createMediaElementSource
+        // conectado, o gain node do VuMeter já controla a saída audível.
         <VideoPlayer
           src={activeSrc}
           className="w-full h-full"
           autoPlay
           loop={!!cutSourceId}
-          muted={audioMuted}
           startAt={cutSourceId ? 0 : monitorStartAt}
           onVideoRef={setVideoEl}
         />

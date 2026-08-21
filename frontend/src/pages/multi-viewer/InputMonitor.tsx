@@ -83,7 +83,13 @@ export function InputMonitor({ source, slotLabel }: Props) {
       }
     >
       {streamUrl && !errored ? (
-        <VideoPlayer src={streamUrl} className="w-full h-full" autoPlay loop muted={audioMuted} onVideoRef={setVideoEl} />
+        // muted não é passado para o <video> de propósito: uma vez que o VuMeter
+        // conecta createMediaElementSource, a saída audível já é controlada só
+        // pelo gain node dele (prop `muted` do VuMeter abaixo) -- setar o
+        // atributo nativo `muted` aqui corta o próprio sinal que alimenta o
+        // analyser, e o VU fica sempre zerado até o operador clicar "ativar
+        // áudio" (2026-08-20). Mesmo padrão do monitor em ChannelPanel.tsx.
+        <VideoPlayer src={streamUrl} className="w-full h-full" autoPlay loop onVideoRef={setVideoEl} />
       ) : (
         <ColorBars label={!source ? 'SEM ENTRADA' : errored ? 'SEM SINAL' : undefined} />
       )}
