@@ -143,11 +143,15 @@ export async function refreshInputSourceConsumers(sourceId: string): Promise<voi
 const execFileAsync = promisify(execFile)
 
 // Controle (via Configurações do sistema) se este servidor resolve fontes/clipes
-// YouTube/Twitch via yt-dlp. YouTube bloqueia quase todas as requisições de IPs de
-// datacenter ("Sign in to confirm you're not a bot") — em VPS, o operador desliga
-// este toggle para pular as tentativas (evita até 5min de timeouts fadados) e
-// degradar direto para fallback. Carregado do banco no boot (server.ts) e atualizado
-// ao salvar Configurações (settings.route.ts).
+// YouTube/Twitch via yt-dlp. Falhas de resolução ("Sign in to confirm you're not
+// a bot") eram atribuídas a bloqueio de IP de datacenter em VPS — mas um teste
+// em IP residencial (2026-08-21) reproduziu a mesma falha, então a causa real
+// não é (só) a classe do IP; ver ytResolveFailureCache/resolveViaYtDlp abaixo e
+// hipóteses alternativas (cookies expirados, PO token, disponibilidade do
+// componente EJS remoto para o n-challenge) na memória do agente. Em qualquer
+// caso, o operador desliga este toggle para pular as tentativas (evita até 5min
+// de timeouts fadados) e degradar direto para fallback. Carregado do banco no
+// boot (server.ts) e atualizado ao salvar Configurações (settings.route.ts).
 let youtubeContentEnabled = true
 
 export function setYoutubeContentEnabled(v: boolean) {
@@ -177,8 +181,9 @@ function isUrlClip(sourceType: string | null | undefined, sourceUrl: string | nu
 const YT_CLIENTS = ['ios', 'tv_embedded', 'android', 'mweb', ''] as const
 
 // ─── Cache de falha de resolução (resolveViaYtDlp) ────────────────────────────
-// Quando todas as tentativas falham (ex.: bloqueio de IP de datacenter — "Sign in
-// to confirm you're not a bot" —, persistente e não relacionado a cookies), evita
+// Quando todas as tentativas falham (ex.: bloqueio "Sign in to confirm you're
+// not a bot" — causa exata não confirmada, ver comentário em
+// isYoutubeContentEnabled acima; não é exclusivo de IP de datacenter), evita
 // repetir as 5 tentativas sequenciais (até ~300s de bloqueio) a cada vez que o
 // mesmo clipe/URL é tocado novamente em sequência rápida (ex.: loop de playlist).
 // TTL curto (2 min): se o bloqueio for transitório, ainda tenta de novo em breve;
