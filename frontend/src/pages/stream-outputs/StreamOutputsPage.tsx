@@ -82,13 +82,13 @@ function buildSrtUrl(c: SrtConfig): string {
   if (!c.port) return ''
   if (c.mode === 'listener') {
     let url = `srt://:${c.port}?mode=listener`
-    if (c.passphrase) url += `&passphrase=${c.passphrase}`
+    if (c.passphrase) url += `&passphrase=${encodeURIComponent(c.passphrase)}`
     if (c.streamId)   url += `&streamid=${encodeURIComponent(c.streamId)}`
     return url
   }
   if (!c.host) return ''
   let url = `srt://${c.host}:${c.port}?mode=caller`
-  if (c.passphrase) url += `&passphrase=${c.passphrase}`
+  if (c.passphrase) url += `&passphrase=${encodeURIComponent(c.passphrase)}`
   if (c.streamId)   url += `&streamid=${encodeURIComponent(c.streamId)}`
   return url
 }
@@ -101,14 +101,19 @@ function buildUdpUrl(c: UdpConfig): string {
 function parseSrtUrl(url: string, passphrase?: string): SrtConfig {
   const sidMatch = url.match(/[?&]streamid=([^&]+)/)
   const streamId = sidMatch ? decodeURIComponent(sidMatch[1]) : ''
+  // Passphrase precisa ser extraída da URL nos dois modos — no listener isso
+  // sempre voltava vazio (hardcoded), então reabrir um output SRT listener
+  // pra editar mostrava o campo em branco e salvar de novo apagava a
+  // passphrase gravada, mesmo sem o operador tocar nesse campo.
+  const ppMatch = url.match(/[?&]passphrase=([^&]+)/)
+  const pp = ppMatch ? decodeURIComponent(ppMatch[1]) : (passphrase ?? '')
   if (url.includes('mode=listener')) {
     const m = url.match(/^srt:\/\/:(\d+)/)
-    if (m) return { host: '', port: m[1], mode: 'listener', passphrase: '', streamId }
+    if (m) return { host: '', port: m[1], mode: 'listener', passphrase: pp, streamId }
   }
   const m = url.match(/^srt:\/\/([^:?/]+):(\d+)/)
   if (!m) return emptySrt
-  const ppMatch = url.match(/passphrase=([^&]+)/)
-  return { host: m[1], port: m[2], mode: 'caller', passphrase: ppMatch?.[1] ?? passphrase ?? '', streamId }
+  return { host: m[1], port: m[2], mode: 'caller', passphrase: pp, streamId }
 }
 
 function parseUdpUrl(url: string): UdpConfig {
