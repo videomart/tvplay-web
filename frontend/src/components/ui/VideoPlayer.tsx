@@ -11,7 +11,12 @@ interface VideoPlayerProps {
   startAt?: number     // segundos para seek após carregar
   muted?: boolean
   loop?: boolean       // reinicia ao chegar no fim — fontes VOD usadas como feed contínuo (ex.: clipe de arquivo como entrada)
-  controls?: boolean   // exibe play/pause/scrub nativos — telas de edição/preview que dependem de scrubar manualmente (ex.: marcação de cue-in/out em ClipsPage)
+  // play/pause/scrub nativos — default true (necessário pra scrubar manualmente,
+  // ex.: marcação de cue-in/out em ClipsPage/ClipLibraryPanel). Monitores com VU
+  // meter (onVideoRef) devem passar false explicitamente: o botão nativo de mute
+  // seta video.muted=true direto, cortando o sinal que alimenta o analyser da
+  // Web Audio API (ver VuMeter.tsx) — daí não dar pra ter os dois ao mesmo tempo.
+  controls?: boolean
   onTimeUpdate?: (time: number) => void
   onVideoRef?: (el: HTMLVideoElement | null) => void
 }
@@ -29,7 +34,7 @@ function getToken(): string | null {
   }
 }
 
-export function VideoPlayer({ src, poster, className, autoPlay = false, startAt, muted = false, loop = false, controls = false, onTimeUpdate, onVideoRef }: VideoPlayerProps) {
+export function VideoPlayer({ src, poster, className, autoPlay = false, startAt, muted = false, loop = false, controls = true, onTimeUpdate, onVideoRef }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<Hls | null>(null)
   // Guarda o listener pendente de MANIFEST_PARSED para cancelar em troca de src
@@ -201,7 +206,7 @@ export function VideoPlayer({ src, poster, className, autoPlay = false, startAt,
         poster={poster}
         muted={muted}
         controls={controls}
-        className="w-full h-full"
+        className="w-full h-full object-contain"
         style={{ display: state === 'error' ? 'none' : 'block' }}
         onTimeUpdate={() => onTimeUpdate?.(videoRef.current?.currentTime ?? 0)}
       />

@@ -78,7 +78,7 @@ export function InputMonitor({ source, slotLabel }: Props) {
         // pelo gain node dele (sempre muted, ver acima) -- setar o atributo
         // nativo `muted` aqui corta o próprio sinal que alimenta o analyser, e
         // o VU fica sempre zerado. Mesmo padrão do monitor em ChannelPanel.tsx.
-        <VideoPlayer src={streamUrl} className="w-full h-full" autoPlay loop onVideoRef={setVideoEl} />
+        <VideoPlayer src={streamUrl} className="w-full h-full" autoPlay controls={false} loop onVideoRef={setVideoEl} />
       ) : (
         <ColorBars label={!source ? 'SEM ENTRADA' : errored ? 'SEM SINAL' : undefined} />
       )}

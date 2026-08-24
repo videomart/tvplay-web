@@ -114,6 +114,7 @@ export function ChannelMonitor({ channelId, channelLabel }: Props) {
           src={activeSrc}
           className="w-full h-full"
           autoPlay
+          controls={false}
           loop={!!cutSourceId}
           startAt={cutSourceId ? 0 : monitorStartAt}
           onVideoRef={setVideoEl}

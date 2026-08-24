@@ -1231,7 +1231,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
             {(status === 'PLAYING' || status === 'PAUSED') && !item?.isBreak ? (
               monitorSrc
                 ? <>
-                    <VideoPlayer src={monitorSrc} startAt={monitorStartAt} autoPlay className="w-full h-full" onVideoRef={setMonitorVideoEl} />
+                    <VideoPlayer src={monitorSrc} startAt={monitorStartAt} autoPlay controls={false} className="w-full h-full" onVideoRef={setMonitorVideoEl} />
                     {state?.activeGraphic && <GraphicOverlay graphic={state.activeGraphic} />}
                   </>
                 : item?.sourceType === 'URL'
@@ -1256,7 +1256,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                         </>
                       ) : serverPreviewUrl ? (
                         <>
-                          <VideoPlayer src={serverPreviewUrl} autoPlay muted className="w-full h-full" />
+                          <VideoPlayer src={serverPreviewUrl} autoPlay muted controls={false} className="w-full h-full" />
                           {streamingUp && (
                             <div className="absolute top-2 right-2 flex items-center gap-1 bg-emerald-600/80 backdrop-blur-sm px-1.5 py-0.5 rounded text-[9px] font-bold text-white">
                               <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
@@ -1307,7 +1307,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                       </div>
                     )
                   if (src.type === 'IP' && src.url?.match(/\.m3u8/i))
-                    return <VideoPlayer src={src.url} autoPlay className="w-full h-full" onVideoRef={setMonitorVideoEl} />
+                    return <VideoPlayer src={src.url} autoPlay controls={false} className="w-full h-full" onVideoRef={setMonitorVideoEl} />
                   if (serverPreviewLoading) {
                     const isYtUrl = /youtube\.com|youtu\.be|twitch\.tv/i.test(src.url ?? '')
                     const isYt = src.type === 'YOUTUBE' || isYtUrl
@@ -1328,7 +1328,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                     </div>
                   )
                   if (serverPreviewUrl)
-                    return <VideoPlayer src={serverPreviewUrl} autoPlay className="w-full h-full" onVideoRef={setMonitorVideoEl} />
+                    return <VideoPlayer src={serverPreviewUrl} autoPlay controls={false} className="w-full h-full" onVideoRef={setMonitorVideoEl} />
                   return (
                     <div className="w-full h-full flex flex-col items-center justify-center gap-1">
                       <Antenna className="h-5 w-5 text-gray-600" />
