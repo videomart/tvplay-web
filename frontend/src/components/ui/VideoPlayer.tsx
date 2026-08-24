@@ -11,6 +11,7 @@ interface VideoPlayerProps {
   startAt?: number     // segundos para seek após carregar
   muted?: boolean
   loop?: boolean       // reinicia ao chegar no fim — fontes VOD usadas como feed contínuo (ex.: clipe de arquivo como entrada)
+  controls?: boolean   // exibe play/pause/scrub nativos — telas de edição/preview que dependem de scrubar manualmente (ex.: marcação de cue-in/out em ClipsPage)
   onTimeUpdate?: (time: number) => void
   onVideoRef?: (el: HTMLVideoElement | null) => void
 }
@@ -28,7 +29,7 @@ function getToken(): string | null {
   }
 }
 
-export function VideoPlayer({ src, poster, className, autoPlay = false, startAt, muted = false, loop = false, onTimeUpdate, onVideoRef }: VideoPlayerProps) {
+export function VideoPlayer({ src, poster, className, autoPlay = false, startAt, muted = false, loop = false, controls = false, onTimeUpdate, onVideoRef }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<Hls | null>(null)
   // Guarda o listener pendente de MANIFEST_PARSED para cancelar em troca de src
@@ -199,6 +200,7 @@ export function VideoPlayer({ src, poster, className, autoPlay = false, startAt,
         ref={videoRef}
         poster={poster}
         muted={muted}
+        controls={controls}
         className="w-full h-full"
         style={{ display: state === 'error' ? 'none' : 'block' }}
         onTimeUpdate={() => onTimeUpdate?.(videoRef.current?.currentTime ?? 0)}

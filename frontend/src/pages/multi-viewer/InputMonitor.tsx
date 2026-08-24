@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { Volume2, VolumeX } from 'lucide-react'
 import { inputSourcesApi, type InputSource } from '../../api/input-sources.api'
 import { VideoPlayer } from '../../components/ui/VideoPlayer'
 import { VuMeter } from '../../components/ui/VuMeter'
@@ -59,7 +58,6 @@ export function InputMonitor({ source, slotLabel }: Props) {
   }, [source?.id])
 
   const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null)
-  const [audioMuted, setAudioMuted] = useState(true)
 
   const status: 'ok' | 'warn' | 'off' = !source ? 'off' : errored ? 'off' : streamUrl ? 'ok' : 'warn'
   const statusLabel = !source ? 'SEM ENTRADA' : errored ? 'SEM SINAL' : streamUrl ? undefined : 'CONECTANDO'
@@ -69,26 +67,17 @@ export function InputMonitor({ source, slotLabel }: Props) {
       label={slotLabel}
       status={status}
       statusLabel={statusLabel}
-      footer={
-        <>
-          <VuMeter videoEl={videoEl} muted={audioMuted} className="flex-shrink-0" />
-          <button
-            onClick={() => setAudioMuted((m) => !m)}
-            title={audioMuted ? 'Ativar áudio do monitor' : 'Silenciar monitor'}
-            className="p-0.5 rounded text-gray-500 hover:text-gray-300 transition-colors flex-shrink-0"
-          >
-            {audioMuted ? <VolumeX className="h-3 w-3" /> : <Volume2 className="h-3 w-3" />}
-          </button>
-        </>
-      }
+      // Entradas do multi-viewer ficam permanentemente mutadas (sem switcher de
+      // áudio) — o gain do VuMeter em 0 já garante isso; só o nível continua
+      // visível, alimentado pelo <video> desmutado (ver comentário abaixo).
+      footer={<VuMeter videoEl={videoEl} muted className="flex-shrink-0" />}
     >
       {streamUrl && !errored ? (
         // muted não é passado para o <video> de propósito: uma vez que o VuMeter
         // conecta createMediaElementSource, a saída audível já é controlada só
-        // pelo gain node dele (prop `muted` do VuMeter abaixo) -- setar o
-        // atributo nativo `muted` aqui corta o próprio sinal que alimenta o
-        // analyser, e o VU fica sempre zerado até o operador clicar "ativar
-        // áudio" (2026-08-20). Mesmo padrão do monitor em ChannelPanel.tsx.
+        // pelo gain node dele (sempre muted, ver acima) -- setar o atributo
+        // nativo `muted` aqui corta o próprio sinal que alimenta o analyser, e
+        // o VU fica sempre zerado. Mesmo padrão do monitor em ChannelPanel.tsx.
         <VideoPlayer src={streamUrl} className="w-full h-full" autoPlay loop onVideoRef={setVideoEl} />
       ) : (
         <ColorBars label={!source ? 'SEM ENTRADA' : errored ? 'SEM SINAL' : undefined} />

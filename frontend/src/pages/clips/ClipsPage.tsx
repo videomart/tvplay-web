@@ -489,6 +489,7 @@ export default function ClipsPage() {
               <VideoPlayer
                 src={hlsStreamUrl(editing.media.hlsPath)}
                 className="w-full h-full"
+                controls
                 onTimeUpdate={setPlayerTime}
               />
               {(() => { const g = form.graphicId ? graphics.find(gr => gr.id === form.graphicId) : null; return g ? <GraphicOverlay graphic={g} /> : null })()}
@@ -724,6 +725,7 @@ export default function ClipsPage() {
               src={hlsStreamUrl(previewClip.media.hlsPath)}
               className="w-full h-full"
               autoPlay
+              controls
             />
             {previewClip.graphic && <GraphicOverlay graphic={previewClip.graphic} />}
             </div>

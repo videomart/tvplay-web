@@ -595,7 +595,7 @@ export default function MediaFilesPage() {
         {previewFile && mediaStreamUrl(previewFile.hlsPath) && (
           <div className="space-y-3">
             <div className="relative w-full aspect-video">
-              <VideoPlayer src={mediaStreamUrl(previewFile.hlsPath)!} className="w-full h-full" autoPlay />
+              <VideoPlayer src={mediaStreamUrl(previewFile.hlsPath)!} className="w-full h-full" autoPlay controls />
             </div>
             <div className="flex items-center gap-4 text-xs text-gray-500">
               <span>Duração: <span className="font-mono text-gray-300">{formatDur(previewFile.duration)}</span></span>
