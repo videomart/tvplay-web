@@ -16,30 +16,27 @@ const DOT_COLOR: Record<NonNullable<Props['status']>, string> = {
 
 // Cada monitor mantém sempre proporção 16:9 (aspect-video), independente do
 // formato da célula do grid — o espaço que sobra acima/abaixo (ou nas
-// laterais) vira badges com nome do canal/entrada, status e controle de
-// áudio, em vez de esticar o vídeo e distorcer a imagem.
+// laterais) vira uma única badge (nome + status + VU/áudio) em vez de duas,
+// pra economizar uma linha de altura por monitor no multi-viewer.
 export function MonitorFrame({ children, label, status = 'off', statusLabel, footer }: Props) {
   return (
     <div className="relative w-full h-full bg-black flex flex-col overflow-hidden rounded">
-      <div className="flex items-center gap-1.5 px-2 py-1 bg-gray-950 border-b border-gray-800/80 flex-shrink-0">
-        <span className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${DOT_COLOR[status]}`} />
-        <span className="text-xs font-bold text-white tracking-wide truncate">{label}</span>
-        {statusLabel && (
-          <span className="ml-auto text-[9px] font-semibold text-gray-400 tracking-wide flex-shrink-0">
-            {statusLabel}
-          </span>
-        )}
-      </div>
-
       <div className="flex-1 min-h-0 grid place-items-center bg-black">
         <div className="relative aspect-video w-auto h-auto max-w-full max-h-full">{children}</div>
       </div>
 
-      {footer && (
-        <div className="flex items-center gap-2 px-2 py-1 bg-gray-950 border-t border-gray-800/80 flex-shrink-0">
-          {footer}
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-2 py-1 bg-gray-950 border-t border-gray-800/80 flex-shrink-0">
+        <div className="flex items-center gap-2 min-w-0">{footer}</div>
+        <div className="flex items-center justify-center gap-1.5 min-w-0">
+          <span className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${DOT_COLOR[status]}`} />
+          <span className="text-xs font-bold text-white tracking-wide truncate">{label}</span>
         </div>
-      )}
+        <div className="flex items-center justify-end min-w-0">
+          {statusLabel && (
+            <span className="text-[9px] font-semibold text-gray-400 tracking-wide truncate">{statusLabel}</span>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
