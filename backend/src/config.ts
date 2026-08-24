@@ -28,12 +28,16 @@ export const config = {
 
   ytdlp: {
     // Caminho para arquivo de cookies do YouTube (formato Netscape/cookies.txt).
-    // A causa das falhas de resolução ("Sign in to confirm you're not a bot")
-    // foi atribuída a bloqueio de IP de datacenter em VPS, mas teste em IP
-    // residencial (2026-08-21) reproduziu a mesma falha — a causa real não está
-    // confirmada como sendo apenas a classe do IP (ver resolveViaYtDlp em
-    // playout.service.ts e observação em memória do agente).
     cookiesFile: process.env.YTDLP_COOKIES_FILE ?? '',
+    // Causa confirmada em 2026-08-24 (não era bloqueio de IP de datacenter, como
+    // se assumia antes — reproduzido também em IP residencial): o client "web"
+    // do yt-dlp exige um GVS PO Token que os clients antigos (ios/tv_embedded/
+    // android/mweb) não fornecem, e o YouTube passou a recusar formatos sem ele
+    // ("GVS PO Token which was not provided"). Path do server do provider de PO
+    // Token (bgutil-ytdlp-pot-provider, modo "script") buildado no Dockerfile —
+    // ver resolveViaYtDlp/checkIsLive em playout.service.ts.
+    // Vazio desabilita o extractor-arg e cai de volta nos clients sem PO token.
+    potServerHome: process.env.YTDLP_POT_SERVER_HOME ?? '/opt/bgutil-ytdlp-pot-provider/server',
   },
 
   storage: {

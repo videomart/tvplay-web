@@ -144,14 +144,14 @@ const execFileAsync = promisify(execFile)
 
 // Controle (via Configurações do sistema) se este servidor resolve fontes/clipes
 // YouTube/Twitch via yt-dlp. Falhas de resolução ("Sign in to confirm you're not
-// a bot") eram atribuídas a bloqueio de IP de datacenter em VPS — mas um teste
-// em IP residencial (2026-08-21) reproduziu a mesma falha, então a causa real
-// não é (só) a classe do IP; ver ytResolveFailureCache/resolveViaYtDlp abaixo e
-// hipóteses alternativas (cookies expirados, PO token, disponibilidade do
-// componente EJS remoto para o n-challenge) na memória do agente. Em qualquer
-// caso, o operador desliga este toggle para pular as tentativas (evita até 5min
-// de timeouts fadados) e degradar direto para fallback. Carregado do banco no
-// boot (server.ts) e atualizado ao salvar Configurações (settings.route.ts).
+// a bot" / "GVS PO Token which was not provided") eram atribuídas a bloqueio de
+// IP de datacenter em VPS — confirmado em 2026-08-24 que não é isso (reproduzido
+// também em IP residencial): o client "web" exige um GVS PO Token que os clients
+// antigos (ios/tv_embedded/android/mweb) não fornecem. Corrigido adicionando
+// "web" com o provider de PO Token (bgutil) em YT_CLIENTS/ytPotArgs abaixo. Em
+// qualquer caso, o operador desliga este toggle para pular as tentativas (evita
+// até 5min de timeouts fadados) e degradar direto para fallback. Carregado do
+// banco no boot (server.ts) e atualizado ao salvar Configurações (settings.route.ts).
 let youtubeContentEnabled = true
 
 export function setYoutubeContentEnabled(v: boolean) {
@@ -177,13 +177,25 @@ function isUrlClip(sourceType: string | null | undefined, sourceUrl: string | nu
   return false
 }
 
-// Clientes a tentar em ordem — ios é o mais confiável em 2025 (bypassa bot-check do YouTube)
-const YT_CLIENTS = ['ios', 'tv_embedded', 'android', 'mweb', ''] as const
+// Clientes a tentar em ordem — "web" primeiro porque, pareado com o provider de
+// PO Token (ytPotArgs abaixo), resolve de forma confiável (confirmado 2026-08-24);
+// os demais ficam como fallback caso o provider de PO Token pare de funcionar
+// (ex.: YouTube muda o desafio do BotGuard e o bgutil ainda não foi atualizado).
+const YT_CLIENTS = ['web', 'ios', 'tv_embedded', 'android', 'mweb', ''] as const
+
+// PO Token (bgutil-ytdlp-pot-provider, modo "script") — necessário para o client
+// "web" conseguir um GVS PO Token válido; ver config.ts (potServerHome) e
+// backend/Dockerfile (build do server via git clone + tsc). String vazia
+// (potServerHome não configurado) desabilita o argumento sem quebrar nada — o
+// client "web" simplesmente volta a falhar e a cadeia cai nos outros clients.
+function ytPotArgs(): string[] {
+  const home = config.ytdlp?.potServerHome
+  return home ? ['--extractor-args', `youtubepot-bgutilscript:server_home=${home}`] : []
+}
 
 // ─── Cache de falha de resolução (resolveViaYtDlp) ────────────────────────────
-// Quando todas as tentativas falham (ex.: bloqueio "Sign in to confirm you're
-// not a bot" — causa exata não confirmada, ver comentário em
-// isYoutubeContentEnabled acima; não é exclusivo de IP de datacenter), evita
+// Quando todas as tentativas falham (ex.: PO Token indisponível/expirado — ver
+// isYoutubeContentEnabled acima —, persistente e não relacionado a cookies), evita
 // repetir as 5 tentativas sequenciais (até ~300s de bloqueio) a cada vez que o
 // mesmo clipe/URL é tocado novamente em sequência rápida (ex.: loop de playlist).
 // TTL curto (2 min): se o bloqueio for transitório, ainda tenta de novo em breve;
@@ -222,11 +234,19 @@ export async function checkIsLive(url: string): Promise<{ isLive: boolean | null
     console.log(`[yt-dlp] desabilitado nas Configurações deste servidor — pulando checkIsLive: ${url}`)
     return { isLive: null }
   }
-  const base = ['--no-playlist', '--no-warnings', '--socket-timeout', '15', '--print', '%(is_live)s|%(title)s|%(duration)s']
+  // --js-runtimes/--remote-components: sem isso o client "web" não resolve o
+  // n-challenge (assinatura) e sobram só formatos de imagem — mesmo problema
+  // que resolveViaYtDlp já tratava, mas faltava aqui (2026-08-24).
+  const base = [
+    '--no-playlist', '--no-warnings', '--socket-timeout', '15',
+    '--js-runtimes', 'node', '--remote-components', 'ejs:github',
+    '--print', '%(is_live)s|%(title)s|%(duration)s',
+  ]
   const cookies = ytCookiesArgs()
+  const pot = ytPotArgs()
   for (const client of YT_CLIENTS) {
     try {
-      const { stdout } = await execFileAsync('yt-dlp', [...base, ...cookies, ...ytClientArgs(client), url], { timeout: 20000 })
+      const { stdout } = await execFileAsync('yt-dlp', [...base, ...cookies, ...pot, ...ytClientArgs(client), url], { timeout: 20000 })
       const [isLiveStr, title, durStr] = stdout.trim().split('|')
       const isLive = isLiveStr === 'True' ? true : isLiveStr === 'False' ? false : null
       const duration = durStr && durStr !== 'NA' ? parseFloat(durStr) : undefined
@@ -257,9 +277,10 @@ async function resolveViaYtDlp(rawUrl: string): Promise<string | null> {
   // itag=18: combined MP4 360p (sempre tem video+audio) — fallback confiável
   const fmt  = '18/best[protocol=m3u8_native]/best[vcodec!=none][acodec!=none][height<=720]/best[vcodec!=none][acodec!=none]/best'
   const cookies = ytCookiesArgs()
+  const pot = ytPotArgs()
   for (const client of YT_CLIENTS) {
     try {
-      const { stdout } = await execFileAsync('yt-dlp', [...base, '-f', fmt, ...cookies, ...ytClientArgs(client), rawUrl], { timeout: 60000 })
+      const { stdout } = await execFileAsync('yt-dlp', [...base, '-f', fmt, ...cookies, ...pot, ...ytClientArgs(client), rawUrl], { timeout: 60000 })
       const lines = stdout.trim().split('\n').filter(l => l.startsWith('http'))
       if (lines.length === 0) continue
       if (lines.length === 2) {

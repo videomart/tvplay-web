@@ -9,7 +9,7 @@ COPY --from=ffmpeg-static /ffprobe /usr/local/bin/ffprobe
 # Node.js 22 + TSDuck (injeção SCTE-35 via tsp) + dependências de sistema
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        curl ca-certificates gnupg make g++ \
+        curl ca-certificates gnupg git make g++ \
         python3 python3-pip \
         v4l-utils fontconfig fonts-freefont-ttf \
         libgomp1 libatomic1 && \
@@ -23,7 +23,20 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends /tmp/tsduck.deb && \
     rm -rf /tmp/tsduck.deb /var/lib/apt/lists/* && \
     fc-cache -f && \
-    pip3 install --no-cache-dir --break-system-packages yt-dlp
+    pip3 install --no-cache-dir --break-system-packages yt-dlp && \
+    # PO Token provider (bgutil) para o client "web" do yt-dlp — sem PO token o
+    # YouTube recusa formatos com "GVS PO Token which was not provided" mesmo
+    # de IP residencial (confirmado 2026-08-24: não é bloqueio de IP de
+    # datacenter, como se assumia antes — ver YT_CLIENTS/resolveViaYtDlp em
+    # playout.service.ts e o comentário em config.ts). Build em tempo de
+    # imagem, path fixo (YTDLP_POT_SERVER_HOME em config.ts), pra não clonar/
+    # compilar a cada boot do container.
+    pip3 install --no-cache-dir --break-system-packages bgutil-ytdlp-pot-provider && \
+    git clone --quiet --single-branch --branch 1.3.2 \
+      https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git /opt/bgutil-ytdlp-pot-provider && \
+    cd /opt/bgutil-ytdlp-pot-provider/server && \
+    npm ci --include=dev && node_modules/.bin/tsc && npm prune --omit=dev && \
+    cd /
 
 WORKDIR /app
 
