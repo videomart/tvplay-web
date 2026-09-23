@@ -147,9 +147,6 @@ function buildTspArgs(relayPort: number, cmdPort: number, srtUrl: string): strin
     // --pts-pid 0x0100: referência de clock (PID de vídeo do FFmpeg).
     // --min-bitrate: mantém o PID 0x0200 ativo consumindo os nulos artificiais
     // do -a acima -- sem isso, o -a sozinho também não é suficiente.
-    // Nota: NÃO usamos -P pmt --add-pid aqui porque o receptor (scte_monitor)
-    // remove o PID SCTE-35 do PMT e substitui os pacotes por nulos antes de
-    // repassar ao MediaMTX, evitando o "max recorded size exceeded" do astits.
     '-P', 'spliceinject',
     '--udp', `127.0.0.1:${cmdPort}`,
     '--poll-interval', '100',
@@ -157,8 +154,20 @@ function buildTspArgs(relayPort: number, cmdPort: number, srtUrl: string): strin
     '--pts-pid', '0x0100',
     '--min-bitrate', '50000',
 
+    // Declara o PID 0x0200 no PMT (stream_type 0x86 + registration "CUEI").
+    // Sem isso nenhum receptor acha o SCTE-35: o splicemonitor do scte_monitor
+    // (e decodificadores de terceiros) só monitora PIDs de splice listados no
+    // PMT. Removido na v1.1.47 supondo que o scte_monitor tiraria o PID antes do
+    // MediaMTX -- ele nunca fez isso, e os cues pararam de ser detectados.
+    // Reproduzido com TS real de produção (2026-09-23): sem o PMT, 0 cues
+    // detectados; com ele, o splice_insert é detectado e o MediaMTX v1.20.1 só
+    // ignora a trilha ("skipping track (unsupported codec)"), HLS normal.
+    '-P', 'pmt',
+    '--add-pid', '0x0200/0x86',
+    '--add-registration', '0x43554549',
+
     // Output: SRT caller para o scte_monitor (porta dedicada por cliente).
-    // O scte_monitor detecta SCTE-35, remove os pacotes, e faz relay ao MediaMTX.
+    // O scte_monitor detecta SCTE-35 e faz relay bruto ao MediaMTX.
     '-O', 'srt',
     '--caller', srtTarget,
     ...ppArgs,
