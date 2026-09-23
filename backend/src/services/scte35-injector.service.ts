@@ -29,6 +29,19 @@ interface InjectorSession {
 }
 
 const sessions  = new Map<string, InjectorSession>()
+// Reinícios agendados após o tsp sair. Precisam ser canceláveis: entre a saída e o
+// reinício a sessão não está em `sessions`, então stopInjector() não a via e o
+// timer ressuscitava o tsp com a URL antiga -- loop eterno de BADSECRET mesmo após
+// a saída ser parada/editada (confirmado em produção, 2026-09-23).
+const pendingRestarts = new Map<string, NodeJS.Timeout>()
+
+function cancelPendingRestart(key: string): void {
+  const t = pendingRestarts.get(key)
+  if (t) {
+    clearTimeout(t)
+    pendingRestarts.delete(key)
+  }
+}
 const portMap   = new Map<string, { relay: number; cmd: number }>()
 const usedPorts = new Set<number>()
 const PORT_BASE = 21000
@@ -183,7 +196,10 @@ export async function startInjector(
     sessions.delete(key)
     if (!current.stopped) {
       console.warn(`[scte35-injector/${channelId}/${outputId}] tsp saiu (code=${code ?? sig}) — reiniciando em 3s`)
-      setTimeout(() => startInjector(channelId, outputId, srtUrl), 3_000)
+      pendingRestarts.set(key, setTimeout(() => {
+        pendingRestarts.delete(key)
+        startInjector(channelId, outputId, srtUrl)
+      }, 3_000))
     }
   })
 
@@ -194,19 +210,22 @@ export async function startInjector(
 /** Para e remove a sessão tsp para a saída. */
 export async function stopInjector(channelId: string, outputId: string): Promise<void> {
   const key = sessionKey(channelId, outputId)
+  cancelPendingRestart(key)
   const s = sessions.get(key)
   if (!s) return
   s.stopped = true
   sessions.delete(key)
   await killAndWait(s.proc)
-  releasePorts(key)
+  // Uma nova sessão pode ter subido enquanto aguardávamos (stopOutput não aguarda
+  // este stop antes do startOutput seguinte) -- não liberar as portas dela.
+  if (!sessions.has(key)) releasePorts(key)
   console.log(`[scte35-injector/${channelId}/${outputId}] parado`)
 }
 
 /** Para todos os injetores do canal. */
 export async function stopAllInjectors(channelId: string): Promise<void> {
   const prefix = `${channelId}:`
-  const keys = [...sessions.keys()].filter(k => k.startsWith(prefix))
+  const keys = [...new Set([...sessions.keys(), ...pendingRestarts.keys()])].filter(k => k.startsWith(prefix))
   await Promise.all(keys.map(k => {
     const outputId = k.slice(prefix.length)
     return stopInjector(channelId, outputId)
@@ -280,4 +299,9 @@ export function getInjectorPort(channelId: string, outputId: string): number | n
 /** true se o tsp está ativo para a saída. */
 export function isInjectorActive(channelId: string, outputId: string): boolean {
   return sessions.has(sessionKey(channelId, outputId))
+}
+
+/** URL SRT em uso pelo tsp ativo da saída (undefined se não houver). */
+export function getInjectorUrl(channelId: string, outputId: string): string | undefined {
+  return sessions.get(sessionKey(channelId, outputId))?.srtUrl
 }

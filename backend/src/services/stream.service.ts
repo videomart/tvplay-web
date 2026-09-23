@@ -327,8 +327,12 @@ async function ensureRelays(channelId: string, outputs: OutputConfig[]): Promise
     // Para saídas SRT com SCTE-35: garante o tsp injector ativo antes do relay FFmpeg,
     // pois o relay precisa da porta intermédia que o tsp expõe para saber para onde enviar.
     if (output.type === 'SRT' && output.scteEnabled && output.url) {
-      if (!scteInjector.isInjectorActive(channelId, output.id)) {
-        await scteInjector.startInjector(channelId, output.id, output.url)
+      // Mesma URL que o relay usaria sem SCTE (com streamKey como passphrase), e
+      // reinicia o injector se a saída foi editada -- antes ele seguia tentando a
+      // URL/passphrase antiga para sempre (BADSECRET em loop, 2026-09-23).
+      const srtUrl = appendSrtPassphrase(output.url, output.streamKey)
+      if (scteInjector.getInjectorUrl(channelId, output.id) !== srtUrl) {
+        await scteInjector.startInjector(channelId, output.id, srtUrl)
       }
     }
 
@@ -733,7 +737,12 @@ function buildArgs(
   const isLocalInputHls = isHttpInput && lowerInputUrl.includes('/api/input-sources/')
   // HLS ao vivo de terceiro (YouTube live, manifests remotos): não aplicar -re aqui —
   // o HLS remoto já pacing pela CDN, e -re causaria stalls em throttling intermitente.
-  const isHlsLive   = isHttpInput && !isLocalInputHls && (lowerInputUrl.includes('.m3u8') || lowerInputUrl.includes('/api/manifest/hls'))
+  // /api/media/stream/.../index.m3u8 (clip local, hlsUrlForMedia) NÃO é HLS ao vivo:
+  // é VOD servido por loopback — sem -re o FFmpeg lia o clip inteiro em ~200ms e saía
+  // com código 0, derrubando a conexão SRT de saída em 2-10s (visto em produção com
+  // saída SRT direta para o scte_monitor, 2026-09-23).
+  const isLocalMediaHls = isHttpInput && lowerInputUrl.includes('/api/media/')
+  const isHlsLive   = isHttpInput && !isLocalInputHls && !isLocalMediaHls && (lowerInputUrl.includes('.m3u8') || lowerInputUrl.includes('/api/manifest/hls'))
   // URL remota resolvida via yt-dlp (CDN do YouTube/Twitch, ex.: googlevideo.com/videoplayback) —
   // NÃO usar -re aqui: a CDN aplica throttling agressivo em leituras pausadas/intermitentes,
   // o que trava o FFmpeg antes do primeiro frame (saída fica só em PAT/PMT, ~24 Kbps).
@@ -1352,6 +1361,9 @@ export function stopOutput(channelId: string, outputId: string) {
     relayProcs.get(channelId)?.delete(outputId)
     console.log(`[relay/${channelId}] Relay de output ${outputId} parado`)
   }
+  // O tsp injector (SCTE-35) da saída também precisa parar -- senão segue
+  // conectando no destino SRT sozinho, sem entrada, com a URL antiga.
+  scteInjector.stopInjector(channelId, outputId).catch(() => {})
 }
 
 export async function startOutput(
@@ -1374,12 +1386,11 @@ export async function startOutput(
 
   let port: number | null = null
   if (isRelayMode && isRelayCapable(output.type) && output.url) {
+    // Via ensureRelays (e não spawnRelay direto): garante o tsp injector antes do
+    // relay quando o canal tem SCTE-35 -- sem ele o relay escrevia direto no SRT.
+    const [scteOutput] = await withChannelScte(channelId, [output])
+    await ensureRelays(channelId, [scteOutput])
     port = getOrAllocRelayPort(outputId)
-    const relay = spawnRelay(channelId, output, port)
-    if (relay) {
-      if (!relayProcs.has(channelId)) relayProcs.set(channelId, new Map())
-      relayProcs.get(channelId)!.set(outputId, relay)
-    }
   }
 
   const sp = spawnOutput(channelId, output, hlsUrlForMedia(mediaId), cueIn, false, contentGraphic, port)
