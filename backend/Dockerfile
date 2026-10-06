@@ -69,7 +69,18 @@ RUN apt-get update && \
     # playout.service.ts e o comentário em config.ts). Build em tempo de
     # imagem, path fixo (YTDLP_POT_SERVER_HOME em config.ts), pra não clonar/
     # compilar a cada boot do container.
-    pip3 install --no-cache-dir --break-system-packages bgutil-ytdlp-pot-provider && \
+    #
+    # Pin de versão (==1.3.2) OBRIGATÓRIO e tem que bater com o --branch do
+    # git clone abaixo: o pacote pip e o server Node.js são duas metades do
+    # mesmo sistema (plugin Python chama o server via subprocess) e exigem a
+    # MESMA versão major — sem o pin, "pip install" sempre pega a última
+    # release do PyPI, que destrava do --branch fixo aqui e quebra com "Plugin
+    # and script major versions are mismatched" (confirmado em produção
+    # local, 2026-10-06: pip tinha avançado sozinho de 1.3.2 pra 2.0.1 entre
+    # um rebuild e outro, quebrando TODA resolução de YouTube/entrada —
+    # sintoma: entrada nunca mostra sinal, cut-to-input demora 1min+ pra
+    # falhar). Ao atualizar a versão, suba as duas em conjunto.
+    pip3 install --no-cache-dir --break-system-packages bgutil-ytdlp-pot-provider==1.3.2 && \
     git clone --quiet --single-branch --branch 1.3.2 \
       https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git /opt/bgutil-ytdlp-pot-provider && \
     cd /opt/bgutil-ytdlp-pot-provider/server && \
