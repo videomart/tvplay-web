@@ -1057,14 +1057,30 @@ export function stopStreaming(channelId: string) {
   _stopCameraHook?.(channelId)
   const map = channelProcs.get(channelId)
   if (!map?.size) return Promise.resolve()
+  const waits: Promise<void>[] = []
   for (const sp of map.values()) {
     sp.stopped = true
+    // SDI (DeckLink): recurso exclusivo de hardware — a placa não libera o
+    // device no instante do SIGTERM. Todo startStreamingFrom* faz `await
+    // stopStreaming()` e já emenda no próximo spawn em seguida; pra saídas de
+    // rede (RTMP/SRT/etc.) isso é inofensivo (socket novo, sem conflito), mas
+    // pra SDI o novo FFmpeg tentava abrir a mesma placa antes do processo
+    // antigo liberar e nunca conseguia ("Could not enable video output!" —
+    // confirmado em produção local, 2026-10-06). Espera o processo sair de
+    // verdade antes de resolver, com um teto de 2s pra nunca travar o playout
+    // se o processo não sair por algum motivo.
+    if (sp.type === 'SDI') {
+      waits.push(new Promise<void>((resolve) => {
+        sp.proc.once('exit', () => resolve())
+        setTimeout(resolve, 2000)
+      }))
+    }
     try { sp.proc.kill('SIGTERM') } catch {}
     console.log(`[stream/${channelId}] Parando ${sp.type}/${sp.name}`)
   }
   channelProcs.delete(channelId)
   outputStats.delete(channelId)
-  return Promise.resolve()
+  return waits.length ? Promise.all(waits).then(() => {}) : Promise.resolve()
 }
 
 // Stops both content processes and relay processes — use apenas quando NENHUM
@@ -1078,7 +1094,7 @@ export function stopStreaming(channelId: string) {
 // 2026-06-29, ao reproduzir play()/stop() chamando isso antes de reiniciar).
 // Async e aguarda stopRelays liberar as portas UDP antes de retornar — ver killAndWait.
 export async function stopAllStreaming(channelId: string): Promise<void> {
-  stopStreaming(channelId)
+  await stopStreaming(channelId)
   await stopRelays(channelId)
 }
 
@@ -1376,14 +1392,21 @@ export async function startStreamingFromPlaylist(
 
 // ─── Controle por output individual ──────────────────────────────────────────
 
-export function stopOutput(channelId: string, outputId: string) {
+export async function stopOutput(channelId: string, outputId: string) {
   const sp = channelProcs.get(channelId)?.get(outputId)
   if (sp) {
     sp.stopped = true
+    // SDI: mesma espera de stopStreaming() — a placa DeckLink não libera o
+    // device no instante do SIGTERM, e startOutput() chama stopOutput() e
+    // spawna de novo em seguida (toggle/reconnect de um único output).
+    const wait = sp.type === 'SDI'
+      ? new Promise<void>((resolve) => { sp.proc.once('exit', () => resolve()); setTimeout(resolve, 2000) })
+      : null
     try { sp.proc.kill('SIGTERM') } catch {}
     channelProcs.get(channelId)?.delete(outputId)
     outputStats.get(channelId)?.delete(outputId)
     console.log(`[stream/${channelId}] Output ${sp.name} parado manualmente`)
+    if (wait) await wait
   }
   // Also stop relay for this output if running
   const relayEntry = relayProcs.get(channelId)?.get(outputId)
@@ -1405,7 +1428,7 @@ export async function startOutput(
   cueIn = 0,
   contentGraphic: GraphicConfig | null = null,
 ) {
-  stopOutput(channelId, outputId)
+  await stopOutput(channelId, outputId)
   const output = await prisma.streamOutput.findUnique({
     where: { id: outputId },
     include: { graphic: { include: { template: { include: { elements: { where: { active: true }, orderBy: { order: 'asc' } } } } } } },

@@ -242,7 +242,7 @@ export default async function playoutRoutes(app: FastifyInstance) {
     await prisma.streamOutput.update({ where: { id: outputId }, data: { active: newActive } })
 
     if (!newActive) {
-      streamService.stopOutput(channelId, outputId)
+      await streamService.stopOutput(channelId, outputId)
     } else {
       const state = playout.getState(channelId)
       if (state.status === 'PLAYING') {
