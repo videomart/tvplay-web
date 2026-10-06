@@ -1053,6 +1053,26 @@ export async function startStreaming(
 
 // Para só o content process — preserva o relay (conexão RTMP/SRT externa) vivo.
 // Também para a câmera ativa, já que ela escreve no mesmo channelProcs/output.
+// SDI (DeckLink): recurso exclusivo de hardware — o processo sair (evento
+// 'exit') não significa que o driver já liberou o device nesse exato
+// instante; há uma folga de limpeza no kernel/driver depois do processo
+// morrer. Sem essa folga extra, o próximo FFmpeg às vezes ainda falhava com
+// "Could not enable video output!" mesmo esperando o 'exit' (confirmado em
+// produção local, 2026-10-06 — corrida reduzida mas não eliminada só com o
+// wait no 'exit'). Teto de 2.5s total pra nunca travar o playout se o
+// processo não sair por algum motivo.
+const SDI_RELEASE_GRACE_MS = 400
+const SDI_RELEASE_TIMEOUT_MS = 2500
+
+function waitForSdiRelease(proc: ChildProcess): Promise<void> {
+  return new Promise<void>((resolve) => {
+    let done = false
+    const finish = () => { if (!done) { done = true; resolve() } }
+    proc.once('exit', () => setTimeout(finish, SDI_RELEASE_GRACE_MS))
+    setTimeout(finish, SDI_RELEASE_TIMEOUT_MS)
+  })
+}
+
 export function stopStreaming(channelId: string) {
   _stopCameraHook?.(channelId)
   const map = channelProcs.get(channelId)
@@ -1060,21 +1080,11 @@ export function stopStreaming(channelId: string) {
   const waits: Promise<void>[] = []
   for (const sp of map.values()) {
     sp.stopped = true
-    // SDI (DeckLink): recurso exclusivo de hardware — a placa não libera o
-    // device no instante do SIGTERM. Todo startStreamingFrom* faz `await
-    // stopStreaming()` e já emenda no próximo spawn em seguida; pra saídas de
-    // rede (RTMP/SRT/etc.) isso é inofensivo (socket novo, sem conflito), mas
-    // pra SDI o novo FFmpeg tentava abrir a mesma placa antes do processo
-    // antigo liberar e nunca conseguia ("Could not enable video output!" —
-    // confirmado em produção local, 2026-10-06). Espera o processo sair de
-    // verdade antes de resolver, com um teto de 2s pra nunca travar o playout
-    // se o processo não sair por algum motivo.
-    if (sp.type === 'SDI') {
-      waits.push(new Promise<void>((resolve) => {
-        sp.proc.once('exit', () => resolve())
-        setTimeout(resolve, 2000)
-      }))
-    }
+    // Ver comentário de waitForSdiRelease acima — todo startStreamingFrom*
+    // faz `await stopStreaming()` e já emenda no próximo spawn em seguida;
+    // pra saídas de rede (RTMP/SRT/etc.) isso é inofensivo (socket novo, sem
+    // conflito), só SDI precisa dessa espera.
+    if (sp.type === 'SDI') waits.push(waitForSdiRelease(sp.proc))
     try { sp.proc.kill('SIGTERM') } catch {}
     console.log(`[stream/${channelId}] Parando ${sp.type}/${sp.name}`)
   }
@@ -1396,12 +1406,10 @@ export async function stopOutput(channelId: string, outputId: string) {
   const sp = channelProcs.get(channelId)?.get(outputId)
   if (sp) {
     sp.stopped = true
-    // SDI: mesma espera de stopStreaming() — a placa DeckLink não libera o
-    // device no instante do SIGTERM, e startOutput() chama stopOutput() e
-    // spawna de novo em seguida (toggle/reconnect de um único output).
-    const wait = sp.type === 'SDI'
-      ? new Promise<void>((resolve) => { sp.proc.once('exit', () => resolve()); setTimeout(resolve, 2000) })
-      : null
+    // SDI: mesma espera de stopStreaming()/waitForSdiRelease() — startOutput()
+    // chama stopOutput() e spawna de novo em seguida (toggle/reconnect de um
+    // único output).
+    const wait = sp.type === 'SDI' ? waitForSdiRelease(sp.proc) : null
     try { sp.proc.kill('SIGTERM') } catch {}
     channelProcs.get(channelId)?.delete(outputId)
     outputStats.get(channelId)?.delete(outputId)
