@@ -20,6 +20,16 @@ youtube-cookies.txt
 # Pasta de cookies (contém credenciais — nunca commitar)
 cookies/
 
+# Headers do Blackmagic DeckLink SDK — conteúdo licenciado de terceiro
+# (precisa de conta/login na Blackmagic pra baixar), não redistribuímos no
+# repo. Coloque em backend/decklink-sdk/include/ antes de buildar a imagem
+# da API pra habilitar saída SDI (ver backend/Dockerfile e
+# OPERATIONS_MANUAL.md) — sem eles o build simplesmente pula essa parte
+# (.gitkeep mantém a pasta existindo mesmo sem os headers reais, que o
+# Dockerfile detecta pela ausência de DeckLinkAPI.h).
+backend/decklink-sdk/include/*
+!backend/decklink-sdk/include/.gitkeep
+
 # Arquivos gerados pelo TypeScript e npm
 frontend/package-lock.json
 frontend/tsconfig.tsbuildinfo

@@ -1,0 +1,18 @@
+# Override opcional — só pra máquinas com uma placa Blackmagic DeckLink
+# instalada e o driver Desktop Video rodando no host (ver OPERATIONS_MANUAL.md
+# seção 8, "Cenário 2"). NÃO aplicar isso no docker-compose.yml base, porque um
+# bind mount de um caminho que não existe no host (ex.: a VPS de produção, sem
+# placa nenhuma) quebra o `docker compose up` inteiro, não só a saída SDI.
+#
+# Uso:
+#   docker compose -f docker-compose.yml -f docker-compose.decklink.yml up -d --build api
+#
+# Pré-requisitos no host (ver backend/Dockerfile e OPERATIONS_MANUAL.md):
+#   - Driver Blackmagic Desktop Video instalado (/dev/blackmagic/dvN existindo)
+#   - backend/decklink-sdk/include/DeckLinkAPI.h presente ANTES do build da
+#     imagem (senão o ffmpeg-decklink vira um stub que só avisa erro)
+services:
+  api:
+    volumes:
+      - /dev/blackmagic:/dev/blackmagic
+      - /usr/lib/libDeckLinkAPI.so:/usr/lib/libDeckLinkAPI.so:ro

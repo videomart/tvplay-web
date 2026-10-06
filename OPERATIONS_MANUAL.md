@@ -233,7 +233,7 @@ As saídas são configuradas por canal e podem ser múltiplas simultâneas.
 | SRT                     | Receiver SRT (encoder IRD, outro servidor)          |
 | UDP                     | Decoder UDP/MPEG-TS, IRD                            |
 | RTP                     | Equipamento de broadcast com entrada RTP            |
-| SDI Local               | Placa DeckLink instalada no host ou container       |
+| SDI Local               | Placa DeckLink no host rodando Docker (Cenário 2)   |
 | Agente Remoto (DeckLink)| Máquina Windows/Linux com DeckLink via SRT          |
 
 ### Configuração de transcodificação
@@ -244,7 +244,7 @@ Para saídas RTMP, SRT, UDP, RTP:
 - **Bitrate de vídeo**: em kbps (ex.: 4000 para Full HD)
 - **Bitrate de áudio**: em kbps (ex.: 128)
 
-Saídas SDI e Agente Remoto não reencoder: passam o sinal transcodificado pelo FFmpeg diretamente.
+Saída SDI (DeckLink) é raw, não comprimida — não tem campos de bitrate (não faz sentido pra vídeo não-codificado). Resolução/taxa de quadros são fixas em 1920×1080 @ 29.97fps (único modo da placa testada compatível com o CFR já usado pelas outras saídas); o FFmpeg decodifica a fonte e converte pra `uyvy422` antes de enviar pra placa. Agente Remoto segue reencodando H.264 normalmente (roda numa máquina separada, não tem essa limitação).
 
 ### Gráfico padrão da saída
 
@@ -278,61 +278,39 @@ Configure uma **Fonte de Entrada** do tipo **Agente no Host**, que funciona da m
 
 ---
 
-### Cenário 2 — Docker Local com Dispositivos no Host
+### Cenário 2 — Docker Local com a Placa no Host
 
-**Situação:** O TVPlay roda em Docker na mesma máquina física que tem a placa DeckLink ou câmera USB.
+**Situação:** O TVPlay roda em Docker na mesma máquina física que tem a placa DeckLink. **Validado contra hardware real** (DeckLink Mini Monitor, Ubuntu 26.04, 2026-10-06).
 
-**Como funciona:**
+**Importante sobre onde cada peça mora:** o driver Blackmagic (`blackmagic`/`blackmagic_io`) é um módulo de kernel — só pode estar no **host**, nunca "dentro" de um container, porque containers compartilham o kernel do host (não existe módulo de kernel por container). O que fica no container é o **FFmpeg compilado com suporte a DeckLink** (binário separado, `ffmpeg-decklink`, usado só pras saídas SDI — o FFmpeg padrão do projeto não tem esse suporte).
 
-No `docker-compose.yml`, passe o dispositivo para o container:
+**1. No host — instalar o driver** (uma vez, requer conta grátis em blackmagicdesign.com):
 
-```yaml
-services:
-  api:
-    devices:
-      - /dev/video0:/dev/video0   # Para USB/V4L2
-      # Para DeckLink, o driver precisa estar instalado no host e exposto:
-      - /dev/blackmagic0:/dev/blackmagic0
+```bash
+# Desktop Video (driver) — blackmagicdesign.com/support/family/capture-and-playback
+tar -xf Blackmagic_Desktop_Video_Linux_*.tar
+cd Blackmagic_Desktop_Video_Linux_*/deb/x86_64/
+sudo dpkg -i desktopvideo_*.deb && sudo apt-get install -f
+BlackmagicFirmwareUpdater status   # confirma "[DeckLink ...] ... OK"
 ```
 
-Para DeckLink no Linux, instale o `blackmagic-io` no host e compartilhe `/dev/blackmagic*`.
+Isso cria `/dev/blackmagic/dvN` e instala `/usr/lib/libDeckLinkAPI.so` no host.
 
-**Para saída SDI:** Configure uma **Saída** do tipo **SDI Local** e informe o nome do dispositivo (`DeckLink SDI`).
+**2. Baixar o DeckLink SDK** (download separado, mesmo site/conta) e colocar os headers em `backend/decklink-sdk/include/` — são usados só em tempo de build pra compilar o `ffmpeg-decklink` (não são commitados no git, ver `.gitignore`). Sem eles o `backend/Dockerfile` pula esse estágio e a saída SDI fica indisponível (binário stub que avisa erro), sem quebrar o resto do build.
 
-**Para entrada USB/V4L2:** Configure uma **Fonte de Entrada** do tipo **USB / Captura Local** e selecione o dispositivo `/dev/video0`.
+**3. Buildar e subir com o override do DeckLink:**
 
-**Vantagens:** Sem latência extra de rede; o FFmpeg acessa o hardware diretamente.
-
----
-
-### Cenário 3 — Docker com Drivers no Container
-
-**Situação:** Drivers DeckLink instalados diretamente no container Docker. Usado quando o servidor é dedicado e você tem controle total da imagem.
-
-**Como funciona:**
-
-No `Dockerfile` do backend (ou imagem customizada), instale os drivers Blackmagic:
-
-```dockerfile
-# Exemplo — requer acordo de licença Blackmagic
-RUN apt-get install -y blackmagic-desktop-video
+```bash
+docker compose -f docker-compose.yml -f docker-compose.decklink.yml up -d --build api
 ```
 
-Depois configure no `docker-compose.yml` com acesso privilegiado ao hardware:
+O `docker-compose.decklink.yml` monta `/dev/blackmagic` e `libDeckLinkAPI.so` do host dentro do container — **não** inclua isso no `docker-compose.yml` base, porque um bind mount de um caminho que não existe (ex.: a VPS de produção, sem placa nenhuma) quebra o `up` inteiro, não só a saída SDI.
 
-```yaml
-services:
-  api:
-    privileged: true
-    devices:
-      - /dev/blackmagic0:/dev/blackmagic0
-```
+**4. No TVPlay:** configure uma **Saída** do tipo **SDI Local**, campo "Nome do dispositivo DeckLink" = exatamente o que aparece em `ffmpeg -sinks decklink` no host (ex.: `DeckLink Mini Monitor`).
 
-No TVPlay, configure **Saída SDI Local** com o nome do dispositivo.
+**Limitação atual:** resolução fixa em 1920×1080 @ 29.97fps (único modo da placa testada compatível com o CFR das outras saídas) e sem overlay de gráfico (logo/relógio/rodapé) — a saída SDI ainda não passa pelo mesmo pipeline de template gráfico das demais saídas.
 
-**Vantagens:** Ambiente completamente contido e reproduzível.
-
-**Desvantagem:** Drivers Blackmagic têm restrições de licença para redistribuição; cada instalação requer configuração manual.
+**Vantagens:** sem latência extra de rede; o FFmpeg acessa o hardware diretamente.
 
 ---
 
@@ -341,8 +319,7 @@ No TVPlay, configure **Saída SDI Local** com o nome do dispositivo.
 | Cenário | Docker onde? | DeckLink onde? | Tipo de saída     | Tipo de entrada     |
 |---------|--------------|----------------|-------------------|---------------------|
 | 1       | Cloud/remoto | Máquina local  | Agente Remoto     | Agente no Host      |
-| 2       | Local (host) | Mesmo host     | SDI Local         | USB / SDI local     |
-| 3       | Docker       | Dentro do Docker | SDI Local        | USB / SDI local     |
+| 2       | Local (host) | Mesmo host (driver no host, FFmpeg no container) | SDI Local | — |
 
 ---
 

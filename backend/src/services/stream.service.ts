@@ -508,6 +508,37 @@ function appendSrtPassphrase(url: string, passphrase: string | null | undefined)
   return `${url}${sep}passphrase=${encodeURIComponent(passphrase)}`
 }
 
+// Saída SDI (Blackmagic DeckLink) — o muxer `-f decklink` espera frames raw
+// (uyvy422), não H.264/AAC como RTMP/SRT/etc.: os blocos `videoCodec`/
+// `encodeArgs` dos outros tipos de saída não servem aqui, cada case 'SDI'
+// (buildArgs, buildFallbackArgs, buildConcatArgs) usa este helper em vez
+// deles. `videoMapArg`/`audioMapArg` variam por chamador porque cada um tem
+// um layout de input diferente (ex.: concat = um único input 0 com A/V juntos;
+// fallback = dois inputs lavfi separados, vídeo em 0 e áudio em 1).
+// Resolução/framerate fixos em 1920x1080 @ 30000/1001 ("Hp29") — testado
+// contra uma DeckLink Mini Monitor real (2026-10-06, `-list_formats` do
+// próprio FFmpeg): é o único modo da placa que casa com o CFR 29.97fps já
+// usado por todas as outras saídas deste app. Roda num binário FFmpeg
+// separado (config.ffmpeg.decklinkPath) — ver spawnOutput/
+// spawnOutputFromConcat/startStreamingFromFallback, que escolhem o binário
+// por output.type antes de spawnar o processo.
+function decklinkOutputArgs(output: OutputConfig, videoMapArg: string, audioMapArg: string): string[] {
+  const deckDevice = output.device || 'DeckLink Mini Monitor'
+  return [
+    '-map', videoMapArg, '-map', audioMapArg,
+    '-vf', 'scale=1920:1080,format=uyvy422',
+    '-r', '30000/1001', '-fps_mode', 'cfr',
+    '-ar', '48000',
+    '-f', 'decklink', deckDevice,
+  ]
+}
+
+// Binário FFmpeg a usar pra este output — SDI precisa do build com
+// --enable-decklink; todo o resto segue no binário estático padrão.
+function ffmpegPathFor(output: OutputConfig): string {
+  return output.type === 'SDI' ? config.ffmpeg.decklinkPath : config.ffmpeg.path
+}
+
 // Garante URL absoluta acessível pelo FFmpeg dentro do container
 function resolveLogoUrl(url: string | null | undefined): string {
   if (!url) return ''
@@ -885,9 +916,7 @@ function buildArgs(
       return [...input, ...videoCodec, '-f', 'rtp', output.url]
     }
     case 'SDI': {
-      // Saída direta para placa Blackmagic DeckLink instalada no host/container
-      const deckDevice = output.device ?? 'DeckLink'
-      return [...input, ...videoCodec, '-f', 'decklink', deckDevice]
+      return [...input, ...decklinkOutputArgs(output, '0:v:0', '0:a:0')]
     }
     case 'LOCAL_DEVICE': {
       // Envia via SRT para agente remoto (Windows/Linux com DeckLink ou USB) — Cenário 1
@@ -919,7 +948,7 @@ function spawnOutput(
   const args = buildArgs(hlsUrl, cueIn, output, isLive, effectiveGraphic, relayPort, loop)
   if (!args) return null
 
-  const proc = spawn(config.ffmpeg.path, args, {
+  const proc = spawn(ffmpegPathFor(output), args, {
     stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, TZ: clockTz() },
   })
@@ -1247,6 +1276,9 @@ function buildConcatArgs(
       if (!output.url) return null
       return [...input, ...videoCodec, '-f', 'rtp', output.url]
     }
+    case 'SDI': {
+      return [...input, ...decklinkOutputArgs(output, '0:v:0', '0:a:0')]
+    }
     default:
       return null
   }
@@ -1263,7 +1295,7 @@ function spawnOutputFromConcat(
   const args = buildConcatArgs(concatFilePath, output, contentGraphic, relayPort)
   if (!args) return null
 
-  const proc = spawn(config.ffmpeg.path, args, {
+  const proc = spawn(ffmpegPathFor(output), args, {
     stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, TZ: clockTz() },
   })
@@ -1503,7 +1535,7 @@ export async function startStreamingFromFallback(channelId: string, fallbackType
     const args = buildFallbackArgs(videoInput, output, output.graphic ?? null, port)
     if (!args) continue
 
-    const proc = spawn(config.ffmpeg.path, args, {
+    const proc = spawn(ffmpegPathFor(output), args, {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, TZ: clockTz() },
     })
@@ -1581,8 +1613,7 @@ function buildFallbackArgs(videoInput: string, output: OutputConfig, graphic: Gr
       return [...inputArgs, ...encodeArgs, '-f', 'rtp', output.url]
     }
     case 'SDI': {
-      const deckDevice = output.device ?? 'DeckLink'
-      return [...inputArgs, ...encodeArgs, '-f', 'decklink', deckDevice]
+      return [...inputArgs, ...decklinkOutputArgs(output, '0:v', '1:a')]
     }
     case 'LOCAL_DEVICE': {
       if (!output.url) return null

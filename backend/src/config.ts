@@ -24,6 +24,13 @@ export const config = {
   ffmpeg: {
     path: process.env.FFMPEG_PATH ?? 'ffmpeg',
     probePath: process.env.FFPROBE_PATH ?? 'ffprobe',
+    // Binário separado, compilado com --enable-decklink contra o Blackmagic
+    // DeckLink SDK (ver backend/Dockerfile) — o build estático padrão (acima)
+    // não tem suporte a DeckLink. Usado só para saídas do tipo SDI; todo o
+    // resto do app continua no `path` normal. Ver stream.service.ts
+    // (decklinkOutputArgs) e docker-compose.yml (bind mount de
+    // /dev/blackmagic e libDeckLinkAPI.so no serviço api).
+    decklinkPath: process.env.FFMPEG_DECKLINK_PATH ?? '/usr/local/bin/ffmpeg-decklink',
   },
 
   ytdlp: {

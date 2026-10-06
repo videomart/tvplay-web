@@ -419,13 +419,13 @@ export default function StreamOutputsPage() {
               </div>
             )}
 
-            {/* SDI local (Cenários 2 e 3) */}
+            {/* SDI local (Cenário 2 — host com a placa + docker-compose.decklink.yml) */}
             {showDevice && (
               <div className="space-y-2">
-                <Input label="Nome do dispositivo DeckLink *" value={form.device} onChange={f('device')} placeholder="DeckLink SDI" />
+                <Input label="Nome do dispositivo DeckLink *" value={form.device} onChange={f('device')} placeholder="DeckLink Mini Monitor" />
                 <p className="text-[11px] text-gray-500">
-                  <strong className="text-gray-400">Cenário 2</strong> — Docker local: passe o dispositivo com <code className="bg-gray-800 px-1 rounded">--device /dev/video0</code> no docker-compose.{' '}
-                  <strong className="text-gray-400">Cenário 3</strong> — Driver DeckLink instalado diretamente no container.
+                  Use o nome exatamente como aparece em <code className="bg-gray-800 px-1 rounded">ffmpeg -sinks decklink</code> no host (ex.: <code className="bg-gray-800 px-1 rounded">DeckLink Mini Monitor</code>). Driver Blackmagic precisa estar instalado no host e o container subir com{' '}
+                  <code className="bg-gray-800 px-1 rounded">docker-compose.decklink.yml</code> (ver OPERATIONS_MANUAL.md, seção 8).
                 </p>
               </div>
             )}
