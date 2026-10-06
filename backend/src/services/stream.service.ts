@@ -1,4 +1,4 @@
-import { spawn, ChildProcess } from 'child_process'
+import { spawn, execSync, ChildProcess } from 'child_process'
 import { writeFile } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -986,6 +986,32 @@ function spawnOutput(
       // quando a fonte (SRT/RTMP/webcam) está offline. O active-inputs service tentará
       // reconectar em background; quando voltar, refreshInputSourceConsumers() reativa.
       if (nextFailCount >= 3) {
+        // SDI: antes de desistir de vez, tenta matar um processo
+        // ffmpeg-decklink órfão que possa estar segurando o device (ver
+        // killOrphanDecklinkProcesses) e dá mais uma chance — é exatamente
+        // esse cenário que fazia "Could not enable video output!" persistir
+        // indefinidamente até alguém matar o processo manualmente.
+        if (sp.type === 'SDI') {
+          const killedOrphans = killOrphanDecklinkProcesses()
+          if (killedOrphans > 0) {
+            console.warn(`[stream/${channelId}/${output.name}] Matou ${killedOrphans} processo(s) decklink órfão(s) — tentando mais uma vez em 2s`)
+            setTimeout(async () => {
+              if (sp.stopped) return
+              const current = channelProcs.get(channelId)?.get(output.id)
+              if (current && current.proc !== proc) return
+              const dbOutput = await prisma.streamOutput.findUnique({
+                where: { id: output.id },
+                include: { graphic: { include: { template: { include: { elements: { where: { active: true }, orderBy: { order: 'asc' } } } } } } },
+              })
+              if (!dbOutput?.active) return
+              const newSp = spawnOutput(channelId, dbOutput, hlsUrl, 0, false, sp.contentGraphic, relayPort, nextFailCount, sp.loop)
+              if (!newSp) return
+              if (!channelProcs.has(channelId)) channelProcs.set(channelId, new Map())
+              channelProcs.get(channelId)!.set(output.id, newSp)
+            }, 2000)
+            return
+          }
+        }
         console.warn(`[stream/${channelId}/${output.name}] Fonte falhou ${nextFailCount}x — desistindo de reconectar, ativando fallback do canal`)
         onInputSourceGaveUpCb?.(channelId)
         return
@@ -1071,6 +1097,37 @@ function waitForSdiRelease(proc: ChildProcess): Promise<void> {
     proc.once('exit', () => setTimeout(finish, SDI_RELEASE_GRACE_MS))
     setTimeout(finish, SDI_RELEASE_TIMEOUT_MS)
   })
+}
+
+// Rede de segurança: mata qualquer processo ffmpeg-decklink que NÃO esteja
+// registrado em channelProcs (de qualquer canal). Confirmado em produção
+// local (2026-10-06) que um output individualmente religado via
+// startOutput/toggle pode acabar "órfão" — ainda rodando, segurando a placa
+// exclusiva, mas fora do Map que stopStreaming() consulta — e aí toda saída
+// SDI nova falha com "Could not enable video output!" até alguém matar o
+// processo manualmente. Chamada só depois de esgotar as tentativas normais
+// de reconexão (nextFailCount >= 3) e só pra saídas SDI — nunca mata nada
+// que já esteja sendo rastreado normalmente.
+function killOrphanDecklinkProcesses(): number {
+  const tracked = new Set<number>()
+  for (const map of channelProcs.values()) {
+    for (const sp of map.values()) {
+      if (sp.type === 'SDI' && sp.proc.pid) tracked.add(sp.proc.pid)
+    }
+  }
+  let killed = 0
+  try {
+    const out = execSync(`pgrep -f ${config.ffmpeg.decklinkPath}`, { encoding: 'utf8' }).trim()
+    if (!out) return 0
+    for (const line of out.split('\n')) {
+      const pid = parseInt(line, 10)
+      if (!pid || tracked.has(pid)) continue
+      try { process.kill(pid, 'SIGKILL'); killed++ } catch {}
+    }
+  } catch {
+    // pgrep sem match retorna código de saída != 0 — nada pra matar
+  }
+  return killed
 }
 
 export function stopStreaming(channelId: string) {
@@ -1592,6 +1649,21 @@ export async function startStreamingFromFallback(
         // "travado, ignorando todo comando".
         const nextFailCount = failCount + 1
         if (nextFailCount >= 3) {
+          // SDI: mesma rede de segurança do spawnOutput — tenta matar um
+          // processo decklink órfão antes de desistir de vez.
+          if (output.type === 'SDI') {
+            const killedOrphans = killOrphanDecklinkProcesses()
+            if (killedOrphans > 0) {
+              console.warn(`[stream/${channelId}/${output.name}/fallback] Matou ${killedOrphans} processo(s) decklink órfão(s) — tentando mais uma vez em 2s`)
+              setTimeout(() => {
+                if (sp.stopped) return
+                const current = channelProcs.get(channelId)?.get(output.id)
+                if (current && current.proc !== proc) return
+                startStreamingFromFallback(channelId, fallbackType, nextFailCount).catch(() => {})
+              }, 2000)
+              return
+            }
+          }
           console.warn(`[stream/${channelId}/${output.name}/fallback] Saiu ${nextFailCount}x consecutivas — desistindo de reconectar este fallback`)
           return
         }
