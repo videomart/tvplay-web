@@ -1530,7 +1530,9 @@ export async function startStreamingFromUrlReencode(
 
 // Inicia streaming com fonte gerada (BLACK ou COLORBARS).
 // Preserva o relay ativo para manter a conexão RTMP/SRT sem dropout.
-export async function startStreamingFromFallback(channelId: string, fallbackType: 'BLACK' | 'COLORBARS' | string) {
+export async function startStreamingFromFallback(
+  channelId: string, fallbackType: 'BLACK' | 'COLORBARS' | string, failCount = 0,
+) {
   let outputs: OutputConfig[] = await prisma.streamOutput.findMany({
     where: { channelId, active: true },
     include: { graphic: { include: { template: { include: { elements: { where: { active: true }, orderBy: { order: 'asc' } } } } } } },
@@ -1572,10 +1574,28 @@ export async function startStreamingFromFallback(channelId: string, fallbackType
       const registeredFb = channelProcs.get(channelId)?.get(output.id)
       if (registeredFb?.proc === proc) channelProcs.get(channelId)?.delete(output.id)
       if (code !== null && code !== 0 && code !== 255 && !sp.stopped) {
-        console.warn(`[stream/${channelId}/${output.name}/fallback] Saiu com código ${code} — reconectando em 2s...`)
+        // Sem essas duas guardas, uma saída que falha repetidamente (ex.: SDI
+        // disputando o device exclusivo da placa — confirmado em produção
+        // local, 2026-10-06) virava um reconnect zumbi: reafirmava ESTE
+        // fallback por cima de qualquer comando novo do operador (CUT pra
+        // entrada, PLAY de playlist, etc.) a cada 2s, pra sempre, porque nada
+        // aqui verificava se outro processo já tinha assumido esse output
+        // nem desistia depois de tentativas repetidas — o canal parecia
+        // "travado, ignorando todo comando".
+        const nextFailCount = failCount + 1
+        if (nextFailCount >= 3) {
+          console.warn(`[stream/${channelId}/${output.name}/fallback] Saiu ${nextFailCount}x consecutivas — desistindo de reconectar este fallback`)
+          return
+        }
+        console.warn(`[stream/${channelId}/${output.name}/fallback] Saiu com código ${code} (tentativa ${nextFailCount}/3) — reconectando em 2s...`)
         setTimeout(() => {
           if (sp.stopped) return
-          startStreamingFromFallback(channelId, fallbackType).catch(() => {})
+          // Aborta se um processo mais novo já assumiu este output (operador
+          // mandou outro comando enquanto esperava) — reafirmar o fallback
+          // antigo por cima dele é exatamente o bug acima.
+          const current = channelProcs.get(channelId)?.get(output.id)
+          if (current && current.proc !== proc) return
+          startStreamingFromFallback(channelId, fallbackType, nextFailCount).catch(() => {})
         }, 2000)
       }
     })
