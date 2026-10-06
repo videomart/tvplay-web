@@ -1,5 +1,6 @@
 import { spawn, execSync, ChildProcess } from 'child_process'
 import { writeFile } from 'fs/promises'
+import { existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { prisma } from '../lib/prisma'
@@ -1513,7 +1514,19 @@ export async function startOutput(
     port = getOrAllocRelayPort(outputId)
   }
 
-  const sp = spawnOutput(channelId, output, hlsUrlForMedia(mediaId), cueIn, false, contentGraphic, port)
+  // Religar um único output (toggle/reconnect) enquanto o canal já está
+  // tocando via concat precisa entrar no MESMO concat das outras saídas —
+  // senão esse output específico fica preso só no clipe atual (spawnOutput
+  // com hlsUrlForMedia de um único arquivo) e nunca avança quando a
+  // playlist segue pro próximo item, mesmo com as outras saídas do canal
+  // acompanhando normalmente (confirmado em produção local, 2026-10-06,
+  // religando a saída SDI no meio da playlist). O path é determinístico
+  // (ver writeConcatFile) — se o arquivo existe, a playlist está rodando em
+  // modo concat agora.
+  const concatFilePath = join(tmpdir(), `tvplay_concat_${channelId}.txt`)
+  const sp = existsSync(concatFilePath)
+    ? spawnOutputFromConcat(channelId, output, concatFilePath, contentGraphic, port)
+    : spawnOutput(channelId, output, hlsUrlForMedia(mediaId), cueIn, false, contentGraphic, port)
   if (!sp) return
   if (!channelProcs.has(channelId)) channelProcs.set(channelId, new Map())
   channelProcs.get(channelId)!.set(outputId, sp)
