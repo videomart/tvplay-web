@@ -212,6 +212,25 @@ function recentlyFailedToResolve(url: string): boolean {
   return true
 }
 
+// Rate-limit do YouTube é por sessão/IP, não por vídeo — quando ele aparece, tentar
+// outro client ou outra URL só soma mais requisições contra um IP já penalizado
+// (confirmado 2026-10-06: trocar entre vários canais ao vivo em sequência rápida,
+// cada um varrendo 6 clients, disparou "session has been rate-limited... up to an
+// hour" e passou a derrubar TODAS as fontes YouTube, não só a que gerou o erro).
+// Por isso o guard abaixo é global, não por URL como o cache de falha acima.
+const YT_RATE_LIMIT_PATTERN = /rate-limited by YouTube/i
+const YT_RATE_LIMIT_BACKOFF_MS = 10 * 60 * 1000  // 10 min — YouTube fala "up to an hour", mas re-tentamos mais cedo
+let youtubeRateLimitedUntil = 0
+
+function isYoutubeRateLimited(): boolean {
+  return Date.now() < youtubeRateLimitedUntil
+}
+
+function markYoutubeRateLimited() {
+  youtubeRateLimitedUntil = Date.now() + YT_RATE_LIMIT_BACKOFF_MS
+  console.error(`[yt-dlp] YouTube sinalizou rate-limit da sessão/IP — pausando TODAS as resoluções YouTube por ${YT_RATE_LIMIT_BACKOFF_MS / 60000}min`)
+}
+
 function ytClientArgs(client: string): string[] {
   return client ? ['--extractor-args', `youtube:player_client=${client}`] : []
 }
@@ -234,6 +253,10 @@ export async function checkIsLive(url: string): Promise<{ isLive: boolean | null
     console.log(`[yt-dlp] desabilitado nas Configurações deste servidor — pulando checkIsLive: ${url}`)
     return { isLive: null }
   }
+  if (isYoutubeRateLimited()) {
+    console.log(`[yt-dlp] YouTube rate-limitou a sessão/IP recentemente — pulando checkIsLive: ${url}`)
+    return { isLive: null }
+  }
   // --js-runtimes/--remote-components: sem isso o client "web" não resolve o
   // n-challenge (assinatura) e sobram só formatos de imagem — mesmo problema
   // que resolveViaYtDlp já tratava, mas faltava aqui (2026-08-24).
@@ -253,7 +276,13 @@ export async function checkIsLive(url: string): Promise<{ isLive: boolean | null
       console.log(`[yt-dlp] checkIsLive OK (client=${client || 'default'}): live=${isLive}`)
       return { isLive, title: title === 'NA' ? undefined : title, duration }
     } catch (err: any) {
-      console.error(`[yt-dlp] checkIsLive falha (client=${client || 'default'}): ${String(err?.message ?? err).slice(0, 200)}`)
+      const msg = String(err?.message ?? err)
+      const stderr = (err as any)?.stderr ? String((err as any).stderr) : ''
+      console.error(`[yt-dlp] checkIsLive falha (client=${client || 'default'}): ${msg.slice(0, 200)}`)
+      if (YT_RATE_LIMIT_PATTERN.test(msg) || YT_RATE_LIMIT_PATTERN.test(stderr)) {
+        markYoutubeRateLimited()
+        break
+      }
     }
   }
   return { isLive: null }
@@ -263,6 +292,10 @@ export async function checkIsLive(url: string): Promise<{ isLive: boolean | null
 async function resolveViaYtDlp(rawUrl: string): Promise<string | null> {
   if (!youtubeContentEnabled) {
     console.log(`[yt-dlp] desabilitado nas Configurações deste servidor — não resolvendo: ${rawUrl}`)
+    return null
+  }
+  if (isYoutubeRateLimited()) {
+    console.log(`[yt-dlp] YouTube rate-limitou a sessão/IP recentemente — pulando: ${rawUrl}`)
     return null
   }
   if (recentlyFailedToResolve(rawUrl)) {
@@ -310,6 +343,10 @@ async function resolveViaYtDlp(rawUrl: string): Promise<string | null> {
       const stderr = (err as any)?.stderr ? String((err as any).stderr).slice(0, 400) : ''
       console.error(`[yt-dlp] Falha (client=${client || 'default'}): ${msg.slice(0, 300)}`)
       if (stderr) console.error(`[yt-dlp] stderr: ${stderr}`)
+      if (YT_RATE_LIMIT_PATTERN.test(msg) || YT_RATE_LIMIT_PATTERN.test(stderr)) {
+        markYoutubeRateLimited()
+        break // demais clients só vão bater no mesmo rate-limit — não insiste
+      }
     }
   }
   console.error(`[yt-dlp] TODAS as tentativas falharam para: ${rawUrl}`)
