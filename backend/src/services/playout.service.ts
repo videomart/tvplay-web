@@ -470,6 +470,10 @@ const states = new Map<string, PlayoutState>()
 const timers = new Map<string, ReturnType<typeof setInterval>>()
 // Guard: impede execução concorrente da lógica de avanço de clipe por canal
 const advancing = new Set<string>()
+// Canais cujo FFmpeg concat já terminou o run enquanto o timer ainda estava
+// atrás: cada tick avança um item (registrando o log de exibição de cada um)
+// até sair do run, em vez de esperar a duração restante de cada clip.
+const concatEnded = new Set<string>()
 
 async function computePlaylistMeta(playlistId: string): Promise<{ totalDuration: number; count: number }> {
   const items = await prisma.playlistItem.findMany({
@@ -921,6 +925,7 @@ function stopTimer(channelId: string) {
   const t = timers.get(channelId)
   if (t) { clearInterval(t); timers.delete(channelId) }
   advancing.delete(channelId)
+  concatEnded.delete(channelId)
 }
 
 function startTimer(channelId: string) {
@@ -997,6 +1002,7 @@ function startTimer(channelId: string) {
               }
               // BREAK: switch to fallback/input, keep timer running so maxDuration is respected
               streamService.clearConcatRun(channelId)
+              concatEnded.delete(channelId)
               console.log(`[playout] BREAK ch=${channelId} — comutando para fallback/entrada`)
               prisma.channel.findUnique({ where: { id: channelId }, include: { fallbackSource: true } })
                 .then(async (ch) => {
@@ -1018,9 +1024,12 @@ function startTimer(channelId: string) {
                 && concatEnd !== undefined && next.index <= concatEnd
                 && !isUrlClip(next.item.sourceType, next.item.sourceUrl)
 
+              if (!isInsideConcat) concatEnded.delete(channelId)
               if (isInsideConcat) {
                 // FFmpeg já está gerenciando esta transição via concat — apenas atualiza estado
                 console.log(`[playout] Auto-avanço ch=${channelId} → #${next.index} via concat (sem restart FFmpeg)`)
+                // Run já terminou no FFmpeg (este item já foi exibido): avança no próximo tick
+                if (concatEnded.has(channelId)) state.position = next.item.duration ?? 0
               } else if (isUrlClip(next.item.sourceType, next.item.sourceUrl) && next.item.sourceUrl) {
                 streamService.clearConcatRun(channelId)
                 const clipUrl = next.item.sourceUrl
@@ -1502,6 +1511,19 @@ export function handleStreamFailure(channelId: string): void {
   if (advancing.has(channelId)) return
   console.warn(`[playout] Falha de streaming ch=${channelId} — forçando avanço de clipe`)
   // Posição no fim do clipe atual → o próximo tick do timer dispara o avanço normal
+  state.position = Math.max(state.position, state.currentItem?.duration ?? 0)
+}
+
+// Chamado quando o FFmpeg concat terminou o run naturalmente. O timer do playout
+// fica atrás do FFmpeg (cada item é arredondado para o segundo de cima), então
+// sem isso a saída ficava sem vídeo até o timer alcançar o fim do run.
+export function handleConcatEnded(channelId: string): void {
+  const state = states.get(channelId)
+  if (!state || state.status !== 'PLAYING') return
+  const end = streamService.getConcatRunEnd(channelId)
+  if (end === undefined || state.currentIndex > end) return
+  concatEnded.add(channelId)
+  console.log(`[playout] Concat terminou ch=${channelId} com timer em #${state.currentIndex} (fim do run #${end}) — adiantando avanço`)
   state.position = Math.max(state.position, state.currentItem?.duration ?? 0)
 }
 

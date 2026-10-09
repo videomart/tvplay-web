@@ -1,4 +1,5 @@
-import { spawn, execSync, ChildProcess } from 'child_process'
+import { spawn, execSync, execFile, ChildProcess } from 'child_process'
+import { promisify } from 'util'
 import { writeFile } from 'fs/promises'
 import { existsSync } from 'fs'
 import { join } from 'path'
@@ -445,6 +446,13 @@ let onUnexpectedExitCb: ((channelId: string) => void) | null = null
 
 export function setStreamFailureCallback(cb: (channelId: string) => void) {
   onUnexpectedExitCb = cb
+}
+
+// Chamado quando o FFmpeg concat chega ao fim natural do run (código 0).
+let onConcatEndedCb: ((channelId: string) => void) | null = null
+
+export function setConcatEndedCallback(cb: (channelId: string) => void) {
+  onConcatEndedCb = cb
 }
 
 // Chamado quando uma fonte ao vivo (INPUT_SOURCE) falha repetidamente e o stream desiste de reconectar.
@@ -1238,12 +1246,46 @@ export function clearConcatRun(channelId: string) {
   concatRunEnd.delete(channelId)
 }
 
+// inpoint/outpoint do concat demuxer são TIMESTAMPS do arquivo, não offsets a
+// partir do início -- e o HLS de /api/media/stream/ começa em ~1.445s (offset
+// padrão do muxer mpegts), não em 0. Sem compensar, `outpoint <duração>` cortava
+// ~1.4s do fim de CADA clip: a playlist inteira terminava ~35s antes do timer do
+// playout, deixando a saída sem vídeo até o loop reiniciar -- o relay estourava
+// o timeout de 15s e o MediaMTX derrubava o HLS (produção, 2026-10-08).
+// Cache por URL: o start_time de uma mídia já transcodificada não muda.
+const execFileAsync = promisify(execFile)
+const mediaStartTimeCache = new Map<string, number>()
+
+async function probeStartTime(url: string): Promise<number> {
+  const cached = mediaStartTimeCache.get(url)
+  if (cached !== undefined) return cached
+  try {
+    const { stdout } = await execFileAsync(config.ffmpeg.probePath, [
+      '-v', 'error', '-show_entries', 'format=start_time', '-of', 'csv=p=0', url,
+    ], { timeout: 10000 })
+    const start = parseFloat(stdout.trim())
+    if (!Number.isFinite(start) || start < 0) return 0
+    mediaStartTimeCache.set(url, start)
+    return start
+  } catch {
+    return 0 // sem cache: tenta de novo no próximo run
+  }
+}
+
+/** Pré-carrega o start_time das mídias do run (em paralelo) -- só HLS local de mídia. */
+async function probeConcatStartTimes(items: PlaylistStreamItem[]): Promise<void> {
+  const urls = [...new Set(items.map(i => i.hlsUrl).filter(u => u.includes('/api/media/')))]
+  await Promise.all(urls.map(probeStartTime))
+}
+
 async function writeConcatFile(channelId: string, items: PlaylistStreamItem[]): Promise<string> {
+  await probeConcatStartTimes(items)
   const lines = ['ffconcat version 1.0']
   for (const item of items) {
+    const start = mediaStartTimeCache.get(item.hlsUrl) ?? 0
     lines.push(`file '${item.hlsUrl}'`)
-    if (item.cueIn > 0)                          lines.push(`inpoint ${item.cueIn.toFixed(3)}`)
-    if (item.cueOut != null && item.cueOut > 0)  lines.push(`outpoint ${item.cueOut.toFixed(3)}`)
+    if (item.cueIn > 0)                          lines.push(`inpoint ${(start + item.cueIn).toFixed(3)}`)
+    if (item.cueOut != null && item.cueOut > 0)  lines.push(`outpoint ${(start + item.cueOut).toFixed(3)}`)
   }
   const filePath = join(tmpdir(), `tvplay_concat_${channelId}.txt`)
   await writeFile(filePath, lines.join('\n') + '\n', 'utf8')
@@ -1405,14 +1447,20 @@ function spawnOutputFromConcat(
 
   proc.on('exit', (code) => {
     const registered = channelProcs.get(channelId)?.get(output.id)
-    if (registered?.proc === proc) {
+    const isCurrent = registered?.proc === proc
+    if (isCurrent) {
       channelProcs.get(channelId)?.delete(output.id)
     }
-    // Código 0 = fim natural da playlist concat — o playout service gerencia o estado
     const isError = code !== null && code !== 0 && code !== 255
     if (isError && !sp.stopped) {
       console.warn(`[stream/${channelId}/${output.name}] Concat saiu com código ${code} — notificando playout...`)
       onUnexpectedExitCb?.(channelId)
+    } else if (code === 0 && !sp.stopped && isCurrent) {
+      // Fim natural do run: avisa o playout para avançar já, em vez de esperar o
+      // timer (que arredonda cada item para cima e fica segundos atrás do FFmpeg)
+      // -- antes a saída ficava sem vídeo nesse intervalo (ver probeStartTime).
+      console.log(`[stream/${channelId}/${output.name}] Concat terminou o run — notificando playout`)
+      onConcatEndedCb?.(channelId)
     }
   })
 
@@ -1442,6 +1490,8 @@ export async function startStreamingFromPlaylist(
   // Ensure relay processes are running before restarting content
   outputs = await withChannelScte(channelId, outputs)
   await ensureRelays(channelId, outputs)
+  // Probe antes de parar o concat atual -- não aumenta o buraco sem vídeo na troca.
+  await probeConcatStartTimes(items)
   await stopStreaming(channelId)
 
   const concatFilePath = await writeConcatFile(channelId, items)
