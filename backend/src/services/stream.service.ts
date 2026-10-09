@@ -829,6 +829,7 @@ function buildArgs(
     // CDN remota NÃO usam -re (CDN do YouTube faz throttling agressivo em leituras
     // pausadas pelo -re — ver isRemoteCdnInput acima).
     ...((!isLive || isLocalInputHls) && !isHlsLive && !isRemoteCdnInput ? ['-re'] : []),
+    ...(isLocalMediaHls && lowerInputUrl.includes('.m3u8') ? HLS_READ_OPTS : []),
     ...(cueIn > 0 && !isLive ? ['-ss', String(Math.floor(cueIn))] : []),
     // CUT/fallback para uma InputSource tipo CLIP com arquivo local (VOD finito,
     // ver activateFallbackSource em playout.service.ts): sem loop o FFmpeg chega
@@ -1256,6 +1257,15 @@ export function clearConcatRun(channelId: string) {
 const execFileAsync = promisify(execFile)
 const mediaStartTimeCache = new Map<string, number>()
 
+// http_multiple=0: o demuxer HLS do FFmpeg abre o próximo segmento numa 2ª conexão
+// HTTP em paralelo. Lendo com -re (consumo lento), essa conexão fica ociosa e a
+// leitura trava ~6s (1 segmento) em pontos aleatórios -- vários por minuto na
+// saída do canal. Reproduzido em produção (2026-10-09) com -c copy, 200s:
+// padrão 4-7 pausas de 6-7s; http_multiple=0 nenhuma (igual a ler de arquivo
+// local). Não depende do MinIO: servidor HTTP local simples também travava.
+// No concat vai como `option http_multiple 0` por arquivo (writeConcatFile).
+const HLS_READ_OPTS = ['-http_multiple', '0']
+
 async function probeStartTime(url: string): Promise<number> {
   const cached = mediaStartTimeCache.get(url)
   if (cached !== undefined) return cached
@@ -1284,6 +1294,8 @@ async function writeConcatFile(channelId: string, items: PlaylistStreamItem[]): 
   for (const item of items) {
     const start = mediaStartTimeCache.get(item.hlsUrl) ?? 0
     lines.push(`file '${item.hlsUrl}'`)
+    // Ver HLS_READ_OPTS: sem isso a saída ficava ~6s sem pacotes várias vezes por minuto.
+    if (item.hlsUrl.startsWith('http')) lines.push('option http_multiple 0')
     if (item.cueIn > 0)                          lines.push(`inpoint ${(start + item.cueIn).toFixed(3)}`)
     if (item.cueOut != null && item.cueOut > 0)  lines.push(`outpoint ${(start + item.cueOut).toFixed(3)}`)
   }
