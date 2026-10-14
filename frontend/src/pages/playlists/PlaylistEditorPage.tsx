@@ -3,11 +3,12 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, Plus, Trash2, Search, GripVertical,
-  Clock, ListVideo, ChevronRight, Repeat2, Lock, Upload, Timer
+  Clock, ListVideo, ChevronRight, Repeat2, Lock, Upload, Timer, MoreVertical
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
 import { playlistsApi, type PlaylistItem } from '../../api/playlists.api'
+import { playoutApi } from '../../api/playout.api'
 import { clipsApi, type Clip, MODALITY_LABELS } from '../../api/clips.api'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
@@ -50,6 +51,10 @@ function formatDur(sec?: number) {
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
+function formatClock(ms: number) {
+  return new Date(ms).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+}
+
 function totalDuration(items: PlaylistItem[]) {
   return items.reduce((acc, item) => {
     const clip = item.clip
@@ -75,6 +80,7 @@ export default function PlaylistEditorPage() {
   const uploadFileRef = useRef<HTMLInputElement>(null)
   const [timerEditId, setTimerEditId] = useState<string | null>(null)
   const [timerEditVal, setTimerEditVal] = useState('')
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
 
   function startUpload(clipId: string) {
     uploadClipIdRef.current = clipId
@@ -110,6 +116,16 @@ export default function PlaylistEditorPage() {
     queryKey: ['clips-search', search],
     queryFn: () => clipsApi.list({ search: search || undefined, limit: 30 } as any),
     enabled: addOpen,
+  })
+
+  // Estado real do canal — só pra ancorar o horário previsto (coluna "Horário").
+  // Estimativa, não precisa de WS: refetch a cada 5s já é preciso o suficiente.
+  const channelId = playlist?.channel?.id
+  const { data: liveState } = useQuery({
+    queryKey: ['playout-state-for-schedule', channelId],
+    queryFn: () => playoutApi.getState(channelId!),
+    enabled: !!channelId,
+    refetchInterval: 5000,
   })
 
   const addItem = useMutation({
@@ -196,6 +212,13 @@ export default function PlaylistEditorPage() {
   const total = totalDuration(items)
   const breakGroups = [...new Set(items.map((i) => i.breakNum))].sort((a, b) => a - b)
 
+  // Âncora do horário previsto: se esta playlist é a que está realmente tocando no
+  // canal agora, parte do início real (agora - tempo já decorrido); senão, assume
+  // que o primeiro item começaria agora mesmo (modo parado/edição fora do ar).
+  const anchorMs = (liveState?.status === 'PLAYING' && liveState.playlistId === playlist.id)
+    ? Date.now() - liveState.totalElapsed * 1000
+    : Date.now()
+
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar */}
@@ -245,9 +268,10 @@ export default function PlaylistEditorPage() {
           <span className="text-[10px] font-semibold text-gray-600 uppercase tracking-wide w-10 shrink-0">Tipo</span>
           <span className="text-[10px] font-semibold text-gray-600 uppercase tracking-wide flex-1">Título / Código / Cliente</span>
           <span className="text-[10px] font-semibold text-gray-600 uppercase tracking-wide shrink-0 w-14 text-right">Duração</span>
+          <span className="text-[10px] font-semibold text-gray-600 uppercase tracking-wide shrink-0 w-16 text-right">Horário</span>
           <span className="text-[10px] font-semibold text-gray-600 uppercase tracking-wide shrink-0 w-12 text-center">Mídia</span>
           <span className="text-[10px] font-semibold text-gray-600 uppercase tracking-wide shrink-0 w-16 text-center">Loop</span>
-          <span className="w-16 shrink-0" />
+          <span className="w-8 shrink-0" />
         </div>
 
         {items.length === 0 ? (
@@ -260,7 +284,7 @@ export default function PlaylistEditorPage() {
           </div>
         ) : (
           <div className="space-y-1">
-            {items.map((item, idx) => {
+            {(() => { let cumulative = 0; return items.map((item, idx) => {
               const clip = item.clip
               const type = (clip as any).type
               const media = (clip as any).media
@@ -268,6 +292,8 @@ export default function PlaylistEditorPage() {
               const cueOut = item.overrideCueOut ?? clip.cueOut ?? media?.duration
               const dur = cueOut ? cueOut - cueIn : (media?.duration ?? clip.duration)
               const isOver = overIdx === idx
+              const predictedStartMs = anchorMs + cumulative * 1000
+              cumulative += (dur ?? 0)
 
               return (
                 <div
@@ -313,6 +339,16 @@ export default function PlaylistEditorPage() {
                   {/* Duração */}
                   <span className="text-xs font-mono text-gray-400 shrink-0">{formatDur(dur)}</span>
 
+                  {/* Horário previsto — estimado a partir do início real (ao vivo) ou de agora (parado) */}
+                  <span className="shrink-0 w-16 flex items-center justify-end gap-1">
+                    {item.maxDuration && (
+                      <span title={`Timer: avança após ${Math.floor(item.maxDuration/60)}:${String(item.maxDuration%60).padStart(2,'0')}`}>
+                        <Timer className="h-3 w-3 text-amber-400" />
+                      </span>
+                    )}
+                    <span className="text-[11px] font-mono text-gray-500">{formatClock(predictedStartMs)}</span>
+                  </span>
+
                   {/* Tipo de mídia */}
                   {(() => {
                     const mt = getItemMediaType(clip)
@@ -324,38 +360,17 @@ export default function PlaylistEditorPage() {
                     )
                   })()}
 
-                  {/* Timer — só para URL clips */}
-                  {(['URL', 'YOUTUBE'].includes((clip as any).sourceType)) && (
-                    timerEditId === item.id ? (
-                      <input
-                        autoFocus
-                        className="w-16 bg-gray-700 text-gray-100 text-[10px] font-mono rounded px-1.5 py-0.5 border border-brand-500/60 outline-none"
-                        placeholder="mm:ss"
-                        value={timerEditVal}
-                        onChange={(e) => setTimerEditVal(e.target.value)}
-                        onBlur={() => commitTimer(item.id)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') commitTimer(item.id); if (e.key === 'Escape') setTimerEditId(null) }}
-                      />
-                    ) : (
-                      <button
-                        onClick={() => !isLocked && openTimerEdit(item)}
-                        disabled={isLocked}
-                        title={item.maxDuration ? `Timer: avança após ${Math.floor(item.maxDuration/60)}:${String(item.maxDuration%60).padStart(2,'0')}` : 'Definir timer de avanço'}
-                        className={clsx(
-                          'flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors',
-                          isLocked
-                            ? 'bg-gray-800 text-gray-600 cursor-not-allowed'
-                            : item.maxDuration
-                              ? 'bg-amber-500/20 text-amber-300 ring-1 ring-amber-500/40'
-                              : 'bg-gray-800 text-gray-400 hover:text-gray-200'
-                        )}
-                      >
-                        <Timer className="h-3 w-3" />
-                        {item.maxDuration
-                          ? `${Math.floor(item.maxDuration/60)}:${String(item.maxDuration%60).padStart(2,'0')}`
-                          : 'Timer'}
-                      </button>
-                    )
+                  {/* Timer — input de edição inline (gatilho fica no menu ⋮) */}
+                  {(['URL', 'YOUTUBE'].includes((clip as any).sourceType)) && timerEditId === item.id && (
+                    <input
+                      autoFocus
+                      className="w-16 bg-gray-700 text-gray-100 text-[10px] font-mono rounded px-1.5 py-0.5 border border-brand-500/60 outline-none"
+                      placeholder="mm:ss"
+                      value={timerEditVal}
+                      onChange={(e) => setTimerEditVal(e.target.value)}
+                      onBlur={() => commitTimer(item.id)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') commitTimer(item.id); if (e.key === 'Escape') setTimerEditId(null) }}
+                    />
                   )}
 
                   {/* Loop */}
@@ -376,28 +391,54 @@ export default function PlaylistEditorPage() {
                     {item.loop ? 'Loop ON' : 'Loop'}
                   </button>
 
-                  {/* Upload — só aparece para clipes FILE sem arquivo */}
-                  {(clip as any).sourceType !== 'URL' && !media && (
+                  {/* Menu de ações — Timer, Upload e Remover agrupados pra não disputar espaço com a linha */}
+                  <div className="relative shrink-0">
                     <Button
                       size="sm" variant="ghost"
-                      loading={uploadingClipId === clip.id}
-                      disabled={uploadingClipId !== null && uploadingClipId !== clip.id}
-                      icon={<Upload className="h-3.5 w-3.5 text-orange-400" />}
-                      onClick={() => startUpload(clip.id)}
-                      title={uploadingClipId === clip.id ? `${uploadProgress}%` : 'Enviar arquivo de mídia'}
+                      icon={<MoreVertical className="h-3.5 w-3.5 text-gray-500" />}
+                      onClick={() => setMenuOpenId(menuOpenId === item.id ? null : item.id)}
                     />
-                  )}
-
-                  {/* Remover */}
-                  <Button
-                    size="sm" variant="ghost"
-                    disabled={isLocked}
-                    icon={<Trash2 className={clsx('h-3.5 w-3.5', isLocked ? 'text-gray-600' : 'text-red-500')} />}
-                    onClick={() => removeItem.mutate(item.id)}
-                  />
+                    {menuOpenId === item.id && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => setMenuOpenId(null)} />
+                        <div className="absolute right-0 top-full mt-1 z-50 w-52 card shadow-xl py-1">
+                          {(['URL', 'YOUTUBE'].includes((clip as any).sourceType)) && (
+                            <button
+                              disabled={isLocked}
+                              onClick={() => { openTimerEdit(item); setMenuOpenId(null) }}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-300 hover:bg-white/5 disabled:text-gray-600 disabled:cursor-not-allowed text-left"
+                            >
+                              <Timer className="h-3.5 w-3.5 text-amber-400" />
+                              {item.maxDuration
+                                ? `Timer: ${Math.floor(item.maxDuration/60)}:${String(item.maxDuration%60).padStart(2,'0')}`
+                                : 'Definir timer de avanço'}
+                            </button>
+                          )}
+                          {(clip as any).sourceType !== 'URL' && !media && (
+                            <button
+                              disabled={uploadingClipId !== null && uploadingClipId !== clip.id}
+                              onClick={() => { startUpload(clip.id); setMenuOpenId(null) }}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-300 hover:bg-white/5 disabled:text-gray-600 disabled:cursor-not-allowed text-left"
+                            >
+                              <Upload className="h-3.5 w-3.5 text-orange-400" />
+                              {uploadingClipId === clip.id ? `Enviando… ${uploadProgress}%` : 'Enviar arquivo de mídia'}
+                            </button>
+                          )}
+                          <button
+                            disabled={isLocked}
+                            onClick={() => { removeItem.mutate(item.id); setMenuOpenId(null) }}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-white/5 disabled:text-gray-600 disabled:cursor-not-allowed text-left"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            Remover
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
               )
-            })}
+            }) })()}
           </div>
         )}
       </div>
