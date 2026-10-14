@@ -92,6 +92,7 @@ export interface PlaylistItemRow {
   sourceUrl: string | null
   graphicName: string | null
   isBreak: boolean
+  scheduledAt: string | null
 }
 
 export interface OutputStats {

@@ -6,7 +6,7 @@ export interface PlaylistItem {
   order: number
   breakNum: number
   blockOrder: number
-  scheduledAt?: string
+  scheduledAt?: string | null
   overrideCueIn?: number
   overrideCueOut?: number
   loop?: boolean

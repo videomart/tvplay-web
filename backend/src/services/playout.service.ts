@@ -474,6 +474,73 @@ const advancing = new Set<string>()
 // atrás: cada tick avança um item (registrando o log de exibição de cada um)
 // até sair do run, em vez de esperar a duração restante de cada clip.
 const concatEnded = new Set<string>()
+// Guard: impede disparar o mesmo agendamento mais de uma vez por canal enquanto
+// o play()/jumpTo() ainda está em andamento (pode levar mais de 1s)
+const schedulingInProgress = new Set<string>()
+
+// ─── Agendamento de exibição (scheduledAt) ────────────────────────────────────
+// Checagem GLOBAL, independente do status play/pause/stop de cada canal — ao
+// contrário do avanço normal de item (que só roda dentro do timer por canal,
+// vivo só enquanto PLAYING), o agendamento precisa valer mesmo com o canal
+// parado: se vencer parado, deve iniciar a playlist nesse item; se vencer
+// tocando, deve interromper o que está no ar e pular pra ele.
+
+async function findDueScheduledItems(): Promise<Array<{ itemId: string; playlistId: string; channelId: string | null; index: number }>> {
+  const due = await prisma.playlistItem.findMany({
+    where: { scheduledAt: { lte: new Date() } },
+    select: { id: true, playlistId: true },
+  })
+  if (due.length === 0) return []
+  const byPlaylist = new Map<string, string[]>()
+  for (const d of due) {
+    if (!byPlaylist.has(d.playlistId)) byPlaylist.set(d.playlistId, [])
+    byPlaylist.get(d.playlistId)!.push(d.id)
+  }
+  const results: Array<{ itemId: string; playlistId: string; channelId: string | null; index: number }> = []
+  for (const [playlistId, itemIds] of byPlaylist) {
+    const [playlist, items] = await Promise.all([
+      prisma.playlist.findUnique({ where: { id: playlistId }, select: { channelId: true } }),
+      prisma.playlistItem.findMany({ where: { playlistId }, orderBy: { order: 'asc' }, select: { id: true } }),
+    ])
+    // Entre os vencidos dessa playlist, processa o de menor índice primeiro
+    let best: { id: string; index: number } | null = null
+    for (const id of itemIds) {
+      const idx = items.findIndex((it) => it.id === id)
+      if (idx >= 0 && (!best || idx < best.index)) best = { id, index: idx }
+    }
+    if (best) results.push({ itemId: best.id, playlistId, channelId: playlist?.channelId ?? null, index: best.index })
+  }
+  return results
+}
+
+setInterval(async () => {
+  const due = await findDueScheduledItems().catch(() => [])
+  for (const d of due) {
+    if (!d.channelId) {
+      // Playlist sem canal associado — não há onde exibir; consome pra não ficar travado
+      await prisma.playlistItem.update({ where: { id: d.itemId }, data: { scheduledAt: null } }).catch(() => {})
+      console.warn(`[playout] Agendamento ignorado — playlist ${d.playlistId} sem canal associado (item ${d.itemId})`)
+      continue
+    }
+    if (schedulingInProgress.has(d.channelId)) continue
+    schedulingInProgress.add(d.channelId)
+    try {
+      await prisma.playlistItem.update({ where: { id: d.itemId }, data: { scheduledAt: null } })
+      const state = states.get(d.channelId)
+      if (state?.status === 'PLAYING' && state.playlistId === d.playlistId) {
+        console.log(`[playout] Agendamento disparado ch=${d.channelId} — interrompendo para idx=${d.index} (item ${d.itemId})`)
+        await jumpTo(d.channelId, d.index)
+      } else {
+        console.log(`[playout] Agendamento disparado ch=${d.channelId} — iniciando playlist ${d.playlistId} no item ${d.itemId} (canal estava ${state?.status ?? 'IDLE'})`)
+        await play(d.channelId, d.playlistId, d.itemId)
+      }
+    } catch (err: any) {
+      console.error(`[playout] Falha ao executar agendamento ch=${d.channelId}:`, err?.message ?? err)
+    } finally {
+      schedulingInProgress.delete(d.channelId)
+    }
+  }
+}, 1000)
 
 async function computePlaylistMeta(playlistId: string): Promise<{ totalDuration: number; count: number }> {
   const items = await prisma.playlistItem.findMany({

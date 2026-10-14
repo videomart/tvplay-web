@@ -303,7 +303,8 @@ export default async function playlistRoutes(app: FastifyInstance) {
       where: { id: request.params.itemId },
       data: {
         ...body.data,
-        scheduledAt: body.data.scheduledAt ? new Date(body.data.scheduledAt) : undefined,
+        // undefined (campo ausente) = não mexe; null explícito = limpa o agendamento
+        scheduledAt: body.data.scheduledAt === undefined ? undefined : (body.data.scheduledAt ? new Date(body.data.scheduledAt) : null),
       },
       include: {
         clip: {

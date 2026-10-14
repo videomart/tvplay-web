@@ -314,6 +314,7 @@ export default async function playoutRoutes(app: FastifyInstance) {
           loop: false, maxDuration: (item as any).maxDuration ?? null,
           clientName: null, breakNum: item.breakNum,
           mediaReady: true, sourceType: 'BREAK', graphicName: null, isBreak: true,
+          scheduledAt: item.scheduledAt ? item.scheduledAt.toISOString() : null,
         }
       }
       const clip = item.clip!
@@ -338,6 +339,7 @@ export default async function playoutRoutes(app: FastifyInstance) {
         sourceType: (clip as any).sourceType ?? 'FILE',
         sourceUrl: (clip as any).sourceUrl ?? null,
         graphicName: clip.graphic?.name ?? null, isBreak: false,
+        scheduledAt: item.scheduledAt ? item.scheduledAt.toISOString() : null,
       }
     })
   })

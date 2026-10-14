@@ -4,7 +4,7 @@ import {
   Play, Pause, Square, SkipForward, SkipBack,
   Radio, Wifi, WifiOff, MonitorPlay, MonitorOff, Antenna,
   ChevronDown, ChevronUp, ChevronRight, RefreshCw, RotateCcw, GripVertical, Trash2, Repeat,
-  Camera, Timer, Copy, X,
+  Camera, Timer, Copy, X, MoreVertical, CalendarClock,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
@@ -86,6 +86,10 @@ function formatTime(sec: number) {
   return h > 0
     ? `${sign}${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
     : `${sign}${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
+function formatClock(ms: number) {
+  return new Date(ms).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
 // Mostra o feed da câmera no monitor do playout (srcObject não é suportado como prop)
@@ -290,10 +294,12 @@ function PlaylistItemRow({
   item, isCurrent, isPlayed, isDragging, isDragOver,
   playoutStatus, rowIdx, isSelected,
   onJump, onSelect, onClipPlay, onClipStop, onToggleLoop, onDelete, onSetTimer,
+  onSetSchedule, onClearSchedule,
   loopPending, clipPlayPending, clipStopPending, deletePending,
   timerEditId, timerEditVal, setTimerEditId, setTimerEditVal, commitTimer,
+  scheduleEditId, scheduleEditVal, setScheduleEditId, setScheduleEditVal, commitSchedule,
   onDragStart, onDragOver, onDragEnd, onDrop,
-  liveElapsed, breakIndex, scteEnabled, scteLastEvent,
+  liveElapsed, breakIndex, scteEnabled, scteLastEvent, predictedStartMs,
 }: {
   item: PlaylistItemRow
   isCurrent: boolean
@@ -310,6 +316,8 @@ function PlaylistItemRow({
   onToggleLoop: () => void
   onDelete: () => void
   onSetTimer: () => void
+  onSetSchedule: () => void
+  onClearSchedule: () => void
   loopPending: boolean
   clipPlayPending: boolean
   clipStopPending: boolean
@@ -320,6 +328,11 @@ function PlaylistItemRow({
   setTimerEditId: (id: string | null) => void
   setTimerEditVal: (v: string) => void
   commitTimer: (itemId: string) => void
+  scheduleEditId: string | null
+  scheduleEditVal: string
+  setScheduleEditId: (id: string | null) => void
+  setScheduleEditVal: (v: string) => void
+  commitSchedule: (itemId: string) => void
   onDragStart: () => void
   onDragOver: (e: React.DragEvent) => void
   onDragEnd: () => void
@@ -328,10 +341,12 @@ function PlaylistItemRow({
   breakIndex?: number
   scteEnabled?: boolean
   scteLastEvent?: { outOfNetwork: boolean; sentAt: number } | null
+  predictedStartMs: number
 }) {
   // Drag só começa a partir do grip handle — evita interceptar clicks em botões
   const fromHandle = useRef(false)
   const lightRow = rowIdx % 2 !== 0 && !isCurrent
+  const [menuOpen, setMenuOpen] = useState(false)
 
   // ─── BREAK item — renderização simplificada ───────────────────────────────
   if (item.isBreak) {
@@ -384,6 +399,16 @@ function PlaylistItemRow({
               SCTE {scteLastEvent.outOfNetwork ? 'OUT' : 'IN'} ✓
             </span>
           )}
+        </span>
+        <span
+          title={item.scheduledAt ? `Agendado para ${formatClock(new Date(item.scheduledAt).getTime())} — tem precedência sobre o horário previsto` : undefined}
+          className={clsx(
+            'text-[9px] font-mono flex-shrink-0 w-12 text-right flex items-center justify-end gap-0.5',
+            item.scheduledAt ? 'bg-fuchsia-600/30 text-fuchsia-100 border border-fuchsia-500/50 rounded px-1 font-bold' : 'text-white'
+          )}
+        >
+          {item.scheduledAt && <CalendarClock className="h-2.5 w-2.5" />}
+          {item.scheduledAt ? formatClock(new Date(item.scheduledAt).getTime()) : formatClock(predictedStartMs)}
         </span>
         {timerEditId === item.id ? (
           <input
@@ -465,7 +490,7 @@ function PlaylistItemRow({
             <span className="text-[10px] font-bold text-white">▶</span>
           </>
         ) : (
-          <span className={clsx('text-[10px] font-mono', isSelected ? 'text-white/60' : lightRow ? 'text-gray-600 group-hover:text-gray-900' : 'text-gray-400 group-hover:text-white/60')}>{item.index + 1}</span>
+          <span className={clsx('text-[10px] font-mono', isSelected ? 'text-white/60' : lightRow ? 'text-black' : 'text-white')}>{item.index + 1}</span>
         )}
       </span>
 
@@ -481,7 +506,7 @@ function PlaylistItemRow({
       {/* Código */}
       <span className={clsx(
         'text-[10px] font-mono flex-shrink-0 w-14 truncate pl-2',
-        isCurrent ? 'text-white font-semibold' : isSelected ? 'text-white font-semibold' : lightRow ? 'text-gray-800 font-medium group-hover:text-gray-950' : 'text-gray-300 group-hover:text-white'
+        isCurrent ? 'text-white font-semibold' : isSelected ? 'text-white font-semibold' : lightRow ? 'text-black font-medium' : 'text-white'
       )} title={item.code}>
         {item.code}
       </span>
@@ -493,7 +518,7 @@ function PlaylistItemRow({
         title={isSelected ? 'Clique para desselecionar · Duplo clique para ir para este clipe' : 'Clique para selecionar posição · Duplo clique para ir para este clipe'}
         className={clsx(
           'flex-1 text-left text-xs truncate transition-colors min-w-0 pl-1',
-          isCurrent ? 'text-white font-bold cursor-default' : isSelected ? 'text-white font-bold cursor-pointer' : lightRow ? 'text-gray-900 font-medium group-hover:text-gray-950 cursor-pointer' : 'text-gray-200 group-hover:text-white cursor-pointer'
+          isCurrent ? 'text-white font-bold cursor-default' : isSelected ? 'text-white font-bold cursor-pointer' : lightRow ? 'text-black font-medium cursor-pointer' : 'text-white cursor-pointer'
         )}
       >
         {item.title}
@@ -523,9 +548,12 @@ function PlaylistItemRow({
           {formatTime(liveElapsed)}
         </span>
       ) : (
-        <span className={clsx('text-[10px] font-mono flex-shrink-0 w-10 text-right',
-          isSelected ? 'text-white/80' : lightRow ? 'text-gray-700 group-hover:text-gray-900' : 'text-gray-400 group-hover:text-white/80',
-          item.maxDuration && item.sourceType !== 'URL' && !isSelected ? 'text-amber-400' : '')}>
+        <span className={clsx(
+          'text-[10px] font-mono flex-shrink-0 w-10 text-right',
+          item.maxDuration && item.sourceType !== 'URL' && !isSelected
+            ? 'bg-amber-500/25 text-amber-100 border border-amber-500/50 rounded px-1'
+            : isSelected ? 'text-white/80' : lightRow ? 'text-black' : 'text-white'
+        )}>
           {item.maxDuration
             ? formatTime(item.maxDuration)
             : item.sourceType === 'URL'
@@ -533,6 +561,20 @@ function PlaylistItemRow({
             : formatTime(item.duration)}
         </span>
       )}
+
+      {/* Horário previsto — ou agendado (precedência), com badge indicando interrupção programada */}
+      <span
+        title={item.scheduledAt ? `Agendado para ${formatClock(new Date(item.scheduledAt).getTime())} — interrompe a exibição em andamento` : 'Horário previsto'}
+        className={clsx(
+          'text-[9px] font-mono flex-shrink-0 w-12 text-right flex items-center justify-end gap-0.5',
+          item.scheduledAt
+            ? 'bg-fuchsia-600/30 text-fuchsia-100 border border-fuchsia-500/50 rounded px-1 font-bold'
+            : isSelected ? 'text-white/50' : lightRow ? 'text-black' : 'text-white'
+        )}
+      >
+        {item.scheduledAt && <CalendarClock className="h-2.5 w-2.5" />}
+        {item.scheduledAt ? formatClock(new Date(item.scheduledAt).getTime()) : formatClock(predictedStartMs)}
+      </span>
 
       {/* Controles por clipe */}
       <div className="flex items-center gap-0.5 flex-shrink-0">
@@ -580,57 +622,107 @@ function PlaylistItemRow({
         )}
       </div>
 
-      {/* Timer — URL clips e FILE clips (ex: slides de imagem) */}
-      {!item.isBreak && (
-        timerEditId === item.id ? (
-          <input
-            autoFocus
-            className="w-14 bg-gray-700 text-gray-100 text-[10px] font-mono rounded px-1 py-0.5 border border-amber-500/60 outline-none flex-shrink-0"
-            placeholder="mm:ss"
-            value={timerEditVal}
-            onChange={(e) => setTimerEditVal(e.target.value)}
-            onBlur={() => commitTimer(item.id)}
-            onKeyDown={(e) => { if (e.key === 'Enter') commitTimer(item.id); if (e.key === 'Escape') setTimerEditId(null) }}
-          />
-        ) : (
-          <button
-            onClick={onSetTimer}
-            title={item.maxDuration ? `Timer: avança após ${Math.floor(item.maxDuration/60)}:${String(item.maxDuration%60).padStart(2,'0')}` : 'Definir timer de avanço'}
-            className={clsx(
-              'flex-shrink-0 flex items-center gap-0.5 px-1 py-0.5 rounded text-[9px] font-medium transition-colors',
-              item.maxDuration ? 'text-amber-400 hover:text-amber-300 bg-amber-500/10' : lightRow ? 'text-gray-700 hover:text-gray-950' : 'text-gray-400 hover:text-gray-200'
+      {/* Timer — input de edição inline (gatilho fica no menu ⋮) */}
+      {!item.isBreak && timerEditId === item.id && (
+        <input
+          autoFocus
+          className="w-14 bg-gray-700 text-gray-100 text-[10px] font-mono rounded px-1 py-0.5 border border-amber-500/60 outline-none flex-shrink-0"
+          placeholder="mm:ss"
+          value={timerEditVal}
+          onChange={(e) => setTimerEditVal(e.target.value)}
+          onBlur={() => commitTimer(item.id)}
+          onKeyDown={(e) => { if (e.key === 'Enter') commitTimer(item.id); if (e.key === 'Escape') setTimerEditId(null) }}
+        />
+      )}
+      {item.maxDuration != null && !item.isBreak && (
+        <span title={`Timer: avança após ${Math.floor(item.maxDuration/60)}:${String(item.maxDuration%60).padStart(2,'0')}`}>
+          <Timer className="h-3 w-3 text-amber-400 flex-shrink-0" />
+        </span>
+      )}
+
+      {/* Agendamento — input de edição inline (gatilho fica no menu ⋮) */}
+      {scheduleEditId === item.id && (
+        <input
+          type="time"
+          step="1"
+          autoFocus
+          className="w-24 bg-gray-700 text-gray-100 text-[10px] font-mono rounded px-1 py-0.5 border border-fuchsia-500/60 outline-none flex-shrink-0"
+          value={scheduleEditVal}
+          onChange={(e) => setScheduleEditVal(e.target.value)}
+          onBlur={() => commitSchedule(item.id)}
+          onKeyDown={(e) => { if (e.key === 'Enter') commitSchedule(item.id); if (e.key === 'Escape') setScheduleEditId(null) }}
+        />
+      )}
+
+      {/* Menu de ações — Timer/Loop/Remover agrupados pra não disputar espaço com a linha */}
+      {(() => {
+        const canDelete = !isCurrent || playoutStatus === 'STOPPED' || playoutStatus === 'IDLE'
+        return (
+          <div className="relative flex-shrink-0">
+            <button
+              onClick={() => setMenuOpen((v) => !v)}
+              title="Mais ações"
+              className={clsx('p-0.5 rounded transition-colors', lightRow ? 'text-gray-600 hover:text-gray-950' : 'text-gray-400 hover:text-gray-200')}
+            >
+              <MoreVertical className="h-3 w-3" />
+            </button>
+            {menuOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
+                <div className="absolute right-0 top-full mt-1 z-50 w-44 rounded bg-gray-900 border border-gray-700 shadow-xl py-1">
+                  {!item.isBreak && (
+                    <button
+                      onClick={() => { onSetTimer(); setMenuOpen(false) }}
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-gray-300 hover:bg-white/5 text-left"
+                    >
+                      <Timer className="h-3.5 w-3.5 text-amber-400" />
+                      {item.maxDuration
+                        ? `Timer: ${Math.floor(item.maxDuration/60)}:${String(item.maxDuration%60).padStart(2,'0')}`
+                        : 'Definir timer de avanço'}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => { onSetSchedule(); setMenuOpen(false) }}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-gray-300 hover:bg-white/5 text-left"
+                  >
+                    <CalendarClock className="h-3.5 w-3.5 text-fuchsia-400" />
+                    {item.scheduledAt
+                      ? `Agendado: ${formatClock(new Date(item.scheduledAt).getTime())}`
+                      : 'Agendar exibição'}
+                  </button>
+                  {item.scheduledAt && (
+                    <button
+                      onClick={() => { onClearSchedule(); setMenuOpen(false) }}
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-gray-400 hover:bg-white/5 text-left"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                      Remover agendamento
+                    </button>
+                  )}
+                  <button
+                    onClick={() => { onToggleLoop(); setMenuOpen(false) }}
+                    disabled={loopPending}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-gray-300 hover:bg-white/5 disabled:text-gray-600 text-left"
+                  >
+                    <RotateCcw className={clsx('h-3.5 w-3.5', item.loop ? 'text-amber-400' : '')} />
+                    {item.loop ? 'Desativar loop' : 'Ativar loop'}
+                  </button>
+                  {canDelete && (
+                    <button
+                      onClick={() => { onDelete(); setMenuOpen(false) }}
+                      disabled={deletePending}
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-white/5 disabled:text-gray-600 text-left"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Remover da playlist
+                    </button>
+                  )}
+                </div>
+              </>
             )}
-          >
-            <Timer className="h-3 w-3" />
-            {item.maxDuration && `${Math.floor(item.maxDuration/60)}:${String(item.maxDuration%60).padStart(2,'0')}`}
-          </button>
+          </div>
         )
-      )}
-
-      {/* Loop toggle */}
-      <button
-        onClick={onToggleLoop}
-        disabled={loopPending}
-        title={item.loop ? 'Desativar loop' : 'Ativar loop'}
-        className={clsx(
-          'flex-shrink-0 p-0.5 rounded transition-colors disabled:opacity-40',
-          item.loop ? 'text-amber-500 hover:text-amber-400' : lightRow ? 'text-gray-600 hover:text-gray-950' : 'text-gray-400 hover:text-gray-200'
-        )}
-      >
-        <RotateCcw className="h-3 w-3" />
-      </button>
-
-      {/* Excluir item — visível para não-atual, ou para qualquer item quando parado/idle */}
-      {(!isCurrent || playoutStatus === 'STOPPED' || playoutStatus === 'IDLE') && (
-        <button
-          onClick={onDelete}
-          disabled={deletePending}
-          title="Remover da playlist"
-          className={clsx('flex-shrink-0 p-0.5 rounded transition-colors disabled:opacity-40', lightRow ? 'text-gray-600 hover:text-red-700' : 'text-gray-500 hover:text-red-400')}
-        >
-          <Trash2 className="h-3 w-3" />
-        </button>
-      )}
+      })()}
     </div>
   )
 }
@@ -938,6 +1030,42 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
     setTimerEditId(item.id)
     const v = item.maxDuration
     setTimerEditVal(v ? `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}` : '')
+  }
+
+  // ─── Agendamento de exibição (scheduledAt) — tem precedência sobre o horário previsto ──
+  const [scheduleEditId, setScheduleEditId] = useState<string | null>(null)
+  const [scheduleEditVal, setScheduleEditVal] = useState('')
+
+  const setScheduleMut = useMutation({
+    mutationFn: ({ itemId, scheduledAt }: { itemId: string; scheduledAt: string | null }) =>
+      playlistsApi.updateItem(state?.playlistId ?? '', itemId, { scheduledAt }),
+    onSuccess: () => refetchItems(),
+    onError: (e: any) => toast.error(e.response?.data?.error ?? 'Erro ao agendar exibição'),
+  })
+
+  function openScheduleEdit(item: { id: string; scheduledAt: string | null }) {
+    setScheduleEditId(item.id)
+    setScheduleEditVal(item.scheduledAt ? new Date(item.scheduledAt).toTimeString().slice(0, 8) : '')
+  }
+
+  function commitSchedule(itemId: string) {
+    const raw = scheduleEditVal.trim()
+    let scheduledAt: string | null = null
+    if (raw) {
+      const [h, m, s] = raw.split(':').map(Number)
+      const d = new Date()
+      d.setMilliseconds(0)
+      d.setHours(h, m, s || 0)
+      // Horário já passou hoje — assume que é pra amanhã, não pro passado
+      if (d.getTime() <= Date.now()) d.setDate(d.getDate() + 1)
+      scheduledAt = d.toISOString()
+    }
+    setScheduleMut.mutate({ itemId, scheduledAt })
+    setScheduleEditId(null)
+  }
+
+  function clearSchedule(itemId: string) {
+    setScheduleMut.mutate({ itemId, scheduledAt: null })
   }
 
   function commitTimer(itemId: string) {
@@ -1702,9 +1830,9 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
               <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-200 flex-1 min-w-0 pl-1">Título</span>
               <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-500 w-8 text-center flex-shrink-0">GFX</span>
               <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-200 w-10 text-right flex-shrink-0">Dur.</span>
+              <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-500 w-14 text-right flex-shrink-0 whitespace-nowrap">Horário</span>
               <span className="w-8 flex-shrink-0" />
-              <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-200 flex-shrink-0 px-0.5">Loop</span>
-              <span className="w-4 flex-shrink-0" />
+              <span className="w-5 flex-shrink-0" />
             </div>
           )}
 
@@ -1737,6 +1865,16 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                   let breakCount = 0
                   const breakIndexOf = new Map<string, number>()
                   for (const p of playlistItems) { if (p.isBreak) breakIndexOf.set(p.id, ++breakCount) }
+                  // Horário previsto: ancora no início real (status tocando) ou em agora (parado/idle)
+                  const anchorMs = (status === 'PLAYING' || status === 'PAUSED')
+                    ? Date.now() - totalElapsed * 1000
+                    : Date.now()
+                  let cumulativeSecs = 0
+                  const predictedStartOf = new Map<string, number>()
+                  for (const p of playlistItems) {
+                    predictedStartOf.set(p.id, anchorMs + cumulativeSecs * 1000)
+                    cumulativeSecs += (p.maxDuration ?? p.duration ?? 0)
+                  }
                   return playlistItems.map((pi, idx) => {
                     const isItemSelected = pi.id === selectedItemId
                     return (
@@ -1768,6 +1906,13 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                           onToggleLoop={() => toggleLoopMut.mutate(pi.id)}
                           onDelete={() => deleteItemMut.mutate(pi.id)}
                           onSetTimer={() => openTimerEdit(pi)}
+                          onSetSchedule={() => openScheduleEdit(pi)}
+                          onClearSchedule={() => clearSchedule(pi.id)}
+                          scheduleEditId={scheduleEditId}
+                          scheduleEditVal={scheduleEditVal}
+                          setScheduleEditId={setScheduleEditId}
+                          setScheduleEditVal={setScheduleEditVal}
+                          commitSchedule={commitSchedule}
                           loopPending={toggleLoopMut.isPending && toggleLoopMut.variables === pi.id}
                           deletePending={deleteItemMut.isPending && deleteItemMut.variables === pi.id}
                           graphicName={pi.graphicName}
@@ -1786,6 +1931,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                           breakIndex={breakIndexOf.get(pi.id)}
                           scteEnabled={state?.scteEnabled}
                           scteLastEvent={idx === currentIndex ? state?.scteLastEvent : null}
+                          predictedStartMs={predictedStartOf.get(pi.id)!}
                         />
 
                       </div>

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Tv2, Radio, Library } from 'lucide-react'
+import { Tv2, Radio, Library, Clock } from 'lucide-react'
 import { clsx } from 'clsx'
 import { channelsApi } from '../../api/channels.api'
 import ChannelPanel from './ChannelPanel'
@@ -10,6 +10,13 @@ import ClipLibraryPanel from './ClipLibraryPanel'
 export default function PlayoutPage() {
   const [mobileTab, setMobileTab] = useState(0) // índice da aba ativa no mobile
   const [searchParams] = useSearchParams()
+
+  // Relógio ao vivo — referência pro operador comparar com os horários previstos/agendados da playlist
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000)
+    return () => clearInterval(id)
+  }, [])
 
   const { data: channels = [], isLoading } = useQuery({
     queryKey: ['channels'],
@@ -82,8 +89,12 @@ export default function PlayoutPage() {
           <div className="text-[11px] font-semibold text-brand-400 uppercase tracking-widest px-1 flex items-center gap-1.5">
             <Tv2 className="h-3.5 w-3.5" />Playout 1
           </div>
-          <div className="text-[11px] font-semibold text-brand-400 uppercase tracking-widest px-1 flex items-center gap-1.5">
-            <Library className="h-3.5 w-3.5" />Mídias
+          <div className="relative text-[11px] font-semibold text-brand-400 uppercase tracking-widest px-1 flex items-center gap-1.5">
+            <span className="flex items-center gap-1.5"><Library className="h-3.5 w-3.5" />Mídias</span>
+            <span className="absolute left-1/2 -translate-x-1/2 flex items-center gap-1.5 text-emerald-400 normal-case tracking-normal font-mono text-lg font-bold">
+              <Clock className="h-5 w-5" />
+              {now.toLocaleTimeString('pt-BR')}
+            </span>
           </div>
           {active.length > 1 && (
             <div className="text-[11px] font-semibold text-brand-400 uppercase tracking-widest px-1 flex items-center gap-1.5">
