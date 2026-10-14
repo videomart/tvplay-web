@@ -1824,13 +1824,13 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
           {playlistOpen && (
             <div className="flex items-center gap-1.5 px-2 py-2 border-b-2 border-gray-600 bg-gray-800 select-none">
               <span className="w-3.5 flex-shrink-0" />
-              <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-200 w-5 text-right flex-shrink-0">#</span>
-              <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-200 w-8 flex-shrink-0">Tipo</span>
-              <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-500 w-14 flex-shrink-0 pl-2">Cód.</span>
-              <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-200 flex-1 min-w-0 pl-1">Título</span>
-              <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-500 w-8 text-center flex-shrink-0">GFX</span>
-              <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-200 w-10 text-right flex-shrink-0">Dur.</span>
-              <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-500 w-14 text-right flex-shrink-0 whitespace-nowrap">Horário</span>
+              <span className="text-[11px] font-extrabold uppercase tracking-widest text-white w-5 text-right flex-shrink-0">#</span>
+              <span className="text-[11px] font-extrabold uppercase tracking-widest text-white w-8 flex-shrink-0">Tipo</span>
+              <span className="text-[11px] font-extrabold uppercase tracking-widest text-white w-14 flex-shrink-0 pl-2">Cód.</span>
+              <span className="text-[11px] font-extrabold uppercase tracking-widest text-white flex-1 min-w-0 pl-1">Título</span>
+              <span className="text-[11px] font-extrabold uppercase tracking-widest text-white w-8 text-center flex-shrink-0">GFX</span>
+              <span className="text-[11px] font-extrabold uppercase tracking-widest text-white w-10 text-right flex-shrink-0">Dur.</span>
+              <span className="text-[11px] font-extrabold uppercase tracking-widest text-white w-14 text-right flex-shrink-0 whitespace-nowrap">Horário</span>
               <span className="w-8 flex-shrink-0" />
               <span className="w-5 flex-shrink-0" />
             </div>
