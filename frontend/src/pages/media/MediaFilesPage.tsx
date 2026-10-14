@@ -249,6 +249,21 @@ export default function MediaFilesPage() {
   const orphanCount = files.filter(f => f._count.clips === 0).length
   const totalSize   = files.reduce((acc, f) => acc + Number(f.sizeBytes ?? 0), 0)
 
+  const { data: storageUsage } = useQuery({
+    queryKey: ['storage-usage'],
+    queryFn: clipsApi.getStorageUsage,
+    refetchInterval: 30_000,
+  })
+  const storageUsedBytes  = storageUsage ? Number(storageUsage.usedBytes) : null
+  const storageQuotaBytes = storageUsage?.quotaBytes ? Number(storageUsage.quotaBytes) : null
+  const storagePct = storageQuotaBytes && storageUsedBytes != null
+    ? Math.min(100, (storageUsedBytes / storageQuotaBytes) * 100)
+    : null
+  const storageBarColor = storagePct == null ? 'bg-gray-600'
+    : storagePct >= 90 ? 'bg-red-500'
+    : storagePct >= 70 ? 'bg-amber-500'
+    : 'bg-emerald-500'
+
   return (
     <div className="p-6 space-y-4">
       <input ref={fileRef} type="file" multiple accept="video/*,image/*,.mxf,.mts,.m2ts" className="hidden" onChange={handleUpload} />
@@ -367,6 +382,25 @@ export default function MediaFilesPage() {
           className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-gray-800 text-red-400 hover:bg-gray-700 transition-colors disabled:opacity-50 border border-gray-700">
           <Film className="h-3 w-3" />Cookies YT
         </button>
+
+        {/* ── Uso de armazenamento (total global, não só a lista filtrada) ───── */}
+        {storageUsage && (
+          storageQuotaBytes ? (
+            <div className="flex items-center gap-2 ml-1 flex-1 min-w-[160px]">
+              <div className="flex-1 h-2 rounded-full bg-gray-800 overflow-hidden">
+                <div className={clsx('h-full rounded-full transition-all', storageBarColor)} style={{ width: `${storagePct}%` }} />
+              </div>
+              <span className="text-xs text-gray-400 font-mono whitespace-nowrap">
+                {formatSize(storageUsage.usedBytes)} de {formatSize(storageUsage.quotaBytes!)} ({storagePct!.toFixed(0)}%)
+              </span>
+            </div>
+          ) : (
+            <span className="text-xs text-gray-600 ml-1">
+              {formatSize(storageUsage.usedBytes)} em uso · quota não configurada —
+              <button onClick={() => navigate('/settings')} className="text-brand-400 hover:underline ml-1">configurar em Configurações</button>
+            </span>
+          )
+        )}
 
         {/* Contexto selecionado */}
         {selected && (

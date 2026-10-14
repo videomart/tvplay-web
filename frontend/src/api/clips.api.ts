@@ -85,6 +85,8 @@ export const clipsApi = {
     api.delete<{ ok: boolean; deletedObjects: number }>(`/ingest/media/${id}`).then((r) => r.data),
   scanMinio: () =>
     api.post<{ scanned: number; queued: number; files: string[] }>('/ingest/scan-minio').then((r) => r.data),
+  getStorageUsage: () =>
+    api.get<{ usedBytes: string; quotaBytes: string | null }>('/media/storage-usage').then((r) => r.data),
   uploadMedia: (file: File, clipId: string, onProgress?: (pct: number) => void) => {
     const form = new FormData()
     form.append('file', file)

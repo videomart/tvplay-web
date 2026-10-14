@@ -15,6 +15,7 @@ export interface SystemSettings {
   defaultSlideDuration: number
   defaultUrlDuration: number
   youtubeContentEnabled: boolean
+  storageQuotaGB: number | null
   updatedAt: string
 }
 

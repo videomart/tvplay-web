@@ -93,6 +93,8 @@ export interface PlaylistItemRow {
   graphicName: string | null
   isBreak: boolean
   scheduledAt: string | null
+  mediaId: string | null
+  mediaThumbnail: string | null
 }
 
 export interface OutputStats {

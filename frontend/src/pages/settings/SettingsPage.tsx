@@ -63,6 +63,7 @@ export default function SettingsPage() {
   const [defaultSlideDuration,  setDefaultSlideDuration]  = useState(15)
   const [defaultUrlDuration,    setDefaultUrlDuration]    = useState(0)
   const [youtubeContentEnabled, setYoutubeContentEnabled] = useState(true)
+  const [storageQuotaGB,        setStorageQuotaGB]        = useState<number | null>(null)
   const [cookiesUploading,      setCookiesUploading]      = useState(false)
   const cookiesFileRef = useRef<HTMLInputElement>(null)
 
@@ -112,6 +113,7 @@ export default function SettingsPage() {
       setDefaultSlideDuration(settings.defaultSlideDuration ?? 15)
       setDefaultUrlDuration(settings.defaultUrlDuration ?? 0)
       setYoutubeContentEnabled(settings.youtubeContentEnabled ?? true)
+      setStorageQuotaGB(settings.storageQuotaGB ?? null)
     }
   }, [settings])
 
@@ -393,6 +395,19 @@ export default function SettingsPage() {
                 </div>
               </div>
 
+              {/* Quota de armazenamento */}
+              <div className="border-t border-gray-800 pt-3 space-y-2">
+                <h3 className="text-sm font-semibold text-white">Mídias — Quota de Armazenamento</h3>
+                <p className="text-xs text-gray-500">Limite usado pela barra de uso na tela de Mídias. Vazio = sem limite configurado.</p>
+                <div className="flex items-center gap-2">
+                  <input type="number" min={1} value={storageQuotaGB ?? ''}
+                    placeholder="sem limite"
+                    onChange={(e) => setStorageQuotaGB(e.target.value === '' ? null : Math.max(1, Number(e.target.value)))}
+                    className={inputCls + ' w-28'} />
+                  <span className="text-xs text-gray-500">GB</span>
+                </div>
+              </div>
+
               {/* Slide */}
               <div className="border-t border-gray-800 pt-3 space-y-2">
                 <h3 className="text-sm font-semibold text-white">Slide (Imagem) — Duração Padrão</h3>
@@ -496,7 +511,7 @@ export default function SettingsPage() {
             <Button
               icon={<Save className="h-4 w-4" />}
               loading={saveMut.isPending}
-              onClick={() => saveMut.mutate({ ...playoutDefaults, clockOffsetHours, defaultBreakDuration, defaultSlideDuration, defaultUrlDuration, youtubeContentEnabled })}
+              onClick={() => saveMut.mutate({ ...playoutDefaults, clockOffsetHours, defaultBreakDuration, defaultSlideDuration, defaultUrlDuration, youtubeContentEnabled, storageQuotaGB })}
             >
               Salvar
             </Button>

@@ -9,6 +9,20 @@ import { config } from '../config'
 export default async function mediaRoutes(app: FastifyInstance) {
   const auth = { preHandler: [app.authenticate] }
 
+  // Uso total de armazenamento (soma de MediaFile.sizeBytes) + quota configurada
+  app.get('/storage-usage', auth, async () => {
+    const [sum, settings] = await Promise.all([
+      prisma.mediaFile.aggregate({ _sum: { sizeBytes: true } }),
+      prisma.systemSettings.findUnique({ where: { id: 'singleton' }, select: { storageQuotaGB: true } }),
+    ])
+    const usedBytes = sum._sum.sizeBytes ?? BigInt(0)
+    const quotaGB = settings?.storageQuotaGB ?? null
+    return {
+      usedBytes: usedBytes.toString(),
+      quotaBytes: quotaGB != null ? String(BigInt(quotaGB) * BigInt(1024 ** 3)) : null,
+    }
+  })
+
   // Info do arquivo de mídia
   app.get('/:mediaId', auth, async (request: any, reply) => {
     const media = await prisma.mediaFile.findUnique({

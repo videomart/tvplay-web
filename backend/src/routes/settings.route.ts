@@ -24,7 +24,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
       defaultMonitorOpen, defaultFallbackOpen,
       defaultOutputsOpen, defaultPlaylistOpen,
       clockOffsetHours, defaultBreakDuration, defaultSlideDuration, defaultUrlDuration,
-      youtubeContentEnabled,
+      youtubeContentEnabled, storageQuotaGB,
     } = request.body as {
       appTitle?: string
       companyName?: string
@@ -39,6 +39,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
       defaultSlideDuration?: number
       defaultUrlDuration?: number
       youtubeContentEnabled?: boolean
+      storageQuotaGB?: number | null
     }
 
     const result = await prisma.systemSettings.upsert({
@@ -58,6 +59,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
         defaultSlideDuration: defaultSlideDuration ?? 15,
         defaultUrlDuration:   defaultUrlDuration   ?? 0,
         youtubeContentEnabled: youtubeContentEnabled ?? true,
+        storageQuotaGB: storageQuotaGB ?? null,
       },
       update: {
         ...(appTitle              !== undefined && { appTitle }),
@@ -73,6 +75,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
         ...(defaultSlideDuration  !== undefined && { defaultSlideDuration }),
         ...(defaultUrlDuration    !== undefined && { defaultUrlDuration }),
         ...(youtubeContentEnabled !== undefined && { youtubeContentEnabled }),
+        ...(storageQuotaGB        !== undefined && { storageQuotaGB }),
       },
     })
 

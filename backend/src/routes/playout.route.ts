@@ -296,7 +296,7 @@ export default async function playoutRoutes(app: FastifyInstance) {
           include: {
             client: { select: { name: true } },
             type: { select: { code: true, fontColor: true, fontBackColor: true } },
-            media: { select: { duration: true, ingestStatus: true } },
+            media: { select: { id: true, duration: true, ingestStatus: true, thumbnail: true } },
             graphic: { select: { name: true } },
           },
         },
@@ -315,6 +315,7 @@ export default async function playoutRoutes(app: FastifyInstance) {
           clientName: null, breakNum: item.breakNum,
           mediaReady: true, sourceType: 'BREAK', graphicName: null, isBreak: true,
           scheduledAt: item.scheduledAt ? item.scheduledAt.toISOString() : null,
+          mediaId: null, mediaThumbnail: null,
         }
       }
       const clip = item.clip!
@@ -340,6 +341,8 @@ export default async function playoutRoutes(app: FastifyInstance) {
         sourceUrl: (clip as any).sourceUrl ?? null,
         graphicName: clip.graphic?.name ?? null, isBreak: false,
         scheduledAt: item.scheduledAt ? item.scheduledAt.toISOString() : null,
+        mediaId: clip.media?.id ?? null,
+        mediaThumbnail: clip.media?.thumbnail ?? null,
       }
     })
   })

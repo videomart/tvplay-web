@@ -488,6 +488,10 @@ model SystemSettings {
   // direto para fallback (a UI também avisa onde essas fontes seriam cadastradas).
   youtubeContentEnabled Boolean @default(true)
 
+  // Quota de armazenamento de mídia (GB) usada pela barra de uso em Mídias.
+  // null = sem quota configurada (UI pede pra configurar em vez de mostrar %).
+  storageQuotaGB Int?
+
   updatedAt DateTime @updatedAt
 
   @@map("system_settings")

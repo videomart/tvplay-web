@@ -293,7 +293,7 @@ function OutputRow({
 function PlaylistItemRow({
   item, isCurrent, isPlayed, isDragging, isDragOver,
   playoutStatus, rowIdx, isSelected,
-  onJump, onSelect, onClipPlay, onClipStop, onToggleLoop, onDelete, onSetTimer,
+  onJump, onSelect, onClipPlay, onClipStop, onToggleLoop, onDelete, onSetTimer, onClearTimer,
   onSetSchedule, onClearSchedule,
   loopPending, clipPlayPending, clipStopPending, deletePending,
   timerEditId, timerEditVal, setTimerEditId, setTimerEditVal, commitTimer,
@@ -316,6 +316,7 @@ function PlaylistItemRow({
   onToggleLoop: () => void
   onDelete: () => void
   onSetTimer: () => void
+  onClearTimer: () => void
   onSetSchedule: () => void
   onClearSchedule: () => void
   loopPending: boolean
@@ -347,6 +348,20 @@ function PlaylistItemRow({
   const fromHandle = useRef(false)
   const lightRow = rowIdx % 2 !== 0 && !isCurrent
   const [menuOpen, setMenuOpen] = useState(false)
+  const [modalPreviewOpen, setModalPreviewOpen] = useState(false)
+
+  function openActionsModal() {
+    onSetTimer()
+    onSetSchedule()
+    setModalPreviewOpen(false)
+    setMenuOpen(true)
+  }
+  function closeActionsModal() {
+    setMenuOpen(false)
+    setModalPreviewOpen(false)
+    setTimerEditId(null)
+    setScheduleEditId(null)
+  }
 
   // ─── BREAK item — renderização simplificada ───────────────────────────────
   if (item.isBreak) {
@@ -404,7 +419,7 @@ function PlaylistItemRow({
           title={item.scheduledAt ? `Agendado para ${formatClock(new Date(item.scheduledAt).getTime())} — tem precedência sobre o horário previsto` : undefined}
           className={clsx(
             'text-[9px] font-mono flex-shrink-0 w-12 text-right flex items-center justify-end gap-0.5',
-            item.scheduledAt ? 'bg-fuchsia-600/30 text-fuchsia-100 border border-fuchsia-500/50 rounded px-1 font-bold' : 'text-white'
+            item.scheduledAt ? 'bg-blue-600 text-white rounded px-1 py-0.5 font-bold' : 'text-white'
           )}
         >
           {item.scheduledAt && <CalendarClock className="h-2.5 w-2.5" />}
@@ -551,7 +566,7 @@ function PlaylistItemRow({
         <span className={clsx(
           'text-[10px] font-mono flex-shrink-0 w-10 text-right',
           item.maxDuration && item.sourceType !== 'URL' && !isSelected
-            ? 'bg-amber-500/25 text-amber-100 border border-amber-500/50 rounded px-1'
+            ? 'bg-emerald-600 text-white rounded px-1 py-0.5'
             : isSelected ? 'text-white/80' : lightRow ? 'text-black' : 'text-white'
         )}>
           {item.maxDuration
@@ -568,7 +583,7 @@ function PlaylistItemRow({
         className={clsx(
           'text-[9px] font-mono flex-shrink-0 w-12 text-right flex items-center justify-end gap-0.5',
           item.scheduledAt
-            ? 'bg-fuchsia-600/30 text-fuchsia-100 border border-fuchsia-500/50 rounded px-1 font-bold'
+            ? 'bg-blue-600 text-white rounded px-1 py-0.5 font-bold'
             : isSelected ? 'text-white/50' : lightRow ? 'text-black' : 'text-white'
         )}
       >
@@ -622,105 +637,116 @@ function PlaylistItemRow({
         )}
       </div>
 
-      {/* Timer — input de edição inline (gatilho fica no menu ⋮) */}
-      {!item.isBreak && timerEditId === item.id && (
-        <input
-          autoFocus
-          className="w-14 bg-gray-700 text-gray-100 text-[10px] font-mono rounded px-1 py-0.5 border border-amber-500/60 outline-none flex-shrink-0"
-          placeholder="mm:ss"
-          value={timerEditVal}
-          onChange={(e) => setTimerEditVal(e.target.value)}
-          onBlur={() => commitTimer(item.id)}
-          onKeyDown={(e) => { if (e.key === 'Enter') commitTimer(item.id); if (e.key === 'Escape') setTimerEditId(null) }}
-        />
-      )}
+      {/* Timer — ícone indicador (edição agora é no modal de ações) */}
       {item.maxDuration != null && !item.isBreak && (
         <span title={`Timer: avança após ${Math.floor(item.maxDuration/60)}:${String(item.maxDuration%60).padStart(2,'0')}`}>
           <Timer className="h-3 w-3 text-amber-400 flex-shrink-0" />
         </span>
       )}
 
-      {/* Agendamento — input de edição inline (gatilho fica no menu ⋮) */}
-      {scheduleEditId === item.id && (
-        <input
-          type="time"
-          step="1"
-          autoFocus
-          className="w-24 bg-gray-700 text-gray-100 text-[10px] font-mono rounded px-1 py-0.5 border border-fuchsia-500/60 outline-none flex-shrink-0"
-          value={scheduleEditVal}
-          onChange={(e) => setScheduleEditVal(e.target.value)}
-          onBlur={() => commitSchedule(item.id)}
-          onKeyDown={(e) => { if (e.key === 'Enter') commitSchedule(item.id); if (e.key === 'Escape') setScheduleEditId(null) }}
-        />
-      )}
-
-      {/* Menu de ações — Timer/Loop/Remover agrupados pra não disputar espaço com a linha */}
+      {/* Mais ações — modal centralizado, sem overlay escuro (privilegia visibilidade do que está atrás) */}
       {(() => {
         const canDelete = !isCurrent || playoutStatus === 'STOPPED' || playoutStatus === 'IDLE'
         return (
-          <div className="relative flex-shrink-0">
+          <>
             <button
-              onClick={() => setMenuOpen((v) => !v)}
+              onClick={openActionsModal}
               title="Mais ações"
-              className={clsx('p-0.5 rounded transition-colors', lightRow ? 'text-gray-600 hover:text-gray-950' : 'text-gray-400 hover:text-gray-200')}
+              className={clsx('p-0.5 rounded transition-colors flex-shrink-0', lightRow ? 'text-gray-600 hover:text-gray-950' : 'text-gray-400 hover:text-gray-200')}
             >
               <MoreVertical className="h-3 w-3" />
             </button>
-            {menuOpen && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
-                <div className="absolute right-0 top-full mt-1 z-50 w-44 rounded bg-gray-900 border border-gray-700 shadow-xl py-1">
+            <Modal open={menuOpen} onClose={closeActionsModal} title={item.title} size="md" dim={false}>
+              <div className="space-y-4">
+                {/* Thumbnail + play — mesmo objeto usado na Biblioteca de Mídias; o
+                    player aparece numa segunda linha aqui dentro, sem popup novo */}
+                {item.mediaId && item.mediaThumbnail && (
+                  <div className="space-y-2">
+                    <div
+                      className="relative h-16 w-24 rounded overflow-hidden cursor-pointer group border border-gray-700"
+                      onClick={() => setModalPreviewOpen((v) => !v)}
+                    >
+                      <img src={`/api/media/${item.mediaId}/thumbnail`} alt="" className="h-full w-full object-cover" />
+                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <Play className="h-5 w-5 text-white" />
+                      </div>
+                    </div>
+                    {modalPreviewOpen && (
+                      <VideoPlayer src={`/api/media/stream/${item.mediaId}/index.m3u8`} className="w-full aspect-video" autoPlay />
+                    )}
+                  </div>
+                )}
+
+                {/* Duração + Horário de agendamento — mesma linha, grid garante largura igual
+                    (flex com input[type=time] não divide 50/50 — o time tem largura mínima
+                    intrínseca maior que o input de texto, então flex-1 sozinho não resolve) */}
+                <div className={clsx('grid gap-3', item.isBreak ? 'grid-cols-1' : 'grid-cols-2')}>
                   {!item.isBreak && (
-                    <button
-                      onClick={() => { onSetTimer(); setMenuOpen(false) }}
-                      className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-gray-300 hover:bg-white/5 text-left"
-                    >
-                      <Timer className="h-3.5 w-3.5 text-amber-400" />
-                      {item.maxDuration
-                        ? `Timer: ${Math.floor(item.maxDuration/60)}:${String(item.maxDuration%60).padStart(2,'0')}`
-                        : 'Definir timer de avanço'}
-                    </button>
+                    <div className="min-w-0">
+                      <label className="text-xs font-semibold text-gray-400 block mb-1">Duração</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          className="w-full min-w-0 bg-gray-800 text-gray-100 text-sm font-mono rounded px-2 py-1.5 border border-gray-700 outline-none focus:border-emerald-500/60"
+                          placeholder="mm:ss — vazio = natural"
+                          value={timerEditVal}
+                          onChange={(e) => setTimerEditVal(e.target.value)}
+                          onBlur={() => commitTimer(item.id)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') commitTimer(item.id) }}
+                        />
+                        {item.maxDuration != null && (
+                          <button onClick={() => { onClearTimer(); setTimerEditVal('') }} title="Limpar duração"
+                            className="p-1.5 rounded text-gray-500 hover:text-red-400 transition-colors flex-shrink-0">
+                            <X className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   )}
-                  <button
-                    onClick={() => { onSetSchedule(); setMenuOpen(false) }}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-gray-300 hover:bg-white/5 text-left"
+                  <div className="min-w-0">
+                    <label className="text-xs font-semibold text-gray-400 block mb-1">Horário de agendamento</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="time"
+                        step="1"
+                        className="w-full min-w-0 bg-gray-800 text-gray-100 text-sm font-mono rounded px-2 py-1.5 border border-gray-700 outline-none focus:border-blue-500/60"
+                        value={scheduleEditVal}
+                        onChange={(e) => setScheduleEditVal(e.target.value)}
+                        onBlur={() => commitSchedule(item.id)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') commitSchedule(item.id) }}
+                      />
+                      {item.scheduledAt && (
+                        <button onClick={() => { onClearSchedule(); setScheduleEditVal('') }} title="Remover agendamento"
+                          className="p-1.5 rounded text-gray-500 hover:text-red-400 transition-colors flex-shrink-0">
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                {item.scheduledAt && (
+                  <p className="text-[11px] text-blue-400">Agendado — interrompe a exibição em andamento nesse horário</p>
+                )}
+
+                {/* Loop + Remover */}
+                <div className="flex items-center justify-between pt-2 border-t border-gray-800">
+                  <button onClick={onToggleLoop} disabled={loopPending}
+                    className={clsx('flex items-center gap-1.5 text-sm transition-colors disabled:opacity-40', item.loop ? 'text-amber-400' : 'text-gray-400 hover:text-gray-200')}
                   >
-                    <CalendarClock className="h-3.5 w-3.5 text-fuchsia-400" />
-                    {item.scheduledAt
-                      ? `Agendado: ${formatClock(new Date(item.scheduledAt).getTime())}`
-                      : 'Agendar exibição'}
-                  </button>
-                  {item.scheduledAt && (
-                    <button
-                      onClick={() => { onClearSchedule(); setMenuOpen(false) }}
-                      className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-gray-400 hover:bg-white/5 text-left"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                      Remover agendamento
-                    </button>
-                  )}
-                  <button
-                    onClick={() => { onToggleLoop(); setMenuOpen(false) }}
-                    disabled={loopPending}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-gray-300 hover:bg-white/5 disabled:text-gray-600 text-left"
-                  >
-                    <RotateCcw className={clsx('h-3.5 w-3.5', item.loop ? 'text-amber-400' : '')} />
-                    {item.loop ? 'Desativar loop' : 'Ativar loop'}
+                    <RotateCcw className="h-4 w-4" />
+                    {item.loop ? 'Loop ativado' : 'Ativar loop'}
                   </button>
                   {canDelete && (
-                    <button
-                      onClick={() => { onDelete(); setMenuOpen(false) }}
-                      disabled={deletePending}
-                      className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-white/5 disabled:text-gray-600 text-left"
+                    <button onClick={() => { onDelete(); closeActionsModal() }} disabled={deletePending}
+                      className="flex items-center gap-1.5 text-sm text-red-400 hover:text-red-300 transition-colors disabled:opacity-40"
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash2 className="h-4 w-4" />
                       Remover da playlist
                     </button>
                   )}
                 </div>
-              </>
-            )}
-          </div>
+              </div>
+            </Modal>
+          </>
         )
       })()}
     </div>
@@ -1030,6 +1056,10 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
     setTimerEditId(item.id)
     const v = item.maxDuration
     setTimerEditVal(v ? `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}` : '')
+  }
+
+  function clearTimer(itemId: string) {
+    setMaxDurationMut.mutate({ itemId, maxDuration: null })
   }
 
   // ─── Agendamento de exibição (scheduledAt) — tem precedência sobre o horário previsto ──
@@ -1906,6 +1936,7 @@ export default function ChannelPanel({ channel }: ChannelPanelProps) {
                           onToggleLoop={() => toggleLoopMut.mutate(pi.id)}
                           onDelete={() => deleteItemMut.mutate(pi.id)}
                           onSetTimer={() => openTimerEdit(pi)}
+                          onClearTimer={() => clearTimer(pi.id)}
                           onSetSchedule={() => openScheduleEdit(pi)}
                           onClearSchedule={() => clearSchedule(pi.id)}
                           scheduleEditId={scheduleEditId}

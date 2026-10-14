@@ -8,11 +8,14 @@ interface ModalProps {
   title: string
   children: React.ReactNode
   size?: 'sm' | 'md' | 'lg' | '2xl' | 'xl'
+  // false = sem overlay escurecendo o fundo (clique fora ainda fecha) — usado
+  // quando o conteúdo atrás do modal precisa continuar visível/monitorável
+  dim?: boolean
 }
 
 const sizes = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-2xl', '2xl': 'max-w-3xl', xl: 'max-w-5xl' }
 
-export function Modal({ open, onClose, title, children, size = 'md' }: ModalProps) {
+export function Modal({ open, onClose, title, children, size = 'md', dim = true }: ModalProps) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     if (open) document.addEventListener('keydown', handler)
@@ -23,7 +26,7 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className={clsx('absolute inset-0', dim && 'bg-black/60 backdrop-blur-sm')} onClick={onClose} />
       <div className={clsx(
         'relative w-full card shadow-2xl flex flex-col',
         'max-h-[90vh]',   // nunca ultrapassa 90% da altura da tela
