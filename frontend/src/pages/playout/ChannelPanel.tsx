@@ -656,7 +656,7 @@ function PlaylistItemRow({
             >
               <MoreVertical className="h-3 w-3" />
             </button>
-            <Modal open={menuOpen} onClose={closeActionsModal} title={item.title} size="md" dim={false}>
+            <Modal open={menuOpen} onClose={closeActionsModal} title={item.title} size="md" dim={false} panelClassName="bg-blue-950 border border-blue-900 rounded-xl">
               <div className="space-y-4">
                 {/* Thumbnail + play — mesmo objeto usado na Biblioteca de Mídias; o
                     player aparece numa segunda linha aqui dentro, sem popup novo */}
