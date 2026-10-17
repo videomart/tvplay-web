@@ -66,9 +66,11 @@ async function getVideoStorageUsage(): Promise<number> {
 
 // Docker Engine API via socket — só GET /system/df (leitura), nunca endpoints de escrita.
 // Requer /var/run/docker.sock montado no container (ver docker-compose.yml).
+// Timeout generoso (10s): /system/df recalcula uso de todas as imagens/containers/
+// volumes do host — em produção, sob carga, medido em ~4.2s (confirmado 2026-10-17).
 function dockerRequest(path: string): Promise<any> {
   return new Promise((resolve, reject) => {
-    const req = http.request({ socketPath: '/var/run/docker.sock', path, method: 'GET', timeout: 3000 }, (res) => {
+    const req = http.request({ socketPath: '/var/run/docker.sock', path, method: 'GET', timeout: 10000 }, (res) => {
       let body = ''
       res.on('data', (chunk) => { body += chunk })
       res.on('end', () => {
@@ -85,13 +87,24 @@ function dockerRequest(path: string): Promise<any> {
   })
 }
 
-async function getDockerUsage() {
+// /system/df recalcula uso de disco de toda imagem/container/volume do host — caro
+// o bastante (medido ~4.2s em produção sob carga) pra não vale a pena repetir a
+// cada poll do dashboard (a cada poucos segundos). Cache simples de 30s.
+type DockerUsage = {
+  imagesBytes: number; containersBytes: number; volumesBytes: number; totalBytes: number
+  imageCount: number; containerCount: number; volumeCount: number
+}
+let dockerCache: { data: DockerUsage | null; at: number } | null = null
+const DOCKER_CACHE_TTL_MS = 30_000
+
+async function getDockerUsage(): Promise<DockerUsage | null> {
+  if (dockerCache && Date.now() - dockerCache.at < DOCKER_CACHE_TTL_MS) return dockerCache.data
   try {
     const df = await dockerRequest('/system/df')
     const imagesSize = (df.Images ?? []).reduce((s: number, i: any) => s + (i.Size ?? 0), 0)
     const containersSize = (df.Containers ?? []).reduce((s: number, c: any) => s + (c.SizeRw ?? 0), 0)
     const volumesSize = (df.Volumes ?? []).reduce((s: number, v: any) => s + (v.UsageData?.Size ?? 0), 0)
-    return {
+    const result: DockerUsage = {
       imagesBytes: imagesSize,
       containersBytes: containersSize,
       volumesBytes: volumesSize,
@@ -100,8 +113,11 @@ async function getDockerUsage() {
       containerCount: (df.Containers ?? []).length,
       volumeCount: (df.Volumes ?? []).length,
     }
+    dockerCache = { data: result, at: Date.now() }
+    return result
   } catch (err: any) {
     console.warn(`[system-metrics] Docker indisponível: ${err.message}`)
+    dockerCache = { data: null, at: Date.now() }
     return null
   }
 }

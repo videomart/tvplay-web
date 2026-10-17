@@ -58,7 +58,7 @@ export default function DashboardPage() {
   const clients = useQuery({ queryKey: ['clients'], queryFn: () => clientsApi.list() })
   const clips = useQuery({ queryKey: ['clips'], queryFn: () => clipsApi.list() })
   const types = useQuery({ queryKey: ['clip-types'], queryFn: () => clipTypesApi.list() })
-  const metrics = useQuery({ queryKey: ['system-metrics'], queryFn: systemApi.getMetrics, refetchInterval: 5000 })
+  const metrics = useQuery({ queryKey: ['system-metrics'], queryFn: systemApi.getMetrics, refetchInterval: 15_000 })
 
   return (
     <div className="p-6 space-y-6">
