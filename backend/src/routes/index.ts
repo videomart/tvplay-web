@@ -17,6 +17,7 @@ import graphicRoutes from './graphics.route'
 import graphicTemplateRoutes from './graphic-templates.route'
 import cameraRoutes from './camera.route'
 import tickerRoutes from './ticker.route'
+import systemRoutes from './system.route'
 
 export async function registerRoutes(app: FastifyInstance) {
   await app.register(authRoutes,         { prefix: '/api/auth' })
@@ -37,4 +38,5 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(graphicTemplateRoutes,  { prefix: '/api/graphic-templates' })
   await app.register(cameraRoutes,           { prefix: '/api/camera' })
   await app.register(tickerRoutes,           { prefix: '/api/ticker' })
+  await app.register(systemRoutes,           { prefix: '/api/system' })
 }

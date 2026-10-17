@@ -6,7 +6,11 @@
 
 @layer base {
   * { @apply border-gray-700; }
-  body { @apply bg-gray-950 text-gray-100 antialiased; }
+  /* Só o "papel de parede" por trás dos painéis muda com o tema — caixas,
+     cards e o menu lateral continuam sempre no escuro (ver .card/.sidebar-item
+     abaixo e Sidebar.tsx), por decisão explícita: o tema claro "lavado" em
+     cada elemento interno ficou inconsistente e pouco legível. */
+  body { @apply bg-white dark:bg-gray-950 text-gray-100 antialiased; }
   ::-webkit-scrollbar { @apply w-2.5 h-2.5; }
   ::-webkit-scrollbar-track { @apply bg-gray-800; }
   ::-webkit-scrollbar-thumb { @apply bg-gray-400 rounded-full; }

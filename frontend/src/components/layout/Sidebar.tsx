@@ -1,7 +1,8 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Tv2, Users, Tag, LogOut, Radio, ListVideo, Cast, Antenna, ClipboardList, UserCog, Settings, Layers, HardDrive, Grid2x2, X } from 'lucide-react'
+import { LayoutDashboard, Tv2, Users, Tag, LogOut, Radio, ListVideo, Cast, Antenna, ClipboardList, UserCog, Settings, Layers, HardDrive, Grid2x2, X, Sun, Moon } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '../../stores/auth.store'
+import { useThemeStore } from '../../stores/theme.store'
 import { settingsApi } from '../../api/settings.api'
 import { clsx } from 'clsx'
 
@@ -75,6 +76,7 @@ async function openInSecondaryScreen(url: string) {
 export default function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   const { user, logout } = useAuthStore()
   const isAdmin = user?.level === 'ADMIN'
+  const { theme, toggleTheme } = useThemeStore()
 
   const { data: settings } = useQuery({
     queryKey: ['settings'],
@@ -206,6 +208,29 @@ export default function Sidebar({ isOpen = true, onClose }: SidebarProps) {
         <p className="text-[9px] font-mono text-gray-500 leading-tight">
           v{__APP_BUILD__} · {__BUILD_TIME__}
         </p>
+      </div>
+
+      {/* Tema claro/escuro */}
+      <div className="px-3 py-2 border-t border-gray-800/40">
+        <button
+          onClick={toggleTheme}
+          className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs font-medium text-gray-400 hover:bg-white/5 hover:text-white transition-colors"
+          title={theme === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+        >
+          <span className="flex items-center gap-2">
+            {theme === 'dark' ? <Moon className="h-3.5 w-3.5" /> : <Sun className="h-3.5 w-3.5" />}
+            Tema {theme === 'dark' ? 'escuro' : 'claro'}
+          </span>
+          <span className={clsx(
+            'relative inline-flex h-4 w-7 items-center rounded-full transition-colors flex-shrink-0',
+            theme === 'dark' ? 'bg-brand-600' : 'bg-gray-300'
+          )}>
+            <span className={clsx(
+              'inline-block h-3 w-3 transform rounded-full bg-white transition-transform',
+              theme === 'dark' ? 'translate-x-[14px]' : 'translate-x-0.5'
+            )} />
+          </span>
+        </button>
       </div>
 
       {/* User */}

@@ -115,6 +115,12 @@ services:
       # Pasta de cookies — bind mount de PASTA (nunca recriada como diretório errado)
       # Coloque youtube-cookies.txt dentro de ./cookies/  (pasta ignorada pelo git)
       - ./cookies:/app/cookies
+      # Socket do Docker — usado só pra leitura (GET /system/df) no dashboard de
+      # métricas do sistema. ATENÇÃO: isso dá à API acesso de controle total ao
+      # Docker do HOST, não só aos containers do TVPlay — em máquinas compartilhadas
+      # com outros projetos, uma falha de segurança aqui expõe tudo. Decisão
+      # consciente do time, 2026-10-17 — ver memória/CHANGELOG antes de remover.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     privileged: true
     healthcheck:
       test: ['CMD-SHELL', 'curl -sf http://127.0.0.1:3001/health || exit 1']
